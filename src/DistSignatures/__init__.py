@@ -5,7 +5,6 @@ from .mixture import MixtureMultivariateNormal, mixture_generator, MixtureMultiv
     MixtureSparseMultivariateNormal
 from .signatures import DiscretizedMultivariateNormal, discretization_generator
 
-
 __all__ = ['CategoricalFloat',
            'ActivationCategoricalFloat',
            'MixtureMultivariateNormal',
@@ -17,3 +16,5 @@ __all__ = ['CategoricalFloat',
            'DiscretizedMultivariateNormal',
            'discretization_generator',
            ]
+
+

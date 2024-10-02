@@ -1,5 +1,4 @@
-import distributions
-from tensor.utils import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
+from .utils import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
 
 import torch
 from torch.distributions import constraints
@@ -98,7 +97,7 @@ class MultivariateNormal(torch.distributions.Distribution):
         return 0.5 * (1 + (self._to_std_rv(x) * CONST_INV_SQRT_2).erf())
 
     def activate(self, activation: torch.nn.functional, derivative_activation, **kwargs):
-        return distributions.MultivariateActivationNormal(loc=self.loc, covariance_matrix=self.covariance_matrix,
+        return MultivariateActivationNormal(loc=self.loc, covariance_matrix=self.covariance_matrix,
                                                           activation=activation,
                                                           derivative_activation=derivative_activation, **kwargs)
 

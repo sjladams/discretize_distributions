@@ -1,8 +1,6 @@
 import torch
 
-import distributions
 from .utils import get_disc
-from tensor.utils import eigh
 from torch_kmeans import KMeans
 
 __all__ = ['DiscretizedMultivariateNormal',

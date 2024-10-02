@@ -1,10 +1,10 @@
 import torch
 from torch.distributions.distribution import Distribution
 from torch.distributions import constraints
-
 from typing import Dict, Union
-from categorical_float import CategoricalFloat
-from multivariate_normal import MultivariateNormal, SparseMultivariateNormal
+
+from .categorical_float import CategoricalFloat
+from .multivariate_normal import MultivariateNormal, SparseMultivariateNormal
 
 
 __all__ = ['MixtureMultivariateNormal', 'MixtureMultivariateActivationNormal', 'MixtureSparseMultivariateNormal',
