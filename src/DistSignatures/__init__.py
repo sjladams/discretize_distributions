@@ -17,4 +17,3 @@ __all__ = ['CategoricalFloat',
            'DiscretizedMultivariateNormal',
            'discretization_generator',
            ]
-

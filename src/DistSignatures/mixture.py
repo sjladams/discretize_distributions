@@ -1,16 +1,18 @@
 import torch
 from torch.distributions.distribution import Distribution
-from torch.distributions import Categorical
 from torch.distributions import constraints
 
-from tensor import utils
 from typing import Dict, Union
-import distributions
+from categorical_float import CategoricalFloat
+from multivariate_normal import MultivariateNormal, SparseMultivariateNormal
+
 
 __all__ = ['MixtureMultivariateNormal', 'MixtureMultivariateActivationNormal', 'MixtureSparseMultivariateNormal',
            'mixture_generator'
            ]
 
+
+PRECISION = torch.finfo(torch.float32).eps
 
 class Mixture(Distribution):
     arg_constraints: Dict[str, constraints.Constraint] = {}
@@ -20,7 +22,7 @@ class Mixture(Distribution):
                  mixture_distribution,
                  component_distribution,
                  validate_args=None):
-        if not isinstance(mixture_distribution, Categorical):
+        if not isinstance(mixture_distribution, torch.distributions.Categorical):
             raise ValueError(" The Mixture distribution needs to be an "
                              " instance of torch.distribtutions.Categorical")
         if not isinstance(component_distribution, Distribution):
@@ -104,7 +106,7 @@ class Mixture(Distribution):
 
     @property
     def stddev(self):
-        return utils.element_wise_sqrt(self.variance)
+        return (self.variance + PRECISION).sqrt()
 
     def cdf(self, x):
         x = self._pad(x)
@@ -159,10 +161,10 @@ class Mixture(Distribution):
 class MixtureMultivariateNormal(Mixture):
     has_rsample = True
 
-    def __init__(self, mixture_distribution: Union[distributions.CategoricalFloat, torch.distributions.Categorical],
-                 component_distribution: distributions.MultivariateNormal,
+    def __init__(self, mixture_distribution: Union[CategoricalFloat, torch.distributions.Categorical],
+                 component_distribution: MultivariateNormal,
                  validate_args=None):  # \todo exclude categoricalFloat
-        assert isinstance(component_distribution, distributions.MultivariateNormal), \
+        assert isinstance(component_distribution, MultivariateNormal), \
             "The component_distribution needs to be an instance of distribtutions.MultivariateNormal"
         super(MixtureMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
                                                         component_distribution=component_distribution,
@@ -182,7 +184,7 @@ class MixtureMultivariateNormal(Mixture):
         return mean_cond_cov + cov_cond_mean
 
     def simplify(self):
-        return distributions.MultivariateNormal(loc=self.mean, covariance_matrix=self.covariance_matrix)
+        return MultivariateNormal(loc=self.mean, covariance_matrix=self.covariance_matrix)
 
     def rsample(self, sample_shape=torch.Size()): # \todo do more efficiently
         if not isinstance(sample_shape, torch.Size):
@@ -205,8 +207,8 @@ class MixtureMultivariateActivationNormal(MixtureMultivariateNormal):
 
 
 class MixtureSparseMultivariateNormal(Mixture):
-    def __init__(self, mixture_distribution: Categorical,
-                 component_distribution: distributions.SparseMultivariateNormal, validate_args=None):
+    def __init__(self, mixture_distribution: torch.distributions.Categorical,
+                 component_distribution: SparseMultivariateNormal, validate_args=None):
         super(MixtureSparseMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
                                                               component_distribution=component_distribution,
                                                               validate_args=validate_args)
@@ -217,7 +219,7 @@ class MixtureGenerator:
                  component_distribution: Distribution,
                  *args, **kwargs):
         if type(mixture_distribution) is torch.distributions.Categorical:
-            if type(component_distribution) is distributions.MultivariateNormal:
+            if type(component_distribution) is MultivariateNormal:
                 return MixtureMultivariateNormal(mixture_distribution, component_distribution, *args, **kwargs)
             else:
                 raise NotImplementedError
