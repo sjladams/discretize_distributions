@@ -2,14 +2,14 @@ import math
 import torch
 import numpy as np
 import pickle
-import xitorch
+from xitorch.linalg import symeig
+from xitorch import LinearOperator
 from typing import Union
 from stable_trunc_gaussian import TruncatedGaussian
 import os
+import pkg_resources
 from scipy.stats import norm as scipy_norm
 
-from .multivariate_normal import MultivariateNormal
-from .mixture import MixtureMultivariateNormal
 
 PRECISION = torch.finfo(torch.float32).eps
 CONST_SQRT_2 = math.sqrt(2)
@@ -122,37 +122,8 @@ def mean_and_var_uni_trun_gauss(l: torch.Tensor, u: torch.Tensor, mu: torch.Tens
     return mean, variance
 
 
-# def sum_indep_gmm(gmm1: distributions.MixtureNormal, gmm2: distributions.MixtureNormal):
-#     batch_shape = gmm1.batch_shape
-#     start_dim = gmm1.mixture_distribution.probs.ndimension() - 1
-#     weights = utils.outer_prod(tensor0=gmm1.mixture_distribution.probs,
-#                                tensor1=gmm2.mixture_distribution.probs,
-#                                batch_shape=batch_shape).flatten(start_dim=start_dim)
-#     locs = utils.outer_sum(gmm1.component_distribution.loc, gmm2.component_distribution.loc,
-#                            batch_shape=batch_shape).flatten(start_dim=start_dim)
-#     scales = utils.outer_sum(gmm1.component_distribution.scale, gmm2.component_distribution.scale,
-#                              batch_shape=batch_shape).flatten(start_dim=start_dim)
-#     mix = torch.distributions.categorical.Categorical(weights)
-#     norm = torch.distributions.Normal(loc=locs, scale=scales)
-#     return distributions.MixtureNormal(mixture_distribution=mix, component_distribution=norm)
-
-
-# def sum_normal(norm0: Distribution, norm1: Distribution = None, locs_norm1: torch.Tensor = None,
-#                covariance_matrix_norm1: torch.Tensor = None):
-#     if isinstance(norm0, distributions.MultivariateNormal) and isinstance(norm1, distributions.MultivariateNormal):
-#         return distributions.MultivariateNormal(loc=norm0.loc + norm1.loc,
-#                                                 covariance_matrix=norm0.covariance_matrix + norm1.covariance_matrix)
-#     elif isinstance(norm0, distributions.Normal) and isinstance(norm1, distributions.Normal):
-#         return distributions.Normal(loc=norm0.loc + norm1.loc, scale=(norm0.scale.pow(2) + norm1.scale.pow(2)).sqrt())
-#     elif isinstance(norm0, distributions.MultivariateNormal) and locs_norm1 is not None and covariance_matrix_norm1 is not None:
-#         return distributions.MultivariateNormal(loc=norm0.loc + locs_norm1,
-#                                                 covariance_matrix=norm0.covariance_matrix + covariance_matrix_norm1)
-#     else:
-#         raise NotImplementedError
-
-
 def pickle_load(tag):
-    if not ".npy" in tag or ".pickle" in tag:
+    if not (".npy" in tag or ".pickle" in tag):
         tag = f"{tag}.pickle"
     pickle_in = open(tag, "rb")
     if "npy" in tag:
@@ -163,19 +134,17 @@ def pickle_load(tag):
     return to_return
 
 
-PATH = os.path.dirname(os.path.abspath(__file__))
-file_name = 'grid_signatures_lookuptable'
-GRID_CONFIGS = pickle_load(f"{PATH}/lookuptable_grid_configs")
-OPTIMAL_1D_GRIDS = pickle_load(f"{PATH}/lookuptable_optimal_1d_grid")
+GRID_CONFIGS = pickle_load(pkg_resources.resource_filename(__name__, 'data/lookuptable_grid_configs.pickle'))
+OPTIMAL_1D_GRIDS = pickle_load(pkg_resources.resource_filename(__name__, 'data/lookuptable_optimal_1d_grid.pickle'))
 
 
-def get_disc(norm: Union[MultivariateNormal, MixtureMultivariateNormal],
+def get_disc(norm,
              disc_type: str = 'grid', **kwargs):
     cov_mat = make_sym(norm.covariance_matrix)  # \todo shouldn't be needed. To investigate where symmetry brakes
-    cov_mat_xitorch = xitorch.LinearOperator.m(cov_mat)
+    cov_mat_xitorch = LinearOperator.m(cov_mat)
     neigh = torch.linalg.matrix_rank(cov_mat, hermitian=True).min()
     # eigvals: size(neigh), eigvecs: size(n, neig)
-    eigvals, eigvectors = xitorch.linalg.symeig(cov_mat_xitorch, neig=neigh, mode='uppest')
+    eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest')
     w2_cent_dirac = eigvals.sum(-1).sqrt()
 
     if disc_type == 'axes':
@@ -534,8 +503,8 @@ def eigh(mat: torch.Tensor):
     if neigh == mat.shape[-1]:
         eigvals, eigvectors = torch.linalg.eigh(mat)
     else:
-        cov_mat_xitorch = xitorch.LinearOperator.m(mat)
-        eigvals, eigvectors = xitorch.linalg.symeig(cov_mat_xitorch, neig=neigh, mode='uppest')
+        cov_mat_xitorch = LinearOperator.m(mat)
+        eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest')
     return eigvals, eigvectors
 
 def make_sym(mat: torch.Tensor):

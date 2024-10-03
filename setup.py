@@ -26,5 +26,9 @@ setuptools.setup(
         'xitorch>=0.5.1',
         'numpy',
         'stable-trunc-gaussian>=1.3.9'
-    ]
+    ],
+    package_data = {
+        "DistSignatures": ["data/*.pickle"],  # Include the pickle file
+    },
+    include_package_data = True,
 )

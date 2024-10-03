@@ -11,8 +11,8 @@ if __name__ == "__main__":
     variance = torch.linspace(1, 3, nr_dims).expand(batch_size + (nr_dims,))
 
     mult_norm = DistSignatures.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
-    signature = DistSignatures.discretization_generator(mult_norm, nr_signature_points=10, compute_ws=True)
-    print(f'induced 2-wasserstein distance: {signature.w.sqrt()}')
+    signature = DistSignatures.discretization_generator(mult_norm, nr_signature_points=10, compute_w2=True)
+    print(f'induced 2-wasserstein distance: {signature.w2}')
 
     # example 2: d gaussians with full covariance matrix
     nr_dims = 2
@@ -22,5 +22,5 @@ if __name__ == "__main__":
     cov_mat = sqrt_cov_mat @ sqrt_cov_mat.swapaxes(-1, -2)
 
     mult_norm = DistSignatures.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
-    signature = DistSignatures.discretization_generator(mult_norm, nr_signature_points=10, compute_ws=True)
-    print(f'induced 2-wasserstein distance: {signature.w.sqrt().squeeze():.4f}')
+    signature = DistSignatures.discretization_generator(mult_norm, nr_signature_points=10, compute_w2=True)
+    print(f'induced 2-wasserstein distance: {signature.w2.squeeze():.4f}')
