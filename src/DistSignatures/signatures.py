@@ -1,27 +1,15 @@
 import torch
-from torch_kmeans import KMeans
 
 from .utils import get_disc
-from .multivariate_normal import MultivariateNormal, MultivariateActivationNormal
+from .multivariate_normal import MultivariateNormal, ActivatedMultivariateNormal
 from .categorical_float import CategoricalFloat
-from .mixture import MixtureMultivariateNormal, MixtureMultivariateActivationNormal
+from .mixture import MixtureMultivariateNormal, MixtureActivatedMultivariateNormal
 
 __all__ = ['DiscretizedMultivariateNormal',
            'discretization_generator'
            ]
 
 DEBUG_ACTIVATION = False
-
-
-def kmean_clustering_batches(x: torch.Tensor, n: int):
-    """
-    Do K-means clustering for batches of samples
-    :param x: (batch, num_samples, features)
-    :param n: number of clusters
-    :return: cluster_assignment: (batch, num_samples)
-    """
-    kmeans_torch = KMeans(n_clusters=n, verbose=False)
-    return kmeans_torch(x)
 
 
 class DiscretizedMixtureMultivariateNormal_(CategoricalFloat):
@@ -49,9 +37,9 @@ class DiscretizedMixtureMultivariateNormal(DiscretizedMixtureMultivariateNormal_
         super(DiscretizedMixtureMultivariateNormal, self).__init__(*args, **kwargs)
 
 
-class DiscretizedMixtureMultivariateActivationNormal(DiscretizedMixtureMultivariateNormal_):
+class DiscretizedMixtureActivatedMultivariateNormal(DiscretizedMixtureMultivariateNormal_):
     def __init__(self, *args, **kwargs):
-        super(DiscretizedMixtureMultivariateActivationNormal, self).__init__(*args, **kwargs)
+        super(DiscretizedMixtureActivatedMultivariateNormal, self).__init__(*args, **kwargs)
 
 
 class DiscretizedMultivariateNormal_(CategoricalFloat):
@@ -78,21 +66,21 @@ class DiscretizedMultivariateNormal(DiscretizedMultivariateNormal_):
         super(DiscretizedMultivariateNormal, self).__init__(*args, **kwargs)
 
 
-class DiscretizedMultivariateActivationNormal(DiscretizedMultivariateNormal_):
+class DiscretizedActivatedMultivariateNormal(DiscretizedMultivariateNormal_):
     def __init__(self, *args, **kwargs):
-        super(DiscretizedMultivariateActivationNormal, self).__init__(*args, **kwargs)
+        super(DiscretizedActivatedMultivariateNormal, self).__init__(*args, **kwargs)
 
 
 class DiscretizationGenerator:
     def __call__(self, dist, *args, **kwargs):
         if type(dist) is MultivariateNormal:
             return DiscretizedMultivariateNormal(dist, *args, **kwargs)
-        elif type(dist) is MultivariateActivationNormal:
-            return DiscretizedMultivariateActivationNormal(dist, *args, **kwargs)
+        elif type(dist) is ActivatedMultivariateNormal:
+            return DiscretizedActivatedMultivariateNormal(dist, *args, **kwargs)
         elif type(dist) is MixtureMultivariateNormal:
             return DiscretizedMixtureMultivariateNormal(dist, *args, **kwargs)
-        elif type(dist) is MixtureMultivariateActivationNormal:
-            return DiscretizedMixtureMultivariateActivationNormal(dist, *args, **kwargs)
+        elif type(dist) is MixtureActivatedMultivariateNormal:
+            return DiscretizedMixtureActivatedMultivariateNormal(dist, *args, **kwargs)
         else:
             raise NotImplementedError
 

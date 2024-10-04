@@ -3,6 +3,17 @@ import DistSignatures
 
 
 if __name__ == "__main__":
+    # test mixture
+    component_distribution = DistSignatures.MultivariateNormal(loc=torch.zeros(2,2),
+                                                               covariance_matrix=torch.eye(2).unsqueeze(0).expand(2, 2, 2))
+    mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([0.5, 0.5]))
+    gmm = DistSignatures.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+
+    # test activation
+    mult_normal_dist = DistSignatures.MultivariateNormal(loc=torch.zeros(2), covariance_matrix=torch.eye(2))
+    activated_mult_normal_dist = mult_normal_dist.activate(activation=torch.nn.functional.relu,
+                                                           derivative_activation=torch.nn.functional.relu)
+
     # -- Create the optimal signature with a grid configuration from a multivariate Normal distribution: ---------------
     # example 1: identical batches of 2d Gaussians with diagonal covariance matrices
     nr_dims = 2

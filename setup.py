@@ -23,7 +23,7 @@ setuptools.setup(
     install_requires=[
         'torch>=1.13.1',
         'torch-kmeans>=0.2.0',
-        'xitorch>=0.5.1',
+        'xitorch>=0.3.0',
         'numpy',
         'stable-trunc-gaussian>=1.3.9'
     ],

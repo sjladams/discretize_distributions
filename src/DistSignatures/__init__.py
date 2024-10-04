@@ -1,17 +1,17 @@
 from .categorical_float import CategoricalFloat, ActivationCategoricalFloat
-from .multivariate_normal import MultivariateNormal, MultivariateActivationNormal, SparseMultivariateNormal
+from .multivariate_normal import MultivariateNormal, ActivatedMultivariateNormal, SparseMultivariateNormal
 
-from .mixture import MixtureMultivariateNormal, mixture_generator, MixtureMultivariateActivationNormal, \
+from .mixture import MixtureMultivariateNormal, mixture_generator, MixtureActivatedMultivariateNormal, \
     MixtureSparseMultivariateNormal
 from .signatures import DiscretizedMultivariateNormal, discretization_generator
 
 __all__ = ['CategoricalFloat',
            'ActivationCategoricalFloat',
            'MixtureMultivariateNormal',
-           'MixtureMultivariateActivationNormal',
+           'MixtureActivatedMultivariateNormal',
            'MixtureSparseMultivariateNormal',
            'MultivariateNormal',
-           'MultivariateActivationNormal',
+           'ActivatedMultivariateNormal',
            'SparseMultivariateNormal',
            'DiscretizedMultivariateNormal',
            'discretization_generator',

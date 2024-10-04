@@ -4,7 +4,7 @@ import torch
 from torch.distributions import constraints
 import math
 
-__all__ = ['MultivariateNormal', 'MultivariateActivationNormal', 'SparseMultivariateNormal']
+__all__ = ['MultivariateNormal', 'ActivatedMultivariateNormal', 'SparseMultivariateNormal']
 
 PRECISION = torch.finfo(torch.float32).eps
 CONST_SQRT_2 = math.sqrt(2)
@@ -97,16 +97,17 @@ class MultivariateNormal(torch.distributions.Distribution):
         return 0.5 * (1 + (self._to_std_rv(x) * CONST_INV_SQRT_2).erf())
 
     def activate(self, activation: torch.nn.functional, derivative_activation, **kwargs):
-        return MultivariateActivationNormal(loc=self.loc, covariance_matrix=self.covariance_matrix,
-                                                          activation=activation,
-                                                          derivative_activation=derivative_activation, **kwargs)
+        return ActivatedMultivariateNormal(loc=self.loc,
+                                            covariance_matrix=self.covariance_matrix,
+                                            activation=activation,
+                                            derivative_activation=derivative_activation, **kwargs)
 
 
-class MultivariateActivationNormal(MultivariateNormal):
+class ActivatedMultivariateNormal(MultivariateNormal):
     def __init__(self, activation: torch.nn.functional, derivative_activation, *args, **kwargs):
         self.activation = activation
         self.derivative_activation = derivative_activation
-        super(MultivariateActivationNormal, self).__init__(*args, **kwargs)
+        super(ActivatedMultivariateNormal, self).__init__(*args, **kwargs)
 
 
 class SparseMultivariateNormal(torch.distributions.Distribution):

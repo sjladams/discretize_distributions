@@ -10,6 +10,8 @@ import os
 import pkg_resources
 from scipy.stats import norm as scipy_norm
 
+from torch_kmeans import KMeans
+
 
 PRECISION = torch.finfo(torch.float32).eps
 CONST_SQRT_2 = math.sqrt(2)
@@ -514,3 +516,14 @@ def make_sym(mat: torch.Tensor):
     :return:
     """
     return torch.max(mat, mat.swapaxes(-1, -2))
+
+
+def kmean_clustering_batches(x: torch.Tensor, n: int):
+    """
+    Do K-means clustering for batches of samples
+    :param x: (batch, num_samples, features)
+    :param n: number of clusters
+    :return: cluster_assignment: (batch, num_samples)
+    """
+    kmeans_torch = KMeans(n_clusters=n, verbose=False)
+    return kmeans_torch(x)
