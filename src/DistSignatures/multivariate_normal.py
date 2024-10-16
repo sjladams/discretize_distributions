@@ -1,4 +1,4 @@
-from .utils import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
+from .tensors import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
 
 import torch
 from torch.distributions import constraints

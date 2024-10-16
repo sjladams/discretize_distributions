@@ -4,10 +4,15 @@ import DistSignatures
 
 if __name__ == "__main__":
     # test mixture
-    component_distribution = DistSignatures.MultivariateNormal(loc=torch.zeros(2,2),
-                                                               covariance_matrix=torch.eye(2).unsqueeze(0).expand(2, 2, 2))
-    mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([0.5, 0.5]))
+    batch_size = torch.Size()
+    num_dims = 2
+    num_mix_elems = 5
+    component_distribution = DistSignatures.MultivariateNormal(
+        loc=torch.randn(batch_size + (num_mix_elems, num_dims)),
+        covariance_matrix=torch.diag_embed(torch.rand(batch_size + (num_mix_elems, num_dims))))
+    mixture_distribution = torch.distributions.Categorical(probs=torch.rand(batch_size + (num_mix_elems,)))
     gmm = DistSignatures.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    gmm.compress(n_max=3)
 
     # test activation
     mult_normal_dist = DistSignatures.MultivariateNormal(loc=torch.zeros(2), covariance_matrix=torch.eye(2))

@@ -1,10 +1,9 @@
 import torch
 from torch.distributions.distribution import Distribution
-from torch.distributions import constraints
-from typing import Dict, Union
+from typing import Union
 
 from .multivariate_normal import MultivariateNormal, SparseMultivariateNormal
-
+from .tensors import kmean_clustering_batches
 
 __all__ = ['MixtureMultivariateNormal', 'MixtureActivatedMultivariateNormal', 'MixtureSparseMultivariateNormal',
            'mixture_generator'
@@ -39,6 +38,9 @@ class Mixture(torch.distributions.MixtureSameFamily):
     def disc_prob(self, value): # \todo check if can be removed
         return self.log_disc_prob(value).exp()
 
+    @property
+    def num_components(self):
+        return self._num_component
 
 class MixtureMultivariateNormal(Mixture):
     has_rsample = True
@@ -69,20 +71,6 @@ class MixtureMultivariateNormal(Mixture):
                                   dim=-1 - self._event_ndims * 2)
         return mean_cond_cov + cov_cond_mean
 
-    @property # \todo: remove
-    def scale(self):
-        if hasattr(self.component_distribution, 'scale'):
-            return self.component_distribution.scale
-        else:
-            raise NotImplementedError
-
-    @property # \todo: remove
-    def loc(self):
-        if hasattr(self.component_distribution, 'loc'):
-            return self.component_distribution.loc
-        else:
-            raise NotImplementedError
-
     def simplify(self):
         return MultivariateNormal(loc=self.mean, covariance_matrix=self.covariance_matrix)
 
@@ -100,6 +88,94 @@ class MixtureMultivariateNormal(Mixture):
         return MixtureActivatedMultivariateNormal(component_distribution=component_distribution,
                                                    mixture_distribution=self.mixture_distribution)
 
+    def unique(self):
+        stack = torch.cat((self.component_distribution.covariance_matrix,
+                           self.component_distribution.loc.unsqueeze(-1)
+                           ), dim=-1)
+        stack_unique, stack_indices = stack.unique(dim=-3, return_inverse=True)
+        n = stack_unique.shape[-3]
+
+        probs = torch.zeros(self.batch_shape + (n,)).scatter_add(
+            dim=-1,
+            index=stack_indices.unsqueeze(0).expand(self.batch_shape + stack_indices.shape) if len(self.batch_shape) else stack_indices,
+            src=self.mixture_distribution.probs)
+        covariance_matrix = stack_unique[..., :-1]
+        loc = stack_unique[..., -1]
+        self.__init__(mixture_distribution=torch.distributions.Categorical(probs=probs),
+                      component_distribution=MultivariateNormal(loc=loc, covariance_matrix=covariance_matrix))
+
+    def collapse(self):
+        self.__init__(mixture_distribution=torch.distributions.Categorical(probs=torch.ones(self.batch_shape + (1,))),
+                      component_distribution=MultivariateNormal(
+                          loc=self.mean.unsqueeze(-2),
+                          covariance_matrix=self.covariance_matrix.unsqueeze(-3)))
+
+    def compress(self, n_max: int):
+        """
+        Compress GMM(n) to GMM(n_max).
+
+        :param n_max: maximum mixture size
+        """
+
+        if n_max == 1:
+            self.collapse()
+        else:
+            self.unique()
+            if self.num_components <= n_max:
+                pass
+            else:
+                labels = kmean_clustering_batches(self.component_distribution.loc, n_max)
+                n = len(labels.unique())
+                if n > 1:
+                    labels = torch.zeros(labels.shape + (n, )).scatter_(
+                        dim=-1,
+                        index=labels.unsqueeze(-1),
+                        src=torch.ones(labels.shape).unsqueeze(-1)
+                    )
+                    loc = torch.einsum('...mi,...mn->...nmi',
+                                       self.component_distribution.loc,
+                                       labels)
+                    covariance_matrix = torch.einsum('...mij,...mn->...nmij',
+                                                     self.component_distribution.covariance_matrix,
+                                                     labels)
+                    probs = torch.einsum('...m,...mn->...nm', self.mixture_distribution.probs, labels)
+
+                    self.__init__(mixture_distribution=torch.distributions.Categorical(probs=probs),
+                                  component_distribution=MultivariateNormal(loc=loc,
+                                                                            covariance_matrix=covariance_matrix,
+                                                                            inherit_torch_distribution=False))
+                    self.collapse()
+                    self.__init__(mixture_distribution=torch.distributions.Categorical(
+                        probs=self.mixture_distribution.probs.squeeze(-1)),
+                                  component_distribution=MultivariateNormal(
+                                      loc=self.component_distribution.loc.squeeze(-2),
+                                      covariance_matrix=self.component_distribution.covariance_matrix.squeeze(-3)
+                                  ))
+                else:
+                    self.collapse()
+
+
+def gmm_to_norm_sparse(gmm_loc: torch.Tensor, gmm_cov: torch.Tensor, gmm_probs: torch.Tensor, **kwargs):
+    """
+    Compress GMM to Normal Distribution in sparse form
+    :param gmm_loc: mean of gmms stored in sparse fashion, i.e., with shape: (batch, mixtures, features, path_length)
+    :param gmm_cov: covariance matrices "", with shape: (batch, mixtures, features, path_length, path_length)
+    :param gmm_probs: probabilities of gmm elements with shape: (batch, mixtures)
+    :return:
+        gmm_loc: (batch, features, path_length)
+        gmm_cov: (batch, features, path_length, path_length)
+        w: Wasserstein distance induced by compression operation (only supported for diagonal gmms)
+    """
+    norm_loc = torch.einsum('...m,...mop->...op', gmm_probs, gmm_loc)
+    mean_cond_cov = torch.einsum('...m,...mopk->...opk', gmm_probs, gmm_cov)
+    mean_components = torch.einsum('...mop,...mok->...mopk',
+                                   gmm_loc - norm_loc.unsqueeze(-3),
+                                   gmm_loc - norm_loc.unsqueeze(-3))
+    cov_cond_mean = torch.einsum('...m,...mopk->...opk', gmm_probs, mean_components)
+    norm_cov = mean_cond_cov + cov_cond_mean
+
+    w = None
+    return norm_loc, norm_cov, w
 
 class MixtureActivatedMultivariateNormal(MixtureMultivariateNormal):
     def __init__(self, *args, **kwargs):
