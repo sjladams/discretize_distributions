@@ -58,6 +58,12 @@ class MixtureMultivariateNormal(Mixture):
                                                         component_distribution=component_distribution,
                                                         validate_args=validate_args)
 
+    def __getitem__(self, item):
+        return MultivariateNormal(
+            loc=self.component_distribution.loc.select(dim=-2, index=item),
+            covariance_matrix=self.component_distribution.covariance_matrix.select(dim=-3, index=item)
+        )
+
     @property
     def covariance_matrix(self):
         # https://math.stackexchange.com/questions/195911/calculation-of-the-covariance-of-gaussian-mixtures

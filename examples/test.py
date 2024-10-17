@@ -12,6 +12,7 @@ if __name__ == "__main__":
         covariance_matrix=torch.diag_embed(torch.rand(batch_size + (num_mix_elems, num_dims))))
     mixture_distribution = torch.distributions.Categorical(probs=torch.rand(batch_size + (num_mix_elems,)))
     gmm = DistSignatures.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    first_elem_gmm = gmm[0]
     gmm.compress(n_max=3)
 
     # test activation
