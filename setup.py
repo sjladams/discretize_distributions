@@ -4,14 +4,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="DistSignatures",
+    name="discretize_distributions",
     version="0.0.1",
     author="Steven Adams",
     author_email="stevenjladams@gmail.com",
     description="Signatures of Probability Distributions",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/sjladams/DistSignatures",
+    url="https://github.com/sjladams/discretize_distributions",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -29,7 +29,7 @@ setuptools.setup(
         'tqdm'
     ],
     package_data = {
-        "DistSignatures": ["data/*.pickle"],  # Include the pickle file
+        "discretize_distributions": ["data/*.pickle"],  # Include the pickle file
     },
     include_package_data = True,
 )
