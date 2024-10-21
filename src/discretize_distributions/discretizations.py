@@ -29,7 +29,7 @@ CONST_INV_SQRT_2 = 1 / math.sqrt(2)
 CONST_LOG_INV_SQRT_2PI = math.log(CONST_INV_SQRT_2PI)
 CONST_LOG_SQRT_2PI_E = 0.5 * math.log(2 * math.pi * math.e)
 
-class DiscretizedMixtureMultivariateNormal_(CategoricalFloat):
+class DiscretizedMixtureMultivariateNormal(CategoricalFloat):
     def __init__(self, gmm: MixtureMultivariateNormal, **kwargs):
         if not isinstance(gmm, MixtureMultivariateNormal):
             raise ValueError('distribution not of type MixtureMultivariateNormal')
@@ -46,47 +46,30 @@ class DiscretizedMixtureMultivariateNormal_(CategoricalFloat):
             self.w2 = None
         self.nr_signature_points_realized = discretized_component_distribution.probs.shape[-1]
 
-        super(DiscretizedMixtureMultivariateNormal_, self).__init__(probs, locs)
+        super().__init__(probs, locs)
 
 
-class DiscretizedMixtureMultivariateNormal(DiscretizedMixtureMultivariateNormal_):
-    def __init__(self, *args, **kwargs):
-        super(DiscretizedMixtureMultivariateNormal, self).__init__(*args, **kwargs)
-
-
-class DiscretizedMixtureActivatedMultivariateNormal(DiscretizedMixtureMultivariateNormal_):
+class DiscretizedMixtureActivatedMultivariateNormal(DiscretizedMixtureMultivariateNormal):
     def __init__(self, *args, **kwargs):
         super(DiscretizedMixtureActivatedMultivariateNormal, self).__init__(*args, **kwargs)
 
 
-class DiscretizedMultivariateNormal_(CategoricalFloat):
+class DiscretizedMultivariateNormal(CategoricalFloat):
     def __init__(self, norm: MultivariateNormal, **kwargs):
         if not isinstance(norm, MultivariateNormal):
             raise ValueError('distribution not of type MultivariateNormal')
 
+        self.dist = norm
         locs, probs, self.w2 = get_disc(norm=norm, **kwargs)
         self.nr_signature_points_realized = probs.shape[-1]
 
-        if hasattr(norm, 'activation'):
-            if DEBUG_ACTIVATION:
-                locs_act = locs
-            else:
-                locs_act = norm.activation(locs)
-        else:
-            locs_act = locs
-
-        super(DiscretizedMultivariateNormal_, self).__init__(probs, locs_act)
+        super().__init__(probs, locs)
 
 
-class DiscretizedMultivariateNormal(DiscretizedMultivariateNormal_):
-    def __init__(self, *args, **kwargs):
-        super(DiscretizedMultivariateNormal, self).__init__(*args, **kwargs)
-
-
-class DiscretizedActivatedMultivariateNormal(DiscretizedMultivariateNormal_):
-    def __init__(self, *args, **kwargs):
-        super(DiscretizedActivatedMultivariateNormal, self).__init__(*args, **kwargs)
-
+class DiscretizedActivatedMultivariateNormal(DiscretizedMultivariateNormal):
+    def __init__(self, norm: ActivatedMultivariateNormal, **kwargs):
+        super(DiscretizedActivatedMultivariateNormal, self).__init__(norm=norm, **kwargs)
+        self.locs = self.dist.activation(self.locs)
 
 class DiscretizationGenerator:
     def __call__(self, dist, *args, **kwargs):
