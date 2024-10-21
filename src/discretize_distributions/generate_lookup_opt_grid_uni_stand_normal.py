@@ -6,8 +6,8 @@ import math
 from stable_trunc_gaussian import TruncatedGaussian
 from typing import Union
 
-from utils import pickle_dump, cdf
-from tensors import get_edges
+from .utils import pickle_dump, cdf, pdf
+from .tensors import get_edges
 
 SQRT_PI = math.sqrt(math.pi)
 SQRT_2 = math.sqrt(2)
@@ -19,25 +19,46 @@ SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 LOG_SQRT_2_PI = math.log(SQRT_2_PI)
 LOG_2 = math.log(2)
 
+REPLACE_INF = 1e10
+
 def calculate_mean_and_var_trunc_normal(loc: Union[torch.Tensor, float], scale: Union[torch.Tensor, float],
                                         l: torch.Tensor, u: torch.Tensor) -> (torch.Tensor, torch.Tensor):
     alpha = (l - loc) / scale
     beta = (u - loc) / scale
 
-    fraction = torch.nan_to_num(SQRT_2_DIV_SQRT_PI * TruncatedGaussian._F_1(alpha * INV_SQRT_2, beta * INV_SQRT_2))
+    alpha[alpha.isneginf()] = -REPLACE_INF
+    beta[beta.isinf()] = REPLACE_INF
+
+    fraction = SQRT_2_DIV_SQRT_PI * TruncatedGaussian._F_1(alpha * INV_SQRT_2, beta * INV_SQRT_2)
     mean = loc + fraction * scale
 
-    fraction_1 = torch.nan_to_num((2 * INV_SQRT_PI) * TruncatedGaussian._F_2(alpha * INV_SQRT_2, beta * INV_SQRT_2))
-    fraction_2 = torch.nan_to_num((2 * INV_PI) * TruncatedGaussian._F_1(alpha * INV_SQRT_2, beta * INV_SQRT_2) ** 2)
+    fraction_1 = (2 * INV_SQRT_PI) * TruncatedGaussian._F_2(alpha * INV_SQRT_2, beta * INV_SQRT_2)
+    fraction_2 = (2 * INV_PI) * TruncatedGaussian._F_1(alpha * INV_SQRT_2, beta * INV_SQRT_2) ** 2
     variance = (1 + fraction_1 - fraction_2) * scale ** 2
 
     return mean, variance
 
 def w2_loss(locs: torch.Tensor) -> torch.Tensor:
     edges = get_edges(locs)
-    probs = cdf(edges[1:]) - cdf(edges[0:-1])
+    probs = cdf(edges[1:]) - cdf(edges[:-1])
     trunc_mean, trunc_var = calculate_mean_and_var_trunc_normal(loc=0., scale=1., l=edges[:-1], u=edges[1:])
     w2 = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
+    return w2
+
+def w2_loss_alternative(locs: torch.Tensor) -> torch.Tensor:
+    edges = get_edges(locs)
+    l, u = edges[:-1], edges[1:]
+    probs = cdf(u) - cdf(l)
+
+    l[l.isneginf()] = -REPLACE_INF
+    u[u.isinf()] = REPLACE_INF
+
+    w2s = (probs
+           + l*pdf(l) - u*pdf(u)
+           - 2*(pdf(l) - pdf(u)).pow(2) / probs
+           - probs*locs.pow(2)
+           +2*locs*(pdf(l) - pdf(u)))
+    w2 = w2s.sum(-1)
     return w2
 
 

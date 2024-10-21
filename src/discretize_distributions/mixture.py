@@ -2,7 +2,7 @@ import torch
 from torch.distributions.distribution import Distribution
 from typing import Union
 
-from .multivariate_normal import MultivariateNormal, SparseMultivariateNormal
+from .multivariate_normal import MultivariateNormal, SparseMultivariateNormal, ActivatedMultivariateNormal
 from .tensors import kmean_clustering_batches
 
 __all__ = ['MixtureMultivariateNormal', 'MixtureActivatedMultivariateNormal', 'MixtureSparseMultivariateNormal',
@@ -183,9 +183,15 @@ def gmm_to_norm_sparse(gmm_loc: torch.Tensor, gmm_cov: torch.Tensor, gmm_probs: 
     w = None
     return norm_loc, norm_cov, w
 
+
 class MixtureActivatedMultivariateNormal(MixtureMultivariateNormal):
-    def __init__(self, *args, **kwargs):
-        super(MixtureActivatedMultivariateNormal, self).__init__(*args, **kwargs)
+    def __init__(self,
+                 mixture_distribution: torch.distributions.Categorical,
+                 component_distribution: ActivatedMultivariateNormal,
+                 **kwargs):
+        super(MixtureActivatedMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
+                                                                 component_distribution=component_distribution,
+                                                                 **kwargs)
 
 
 class MixtureSparseMultivariateNormal(Mixture):
@@ -197,12 +203,17 @@ class MixtureSparseMultivariateNormal(Mixture):
 
 
 class MixtureGenerator:
-    def __call__(self, mixture_distribution: Distribution,
+    def __call__(self,
+                 mixture_distribution: Distribution,
                  component_distribution: Distribution,
-                 *args, **kwargs):
+                 **kwargs):
         if type(mixture_distribution) is torch.distributions.Categorical:
             if type(component_distribution) is MultivariateNormal:
-                return MixtureMultivariateNormal(mixture_distribution, component_distribution, *args, **kwargs)
+                return MixtureMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
+            elif type(component_distribution) is ActivatedMultivariateNormal:
+                return MixtureActivatedMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
+            elif type(component_distribution) is SparseMultivariateNormal:
+                return MixtureSparseMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
             else:
                 raise NotImplementedError
         else:

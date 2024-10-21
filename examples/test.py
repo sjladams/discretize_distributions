@@ -1,8 +1,16 @@
 import torch
 import discretize_distributions
-
+from discretize_distributions.generate_lookup_opt_grid_uni_stand_normal import w2_loss, w2_loss_alternative
+from discretize_distributions.discretizations import GRID_CONFIGS, OPTIMAL_1D_GRIDS
 
 if __name__ == "__main__":
+    # test wasserstein distances
+    num_locs = 10
+    locs = OPTIMAL_1D_GRIDS['locs'][num_locs]
+    w2 = w2_loss(locs)
+    w2_alt = w2_loss_alternative(locs)
+    w2_formal = OPTIMAL_1D_GRIDS['w2'][num_locs]
+
     # test mixture
     batch_size = torch.Size()
     num_dims = 2

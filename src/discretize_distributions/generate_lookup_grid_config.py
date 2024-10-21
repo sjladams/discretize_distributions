@@ -3,7 +3,7 @@ import os
 import torch
 from typing import List
 
-from utils import pickle_dump, pickle_load
+from .utils import pickle_dump, pickle_load
 
 
 def generate_feasible_combinations(N: int, n: int, max_element_value: int = None):
