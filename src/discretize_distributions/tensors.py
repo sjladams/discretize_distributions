@@ -4,6 +4,7 @@ from xitorch.linalg import symeig
 from xitorch import LinearOperator
 
 
+
 def handle_nan_inf(stats: tuple):
     new_stats = tuple()
     for elem in stats:
@@ -40,6 +41,15 @@ def make_sym(mat: torch.Tensor):
     """
     return torch.max(mat, mat.swapaxes(-1, -2))
 
+def check_sym(mat: torch.Tensor, tol: float = 1e-8) -> torch.Tensor:
+    """
+    Check if a batch of square matrices are symmetric.
+
+    :param matrices: Tensor of shape (batch_size, n, n)
+    :param tol: Tolerance for floating point comparison
+    :return: Tensor of shape (batch_size,) with boolean values indicating symmetry
+    """
+    return torch.allclose(mat, mat.transpose(-1, -2), atol=tol)
 
 def kmean_clustering_batches(x: torch.Tensor, n: int):
     """

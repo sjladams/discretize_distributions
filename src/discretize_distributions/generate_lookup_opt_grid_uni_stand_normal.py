@@ -55,9 +55,8 @@ def w2_loss_alternative(locs: torch.Tensor) -> torch.Tensor:
 
     w2s = (probs
            + l*pdf(l) - u*pdf(u)
-           - 2*(pdf(l) - pdf(u)).pow(2) / probs
-           - probs*locs.pow(2)
-           +2*locs*(pdf(l) - pdf(u)))
+           + probs*locs.pow(2)
+           -2*locs*(pdf(l) - pdf(u)))
     w2 = w2s.sum(-1)
     return w2
 

@@ -1,7 +1,7 @@
 import torch
 import discretize_distributions
 from discretize_distributions.generate_lookup_opt_grid_uni_stand_normal import w2_loss, w2_loss_alternative
-from discretize_distributions.discretizations import GRID_CONFIGS, OPTIMAL_1D_GRIDS
+from discretize_distributions.discretize import GRID_CONFIGS, OPTIMAL_1D_GRIDS
 
 if __name__ == "__main__":
     # test wasserstein distances
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     variance = torch.linspace(1, 3, nr_dims).expand(batch_size + (nr_dims,))
 
     mult_norm = discretize_distributions.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
-    signature = discretize_distributions.discretization_generator(mult_norm, nr_signature_points=10, compute_w2=True)
+    signature = discretize_distributions.discretization_generator(mult_norm, num_locs=10, compute_w2=True)
     print(f'induced 2-wasserstein distance: {signature.w2}')
 
     # example 2: d gaussians with full covariance matrix
@@ -47,5 +47,5 @@ if __name__ == "__main__":
     cov_mat = sqrt_cov_mat @ sqrt_cov_mat.swapaxes(-1, -2)
 
     mult_norm = discretize_distributions.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
-    signature = discretize_distributions.discretization_generator(mult_norm, nr_signature_points=10, compute_w2=True)
+    signature = discretize_distributions.discretization_generator(mult_norm, num_locs=10, compute_w2=True)
     print(f'induced 2-wasserstein distance: {signature.w2.squeeze():.4f}')

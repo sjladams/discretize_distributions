@@ -28,10 +28,7 @@ class CategoricalFloat(Distribution):
         nr_batch_dims = len(batch_shape)
         nr_locs = self.probs.shape[-1]
         event_shape = self.locs.shape[nr_batch_dims + 1:]
-        nr_event_dims = len(event_shape)
 
-        # if len(event_shape) > 1:
-        #     raise NotImplementedError
         if not self.locs.shape[0:nr_batch_dims] == batch_shape:
             raise ValueError('batch shapes do not match')
         elif not self.locs.shape[nr_batch_dims] == nr_locs:
@@ -41,23 +38,6 @@ class CategoricalFloat(Distribution):
 
         super(CategoricalFloat, self).__init__(batch_shape=batch_shape, event_shape=event_shape,
                                                validate_args=validate_args)
-
-        if nr_event_dims == 0:
-            self._mean = torch.einsum('...e,...e->...', self.probs, self.locs)
-        else:
-            self._mean = torch.multiply(
-                self.probs.reshape(batch_shape + (self.num_components, ) + len(event_shape) * (1,)),
-                self.locs
-            ).sum(-nr_event_dims-1)
-
-        if nr_event_dims == 0:
-            centered_locs = self.locs - self._mean.unsqueeze(-2)
-            self._covariance_matrix = torch.einsum('...e,...e,...e->...', probs, centered_locs, centered_locs)
-        elif nr_event_dims == 1:
-            centered_locs = self.locs - self._mean.unsqueeze(-nr_event_dims-1)
-            self._covariance_matrix = torch.einsum('...e,...ei,...ej->...ij', probs, centered_locs, centered_locs)
-        else:
-            self._covariance_matrix = None
 
     @constraints.dependent_property
     def support(self):
@@ -73,11 +53,28 @@ class CategoricalFloat(Distribution):
 
     @property
     def mean(self):
-        return self._mean
+        if len(self.event_shape) == 0:
+            return torch.einsum('...e,...e->...', self.probs, self.locs)
+        else:
+            return torch.multiply(
+                self.probs.reshape(self.batch_shape + (self.num_components, ) + len(self.event_shape) * (1,)),
+                self.locs
+            ).sum(-len(self.event_shape)-1)
+
+    @property
+    def covariance_matrix(self):
+        if len(self.event_shape) == 0:
+            centered_locs = self.locs - self.mean.unsqueeze(-2)
+            return torch.einsum('...e,...e,...e->...', self.probs, centered_locs, centered_locs)
+        elif len(self.event_shape) == 1:
+            centered_locs = self.locs - self.mean.unsqueeze(-len(self.event_shape) - 1)
+            return torch.einsum('...e,...ei,...ej->...ij', self.probs, centered_locs, centered_locs)
+        else:
+            return None
 
     @property
     def variance(self):
-        return torch.diagonal(self._covariance_matrix, dim1=-2, dim2=-1)
+        return torch.diagonal(self.covariance_matrix, dim1=-2, dim2=-1)
 
     @property
     def mode(self):
