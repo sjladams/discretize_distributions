@@ -3,7 +3,7 @@ import torch
 from xitorch.linalg import symeig
 from xitorch import LinearOperator
 
-
+PRECISION = torch.finfo(torch.float32).eps
 
 def handle_nan_inf(stats: tuple):
     new_stats = tuple()
@@ -74,3 +74,23 @@ def get_edges(locs: torch.Tensor):
     """
     edges = torch.cat((torch.ones(1).fill_(-torch.inf), locs[:-1] + 0.5 * locs.diff(), torch.ones(1).fill_(torch.inf)))
     return edges
+
+def symmetrize_vector(vec: torch.Tensor) -> torch.Tensor:
+    """
+    :param vec: Size(n, )
+    :return: Size(n,)
+    """
+    n = vec.shape[0]
+    split = torch.cat((-vec[:n // 2].flip(0).view(1, -1), vec[- (n // 2):].view(1, -1)), dim=0)
+    half = split.mean(0)
+    if n % 2 == 1:
+        vec = torch.cat((-half.flip(0), torch.zeros(1), half))
+    else:
+        vec = torch.cat((-half.flip(0), half))
+    return vec
+
+def check_mat_diag(mat: torch.Tensor) -> bool:
+    """
+    Check if all elements of a batch of square matrices are diagonal
+    """
+    return not (mat - mat.diagonal() > PRECISION).any()

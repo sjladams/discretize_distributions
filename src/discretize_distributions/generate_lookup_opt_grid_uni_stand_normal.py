@@ -2,78 +2,9 @@ import torch
 from torch_kmeans import KMeans
 from tqdm import tqdm
 import os
-import math
-from stable_trunc_gaussian import TruncatedGaussian
-from typing import Union
 
-from .utils import pickle_dump, cdf, pdf
-from .tensors import get_edges
-
-SQRT_PI = math.sqrt(math.pi)
-SQRT_2 = math.sqrt(2)
-SQRT_2_PI = math.sqrt(2*math.pi)
-INV_SQRT_2 = 1/SQRT_2
-INV_SQRT_PI = 1/SQRT_PI
-INV_PI = 1/math.pi
-SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
-LOG_SQRT_2_PI = math.log(SQRT_2_PI)
-LOG_2 = math.log(2)
-
-REPLACE_INF = 1e10
-
-def calculate_mean_and_var_trunc_normal(loc: Union[torch.Tensor, float], scale: Union[torch.Tensor, float],
-                                        l: torch.Tensor, u: torch.Tensor) -> (torch.Tensor, torch.Tensor):
-    alpha = (l - loc) / scale
-    beta = (u - loc) / scale
-
-    alpha[alpha.isneginf()] = -REPLACE_INF
-    beta[beta.isinf()] = REPLACE_INF
-
-    fraction = SQRT_2_DIV_SQRT_PI * TruncatedGaussian._F_1(alpha * INV_SQRT_2, beta * INV_SQRT_2)
-    mean = loc + fraction * scale
-
-    fraction_1 = (2 * INV_SQRT_PI) * TruncatedGaussian._F_2(alpha * INV_SQRT_2, beta * INV_SQRT_2)
-    fraction_2 = (2 * INV_PI) * TruncatedGaussian._F_1(alpha * INV_SQRT_2, beta * INV_SQRT_2) ** 2
-    variance = (1 + fraction_1 - fraction_2) * scale ** 2
-
-    return mean, variance
-
-def w2_loss(locs: torch.Tensor) -> torch.Tensor:
-    edges = get_edges(locs)
-    probs = cdf(edges[1:]) - cdf(edges[:-1])
-    trunc_mean, trunc_var = calculate_mean_and_var_trunc_normal(loc=0., scale=1., l=edges[:-1], u=edges[1:])
-    w2 = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
-    return w2
-
-def w2_loss_alternative(locs: torch.Tensor) -> torch.Tensor:
-    edges = get_edges(locs)
-    l, u = edges[:-1], edges[1:]
-    probs = cdf(u) - cdf(l)
-
-    l[l.isneginf()] = -REPLACE_INF
-    u[u.isinf()] = REPLACE_INF
-
-    w2s = (probs
-           + l*pdf(l) - u*pdf(u)
-           + probs*locs.pow(2)
-           -2*locs*(pdf(l) - pdf(u)))
-    w2 = w2s.sum(-1)
-    return w2
-
-
-def symmetrize_vector(vec: torch.Tensor) -> torch.Tensor:
-    """
-    :param vec: Size(n, )
-    :return: Size(n,)
-    """
-    n = vec.shape[0]
-    split = torch.cat((-vec[:n // 2].flip(0).view(1, -1), vec[- (n // 2):].view(1, -1)), dim=0)
-    half = split.mean(0)
-    if n % 2 == 1:
-        vec = torch.cat((-half.flip(0), torch.zeros(1), half))
-    else:
-        vec = torch.cat((-half.flip(0), half))
-    return vec
+from .utils import pickle_dump, cdf, calculate_w2_disc_uni_stand_normal, calculate_mean_and_var_trunc_normal, get_edges
+from .tensors import symmetrize_vector
 
 
 def find_locs(nr_locs: int, locs_init: torch.Tensor = None,
@@ -103,7 +34,7 @@ def find_locs(nr_locs: int, locs_init: torch.Tensor = None,
         # enforce symmetry:
         symmetric_locs = symmetrize_vector(locs)
 
-        loss = w2_loss(symmetric_locs)
+        loss = calculate_w2_disc_uni_stand_normal(symmetric_locs)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -186,7 +117,7 @@ def generate_lookup_opt_grid_uni_std_normal(tag:str, max_num_locs: int, random_i
         edges = get_edges(locs)
         probs = cdf(edges[1:]) - cdf(edges[0:-1])
         trunc_mean, trunc_var = calculate_mean_and_var_trunc_normal(loc=0., scale=1., l=edges[:-1], u=edges[1:])
-        w2 = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
+        w2 = calculate_w2_disc_uni_stand_normal(locs)
 
         store['locs'][int(nr_locs)] = locs
         store['w2'][int(nr_locs)] = w2
