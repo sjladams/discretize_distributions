@@ -84,6 +84,8 @@ class DiscretizationGenerator:
         """
         if nr_signature_points is None and num_locs is None:
             raise InputError('Specify num_locs')
+        elif num_locs is None:
+            num_locs = nr_signature_points
 
         if type(dist) is MultivariateNormal:
             return DiscretizedMultivariateNormal(dist, num_locs=num_locs, **kwargs)
