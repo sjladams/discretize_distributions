@@ -90,9 +90,10 @@ def get_optimal_grid_config(eigvals: torch.Tensor, num_locs: int) -> torch.Tenso
     The total number of dimensions included per configuration, equals the maximum number dimensions that can create a
     grid of size signature_points, i.e., equals log2(nr_signature_points).
     :param eigvals:
-    :param num_locs:
+    :param num_locs: number of discretization points, i.e., size of grid.  per discretized Gaussian.
     :return:
     """
+
     batch_shape = eigvals.shape[:-1]
     neigh = eigvals.shape[-1]
 

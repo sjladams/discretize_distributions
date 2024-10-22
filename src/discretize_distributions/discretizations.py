@@ -1,4 +1,5 @@
 import torch
+from torch.utils.hipify.hipify_python import InputError
 
 from .multivariate_normal import MultivariateNormal, ActivatedMultivariateNormal
 from .categorical_float import CategoricalFloat
@@ -71,7 +72,19 @@ class DiscretizedMixtureActivatedMultivariateNormal(DiscretizedMixtureMultivaria
 
 
 class DiscretizationGenerator:
-    def __call__(self, dist, num_locs: int, **kwargs):
+    def __call__(self, dist, num_locs: int, nr_signature_points: int = None,
+                            compute_w2: bool=True, **kwargs):
+        """
+
+        :param dist:
+        :param num_locs:
+        :param nr_signature_points: To be replaced by num_locs. Preserved to guarantee compatibility with old code.
+        :param compute_w2: Redundancy of old approach
+        :return:
+        """
+        if nr_signature_points is None and num_locs is None:
+            raise InputError('Specify num_locs')
+
         if type(dist) is MultivariateNormal:
             return DiscretizedMultivariateNormal(dist, num_locs=num_locs, **kwargs)
         elif type(dist) is ActivatedMultivariateNormal:
