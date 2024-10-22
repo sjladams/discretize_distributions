@@ -72,7 +72,7 @@ class DiscretizedMixtureActivatedMultivariateNormal(DiscretizedMixtureMultivaria
 
 
 class DiscretizationGenerator:
-    def __call__(self, dist, num_locs: int, nr_signature_points: int = None,
+    def __call__(self, dist, num_locs: int = None, nr_signature_points: int = None,
                             compute_w2: bool=True, **kwargs):
         """
 
