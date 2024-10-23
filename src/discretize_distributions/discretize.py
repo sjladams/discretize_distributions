@@ -51,18 +51,19 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_she
         upper_edges = torch.ones(locs.shape).fill_(torch.inf)
         w2 = w2_dirac_at_mean
     else:
-        locs_stand, probs, trunc_mean, trunc_var, lower_edges, upper_edges = get_disc_stand_mult_norm(
+        locs_stand, probs, trunc_mean, trunc_var, lower_edges_stand, upper_edges_stand = get_disc_stand_mult_norm(
             discr_grid_config=discr_grid_config, prob_shell=prob_shell)
         eigvals_topk = eigvals.topk(dim=-1, k=neigh)
 
         # Transform locs to original spaces
         S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
         S_topk = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
-            norm.batch_shape + (neigh, ) + norm.event_shape))
-        locs = torch.einsum('...no,...cn->...co', S_topk, locs_stand)
-        locs = locs + norm.loc.unsqueeze(-2)
+            norm.batch_shape + (neigh,) + norm.event_shape))
+        locs = transform_to_original_space(locs_stand, S_topk, norm.loc)
+        lower_edges = transform_to_original_space(lower_edges_stand, S_topk, norm.loc)
+        upper_edges = transform_to_original_space(upper_edges_stand, S_topk, norm.loc)
 
-        # wasserstein computations # \todo fix 'rest part' in get_disc_stand_mult_norm
+        # wasserstein computations
         mean_part_grid = (trunc_mean - locs_stand).pow(2)
         mean_part_grid = torch.einsum('...n,...cn->...c', eigvals_topk.values, mean_part_grid)
         # mean_part_rest = 0 since \Tilde{m}_i = 0
@@ -81,6 +82,12 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_she
     shell = torch.cat((lower_edges.min(-2).values.unsqueeze(-1), upper_edges.max(-2).values.unsqueeze(-1)), dim=-1)
 
     return locs, probs, loc_shell, prob_shell, shell, w2
+
+
+def transform_to_original_space(points: torch.Tensor, T: torch.Tensor, bias: torch.Tensor):
+    points_original = torch.einsum('...no,...cn->...co', T, points)
+    points_original = points_original + bias.unsqueeze(-2)
+    return points_original
 
 
 def get_optimal_grid_config(eigvals: torch.Tensor, num_locs: int) -> torch.Tensor:
