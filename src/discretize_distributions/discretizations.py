@@ -18,12 +18,12 @@ class DiscretizedMultivariateNormal(CategoricalFloat):
             raise ValueError('distribution not of type MultivariateNormal')
 
         self.dist = norm
-        locs, probs, self.loc_shell, self.prob_shell, self._shell, self.w2 = (
+        self.locs_inner, self.probs_inner, self.loc_shell, self.prob_shell, self._shell, self.w2 = (
             discretize_multi_norm_dist(norm=norm, prob_shell=prob_shell, **kwargs))
 
         if prob_shell > 0:
-            locs = torch.cat((locs, self.loc_shell.unsqueeze(-2)), dim=-2)
-            probs = torch.cat((probs, self.prob_shell.unsqueeze(-1)), dim=-1)
+            locs = torch.cat((self.locs_inner, self.loc_shell.unsqueeze(-2)), dim=-2)
+            probs = torch.cat((self.probs_inner, self.prob_shell.unsqueeze(-1)), dim=-1)
 
         self.nr_signature_points_realized = probs.shape[-1]
 
