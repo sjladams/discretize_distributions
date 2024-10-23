@@ -32,11 +32,11 @@ class DiscretizedMultivariateNormal(CategoricalFloat):
 
         super().__init__(probs, locs)
 
-@property
-def shell(self):
-    if not check_mat_diag(self.dist.covariance_matrix):
-        raise Warning('Shell is a hyper-rectangular over-approximation of the true shell')
-    return self._shell
+    @property
+    def shell(self):
+        if not check_mat_diag(self.dist.covariance_matrix):
+            raise Warning('Shell is a hyper-rectangular over-approximation of the true shell')
+        return self._shell
 
 class DiscretizedActivatedMultivariateNormal(DiscretizedMultivariateNormal):
     def __init__(self, norm: ActivatedMultivariateNormal, **kwargs):
