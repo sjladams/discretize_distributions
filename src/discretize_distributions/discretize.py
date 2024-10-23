@@ -85,7 +85,10 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_she
 
 
 def transform_to_original_space(points: torch.Tensor, T: torch.Tensor, bias: torch.Tensor):
-    points_original = torch.einsum('...no,...cn->...co', T, points)
+    # split up matrix vector multiplication to ensure that inf*0 = 0. \Todo create more memory efficient method
+    points_original = torch.einsum('...no,...cn->...con', T, points)
+    points_original = torch.nan_to_num(points_original, nan=0., posinf=torch.inf, neginf=-torch.inf)
+    points_original = points_original.sum(-1)
     points_original = points_original + bias.unsqueeze(-2)
     return points_original
 
