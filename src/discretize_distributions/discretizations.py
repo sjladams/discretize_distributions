@@ -21,12 +21,8 @@ class DiscretizedMultivariateNormal(CategoricalFloat):
         self.locs_inner, self.probs_inner, self.loc_shell, self.prob_shell, self._shell, self.w2 = (
             discretize_multi_norm_dist(norm=norm, prob_shell=prob_shell, **kwargs))
 
-        if prob_shell > 0:
-            locs = torch.cat((self.locs_inner, self.loc_shell.unsqueeze(-2)), dim=-2)
-            probs = torch.cat((self.probs_inner, self.prob_shell.unsqueeze(-1)), dim=-1)
-        else:
-            locs = self.locs_inner
-            probs = self.probs_inner
+        locs = torch.cat((self.locs_inner, self.loc_shell.unsqueeze(-2)), dim=-2)
+        probs = torch.cat((self.probs_inner, self.prob_shell.unsqueeze(-1)), dim=-1)
 
         self.nr_signature_points_realized = probs.shape[-1]
 
