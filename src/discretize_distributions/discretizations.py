@@ -13,26 +13,20 @@ __all__ = ['DiscretizedMultivariateNormal',
 
 
 class DiscretizedMultivariateNormal(CategoricalFloat):
-    def __init__(self, norm: MultivariateNormal, prob_shell: float = 0., **kwargs):
+    def __init__(self, norm: MultivariateNormal, **kwargs):
         if not isinstance(norm, MultivariateNormal):
             raise ValueError('distribution not of type MultivariateNormal')
 
         self.dist = norm
-        self.locs_inner, self.probs_inner, self.loc_shell, self.prob_shell, self._shell, self.w2 = (
-            discretize_multi_norm_dist(norm=norm, prob_shell=prob_shell, **kwargs))
+        self.locs, self.probs, self.w2 = (
+            discretize_multi_norm_dist(norm=norm, **kwargs))
 
-        locs = torch.cat((self.locs_inner, self.loc_shell.unsqueeze(-2)), dim=-2)
-        probs = torch.cat((self.probs_inner, self.prob_shell.unsqueeze(-1)), dim=-1)
+        locs = self.locs
+        probs = self.probs
 
         self.nr_signature_points_realized = probs.shape[-1]
 
         super().__init__(probs, locs)
-
-    @property
-    def shell(self):
-        if not check_mat_diag(self.dist.covariance_matrix):
-            raise Warning('Shell is a hyper-rectangular over-approximation of the true shell')
-        return self._shell
 
 class DiscretizedActivatedMultivariateNormal(DiscretizedMultivariateNormal):
     def __init__(self, norm: ActivatedMultivariateNormal, **kwargs):
