@@ -63,7 +63,14 @@ def kmean_clustering_batches(x: torch.Tensor, n: int):
         labels = kmeans_torch(x.unsqueeze(0)).labels.squeeze(0)
     else:
         labels = kmeans_torch(x).labels
-    return labels
+
+    # Ensure labels are consecutive integers
+    # There were cases where a particular cluster was empty, generating issues later
+    unique_labels = torch.unique(labels, sorted=True)
+    remap = {old_label.item(): new_label for new_label, old_label in enumerate(unique_labels)}
+    remapped_labels = labels.clone().apply_(lambda x: remap[x])
+
+    return remapped_labels
 
 
 def get_edges(locs: torch.Tensor):
