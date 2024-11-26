@@ -50,8 +50,7 @@ if __name__ == "__main__":
     print(f'induced 2-wasserstein distance: {disc_mult_norm.w2}')
 
     # example 3: discretization with outer shell
-    disc_diag_mult_norm_outer_shell = discretize_distributions.discretization_generator(
-        diag_mult_norm, num_locs=10, prob_shell=0.001)
+    disc_diag_mult_norm_outer_shell = discretize_distributions.discretization_generator(diag_mult_norm, num_locs=10)
     print(f'induced 2-wasserstein distance: {disc_diag_mult_norm_outer_shell.w2}')
 
     # example 4: higher dimensions

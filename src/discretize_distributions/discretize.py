@@ -23,13 +23,12 @@ CONST_LOG_INV_SQRT_2PI = math.log(CONST_INV_SQRT_2PI)
 CONST_LOG_SQRT_2PI_E = 0.5 * math.log(2 * math.pi * math.e)
 
 
-def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_shell: float = 0.):
+def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int):
     """
     Discretizes a multivariate normal distribution.
     :param norm:
     :param num_locs:
     :param compute_w2:
-    :param prob_shell:
     :return:
     """
     assert check_sym(norm.covariance_matrix)
@@ -51,8 +50,7 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_she
         upper_edges = torch.ones(locs.shape).fill_(torch.inf)
         w2 = w2_dirac_at_mean
     else:
-        locs_stand, probs, trunc_mean, trunc_var, lower_edges_stand, upper_edges_stand = get_disc_stand_mult_norm(
-            discr_grid_config=discr_grid_config, prob_shell=prob_shell)
+        locs_stand, probs, trunc_mean, trunc_var = get_disc_stand_mult_norm(discr_grid_config=discr_grid_config)
         eigvals_topk = eigvals.topk(dim=-1, k=neigh)
 
         # Transform locs to original spaces
@@ -60,8 +58,6 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_she
         S_topk = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
             norm.batch_shape + (neigh,) + norm.event_shape))
         locs = transform_to_original_space(locs_stand, S_topk, norm.loc)
-        lower_edges = transform_to_original_space(lower_edges_stand, S_topk, norm.loc)
-        upper_edges = transform_to_original_space(upper_edges_stand, S_topk, norm.loc)
 
         # wasserstein computations
         mean_part_grid = (trunc_mean - locs_stand).pow(2)
@@ -76,12 +72,7 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int, prob_she
     print("Signature w2: {:.4f} / {:.4f} for grid of size: {}".format(
         w2.mean(), w2_dirac_at_mean.mean(), probs.shape[-1]))
 
-    prob_shell = 1 - probs.sum(-1)
-    loc_shell = torch.zeros(norm.batch_shape + norm.event_shape)
-
-    shell = torch.cat((lower_edges.min(-2).values.unsqueeze(-1), upper_edges.max(-2).values.unsqueeze(-1)), dim=-1)
-
-    return locs, probs, loc_shell, prob_shell, shell, w2
+    return locs, probs, w2
 
 
 def transform_to_original_space(points: torch.Tensor, T: torch.Tensor, bias: torch.Tensor):
@@ -143,7 +134,7 @@ def get_disc_stand_mult_norm(discr_grid_config: torch.Tensor, **kwargs) -> tuple
                                                                 default_grid_size=default_grid_size,
                                                                 **kwargs)
     probs = grids['probs'].prod(-1)  # Calculate product across the last dimension
-    return grids['locs'], probs, grids['trunc_mean'], grids['trunc_var'], grids['lower_edges'], grids['upper_edges']
+    return grids['locs'], probs, grids['trunc_mean'], grids['trunc_var']
 
 
 def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor,
@@ -164,49 +155,8 @@ def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch
         return combined_results
 
 
-def wrapper_get_nd_dim_grids_from_optimal_1d_grid(func):
-
-    def wrapped_func(discr_grid_config: torch.Tensor, attributes: Union[list, str], default_grid_size: int,
-                     prob_shell: float = 0.):
-        if prob_shell != 0:
-            lookup_table = {'locs': dict(), 'lower_edges': dict(), 'upper_edges': dict(), 'probs': dict(),
-                            'trunc_mean': dict(), 'trunc_var': dict(), 'w2': dict()}
-
-            for dim, grid_size in enumerate(discr_grid_config):
-                locs = OPTIMAL_1D_GRIDS['locs'][int(grid_size)]
-
-                prob_shell_dim = 1 - (1 - prob_shell) ** (1 / discr_grid_config.numel())
-                max_prob_shell_dim = (1 - cdf(torch.max(locs.max().abs(), locs.min().abs()))) * 2
-                if prob_shell_dim > max_prob_shell_dim:
-                    prob_shell_dim = torch.tensor(max_prob_shell_dim)
-                    print(f"prob_shell_dim set to the maximum possible value {max_prob_shell_dim}")
-                else:
-                    prob_shell_dim = torch.tensor(prob_shell_dim)
-
-                edges = get_edges(locs)
-                l_out, u_out = inv_cdf(prob_shell_dim / 2), inv_cdf(1 - prob_shell_dim / 2)
-                edges = torch.clamp(edges, min=l_out, max=u_out)
-                probs = cdf(edges[1:]) - cdf(edges[:-1])
-                trunc_mean, trunc_var = calculate_mean_and_var_trunc_normal(loc=0., scale=1., l=edges[:-1], u=edges[1:])
-                w2 = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs) + 2*u_out*pdf(u_out)
-
-                lookup_table['locs'][int(grid_size)] = locs
-                lookup_table['lower_edges'][int(grid_size)] = edges[:-1]
-                lookup_table['upper_edges'][int(grid_size)] = edges[1:]
-                lookup_table['probs'][int(grid_size)] = probs
-                lookup_table['trunc_mean'][int(grid_size)] = trunc_mean
-                lookup_table['trunc_var'][int(grid_size)] = trunc_var
-                lookup_table['w2'][int(grid_size)] = w2
-        else:
-            lookup_table = OPTIMAL_1D_GRIDS
-
-        return func(discr_grid_config, attributes, default_grid_size, lookup_table=lookup_table)
-    return wrapped_func
-
-
-@wrapper_get_nd_dim_grids_from_optimal_1d_grid
 def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attributes: Union[list, str],
-                                          default_grid_size: int, lookup_table: dict) -> dict:
+                                          default_grid_size: int) -> dict:
     """
     Creates multiple N-dimensional grids from the pre-defined optimal 1D grids for specified attributes.
     The function generates Cartesian products for each attribute and ensures the grid has max_grid_size number of
@@ -226,7 +176,7 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
     grids = {}
     for attribute in attributes:
         # Create a grid for each attribute based on the optimal 1D grids
-        grid_per_dim = [lookup_table[attribute][int(grid_size_dim)] for grid_size_dim in discr_grid_config]
+        grid_per_dim = [OPTIMAL_1D_GRIDS[attribute][int(grid_size_dim)] for grid_size_dim in discr_grid_config]
         grid = torch.cartesian_prod(*grid_per_dim)
         grid_size = grid.shape[0]
         grid = grid.view(grid_size, -1)
