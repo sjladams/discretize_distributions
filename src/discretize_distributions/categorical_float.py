@@ -5,6 +5,7 @@ from torch.distributions.utils import probs_to_logits, logits_to_probs, lazy_pro
 
 __all__ = ['CategoricalFloat', 'ActivationCategoricalFloat']
 
+from discretize_distributions.tensors import kmean_clustering_batches
 
 class CategoricalFloat(Distribution):
 
@@ -35,6 +36,7 @@ class CategoricalFloat(Distribution):
             raise ValueError('number of locs do not match')
 
         self.num_components = self.probs.size()[-1]
+        self.dist = CategoricalFloat
 
         super(CategoricalFloat, self).__init__(batch_shape=batch_shape, event_shape=event_shape,
                                                validate_args=validate_args)
@@ -106,6 +108,42 @@ class CategoricalFloat(Distribution):
     def activate(self, activation: torch.nn.functional, derivative_activation, **kwargs):
         return ActivationCategoricalFloat(probs=self.probs, locs=self.locs, activation=activation,
                                           derivative_activation=derivative_activation)
+
+    def compress(self, n_max: int):
+        """
+        Compress CategoricalFloat from n support locations to n_max.
+
+        :param n_max: maximum support size
+        """
+        if self.num_components <= n_max:
+            pass
+
+        labels = kmean_clustering_batches(self.locs, n_max)
+        n = len(labels.unique())
+
+        labels = torch.zeros(labels.shape + (n,)).scatter_(
+            dim=-1,
+            index=labels.unsqueeze(-1),
+            src=torch.ones(labels.shape).unsqueeze(-1)
+        )
+
+        mean_locs_per_cluster = labels.T @ self.locs / labels.sum(dim=0).unsqueeze(1)
+        probs = labels.T @ self.probs
+
+        self.__init__(probs=probs, locs=mean_locs_per_cluster)
+
+    def cross_product(self, dist):
+
+        n, m = self.locs.size(0), dist.locs.size(0)
+        d, q = self.locs.shape[-1], dist.locs.shape[-1]
+
+        self_locs = self.locs.unsqueeze(1)
+        dist_locs = dist.locs.unsqueeze(0)
+
+        cross_product_locs = torch.cat((self_locs.expand(-1, m, -1), dist_locs.expand(n, -1, -1)), dim=-1).view(-1, d + q)
+        cross_product_probs = (self.probs.unsqueeze(1) * dist.probs.unsqueeze(0)).view(-1)
+
+        self.__init__(probs=cross_product_probs, locs=cross_product_locs)
 
 
 class ActivationCategoricalFloat(CategoricalFloat):
