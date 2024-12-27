@@ -36,7 +36,6 @@ class CategoricalFloat(Distribution):
             raise ValueError('number of locs do not match')
 
         self.num_components = self.probs.size()[-1]
-        self.dist = CategoricalFloat
 
         super(CategoricalFloat, self).__init__(batch_shape=batch_shape, event_shape=event_shape,
                                                validate_args=validate_args)
