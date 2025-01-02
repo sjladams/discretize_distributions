@@ -5,7 +5,7 @@ from torch.distributions.utils import probs_to_logits, logits_to_probs, lazy_pro
 
 from discretize_distributions.tensors import kmean_clustering_batches
 
-__all__ = ['CategoricalFloat', 'ActivationCategoricalFloat']
+__all__ = ['CategoricalFloat', 'ActivationCategoricalFloat', 'cross_product_categorical_floats']
 
 
 class CategoricalFloat(Distribution):
