@@ -131,8 +131,22 @@ class CategoricalFloat(Distribution):
 
         self.__init__(probs=probs, locs=mean_locs_per_cluster)
 
+
 class ActivationCategoricalFloat(CategoricalFloat):
     def __init__(self, probs: torch.Tensor, locs: torch.Tensor, activation: torch.nn.functional, derivative_activation,
                  *args, **kwargs):
         self.derivative_activation = derivative_activation
         super(ActivationCategoricalFloat, self).__init__(probs=probs, locs=activation(locs), **kwargs)
+
+
+def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: CategoricalFloat):
+    n, m = dist0.locs.size(0), dist1.locs.size(0)
+    d, q = dist0.locs.shape[-1], dist1.locs.shape[-1]
+
+    dist0_locs = dist0.locs.unsqueeze(1)
+    dist_locs = dist1.locs.unsqueeze(0)
+
+    cross_product_locs = torch.cat((dist0_locs.expand(-1, m, -1), dist_locs.expand(n, -1, -1)), dim=-1).view(-1, d + q)
+    cross_product_probs = (dist0.probs.unsqueeze(1) * dist1.probs.unsqueeze(0)).view(-1)
+
+    return CategoricalFloat(probs=cross_product_probs, locs=cross_product_locs)
