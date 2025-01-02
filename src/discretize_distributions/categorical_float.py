@@ -116,20 +116,22 @@ class CategoricalFloat(Distribution):
         """
         if self.num_components <= n_max:
             pass
+        elif n_max == 1:
+            self.__init__(probs=torch.ones(self.probs.shape[:-2]).unsqueeze(-1), locs=self.locs.mean(-2).unsqueeze(-2).shape)
+        else:
+            labels = kmean_clustering_batches(self.locs, n_max)
+            n = len(labels.unique())
 
-        labels = kmean_clustering_batches(self.locs, n_max)
-        n = len(labels.unique())
+            labels = torch.zeros(labels.shape + (n,)).scatter_(
+                dim=-1,
+                index=labels.unsqueeze(-1),
+                src=torch.ones(labels.shape).unsqueeze(-1)
+            )
 
-        labels = torch.zeros(labels.shape + (n,)).scatter_(
-            dim=-1,
-            index=labels.unsqueeze(-1),
-            src=torch.ones(labels.shape).unsqueeze(-1)
-        )
+            mean_locs_per_cluster = labels.T @ self.locs / labels.sum(dim=0).unsqueeze(1)
+            probs = labels.T @ self.probs
 
-        mean_locs_per_cluster = labels.T @ self.locs / labels.sum(dim=0).unsqueeze(1)
-        probs = labels.T @ self.probs
-
-        self.__init__(probs=probs, locs=mean_locs_per_cluster)
+            self.__init__(probs=probs, locs=mean_locs_per_cluster)
 
 
 class ActivationCategoricalFloat(CategoricalFloat):
