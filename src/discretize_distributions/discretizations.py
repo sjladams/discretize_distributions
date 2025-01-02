@@ -85,6 +85,8 @@ class DiscretizationGenerator:
             return DiscretizedMixtureMultivariateNormal(dist, num_locs=num_locs, **kwargs)
         elif type(dist) is MixtureActivatedMultivariateNormal:
             return DiscretizedMixtureActivatedMultivariateNormal(dist, num_locs=num_locs, **kwargs)
+        elif isinstance(dist, CategoricalFloat):
+            return dist
         else:
             raise NotImplementedError
 
