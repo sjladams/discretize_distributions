@@ -117,7 +117,7 @@ class CategoricalFloat(Distribution):
         if self.num_components <= n_max:
             pass
         elif n_max == 1:
-            self.__init__(probs=torch.ones(self.probs.shape[:-2]).unsqueeze(-1), locs=self.locs.mean(-2).unsqueeze(-2))
+            self.__init__(probs=torch.ones(self.probs.shape[:-2]).unsqueeze(-1), locs=torch.einsum('...ij,...i->...j', self.locs, self.probs).unsqueeze(-2))
         else:
             labels = kmean_clustering_batches(self.locs, n_max)
             n = len(labels.unique())
