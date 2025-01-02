@@ -3,6 +3,8 @@ from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import probs_to_logits, logits_to_probs, lazy_property, broadcast_all
 
+from discretize_distributions.tensors import kmean_clustering_batches
+
 __all__ = ['CategoricalFloat', 'ActivationCategoricalFloat']
 
 
@@ -107,6 +109,27 @@ class CategoricalFloat(Distribution):
         return ActivationCategoricalFloat(probs=self.probs, locs=self.locs, activation=activation,
                                           derivative_activation=derivative_activation)
 
+    def compress(self, n_max: int):
+        """
+        Compress CategoricalFloat from n support locations to n_max.
+        :param n_max: maximum support size
+        """
+        if self.num_components <= n_max:
+            pass
+
+        labels = kmean_clustering_batches(self.locs, n_max)
+        n = len(labels.unique())
+
+        labels = torch.zeros(labels.shape + (n,)).scatter_(
+            dim=-1,
+            index=labels.unsqueeze(-1),
+            src=torch.ones(labels.shape).unsqueeze(-1)
+        )
+
+        mean_locs_per_cluster = labels.T @ self.locs / labels.sum(dim=0).unsqueeze(1)
+        probs = labels.T @ self.probs
+
+        self.__init__(probs=probs, locs=mean_locs_per_cluster)
 
 class ActivationCategoricalFloat(CategoricalFloat):
     def __init__(self, probs: torch.Tensor, locs: torch.Tensor, activation: torch.nn.functional, derivative_activation,
