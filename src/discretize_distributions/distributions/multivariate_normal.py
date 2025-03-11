@@ -1,10 +1,10 @@
-from .tensors import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
+from discretize_distributions.tensors import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
 
 import torch
 from torch.distributions import constraints
 import math
 
-__all__ = ['MultivariateNormal', 'ActivatedMultivariateNormal', 'SparseMultivariateNormal']
+__all__ = ['MultivariateNormal', 'SparseMultivariateNormal']
 
 PRECISION = torch.finfo(torch.float32).eps
 CONST_SQRT_2 = math.sqrt(2)
@@ -95,19 +95,6 @@ class MultivariateNormal(torch.distributions.Distribution):
 
     def _big_phi(self, x):
         return 0.5 * (1 + (self._to_std_rv(x) * CONST_INV_SQRT_2).erf())
-
-    def activate(self, activation: torch.nn.functional, derivative_activation, **kwargs):
-        return ActivatedMultivariateNormal(loc=self.loc,
-                                            covariance_matrix=self.covariance_matrix,
-                                            activation=activation,
-                                            derivative_activation=derivative_activation, **kwargs)
-
-
-class ActivatedMultivariateNormal(MultivariateNormal):
-    def __init__(self, activation: torch.nn.functional, derivative_activation, *args, **kwargs):
-        self.activation = activation
-        self.derivative_activation = derivative_activation
-        super(ActivatedMultivariateNormal, self).__init__(*args, **kwargs)
 
 
 class SparseMultivariateNormal(torch.distributions.Distribution):

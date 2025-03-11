@@ -5,7 +5,7 @@ from torch.distributions.utils import probs_to_logits, logits_to_probs, lazy_pro
 
 from discretize_distributions.tensors import kmean_clustering_batches
 
-__all__ = ['CategoricalFloat', 'ActivationCategoricalFloat', 'cross_product_categorical_floats']
+__all__ = ['CategoricalFloat', 'cross_product_categorical_floats']
 
 
 class CategoricalFloat(Distribution):
@@ -105,9 +105,6 @@ class CategoricalFloat(Distribution):
 
             return samples
 
-    def activate(self, activation: torch.nn.functional, derivative_activation, **kwargs):
-        return ActivationCategoricalFloat(probs=self.probs, locs=self.locs, activation=activation,
-                                          derivative_activation=derivative_activation)
 
     def compress(self, n_max: int):
         """
@@ -132,13 +129,6 @@ class CategoricalFloat(Distribution):
             probs = labels.T @ self.probs
 
             self.__init__(probs=probs, locs=mean_locs_per_cluster)
-
-
-class ActivationCategoricalFloat(CategoricalFloat):
-    def __init__(self, probs: torch.Tensor, locs: torch.Tensor, activation: torch.nn.functional, derivative_activation,
-                 *args, **kwargs):
-        self.derivative_activation = derivative_activation
-        super(ActivationCategoricalFloat, self).__init__(probs=probs, locs=activation(locs), **kwargs)
 
 
 def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: CategoricalFloat):

@@ -6,9 +6,9 @@ from typing import Union
 import math
 import os
 
-from .tensors import check_sym, get_edges
-from .utils import pickle_load, cdf, pdf, inv_cdf, calculate_mean_and_var_trunc_normal
-from .multivariate_normal import MultivariateNormal
+from .tensors import check_sym
+from .utils import pickle_load
+from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 
 GRID_CONFIGS = pickle_load(pkg_resources.resource_filename(__name__,
                                                            f'data{os.sep}lookup_grid_config.pickle'))

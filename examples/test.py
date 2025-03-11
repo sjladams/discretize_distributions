@@ -3,6 +3,8 @@ import discretize_distributions
 from discretize_distributions.utils import calculate_w2_disc_uni_stand_normal, calculate_w2_disc_uni_stand_normal_alternative
 from discretize_distributions.discretize import GRID_CONFIGS, OPTIMAL_1D_GRIDS
 
+# \todo change num_locs to num_signature_points in example
+
 if __name__ == "__main__":
     # test wasserstein distances
     num_locs = 10
@@ -22,11 +24,6 @@ if __name__ == "__main__":
     gmm = discretize_distributions.MixtureMultivariateNormal(mixture_distribution, component_distribution)
     first_elem_gmm = gmm[0]
     gmm.compress(n_max=3)
-
-    # test activation
-    mult_normal_dist = discretize_distributions.MultivariateNormal(loc=torch.zeros(2), covariance_matrix=torch.eye(2))
-    activated_mult_normal_dist = mult_normal_dist.activate(activation=torch.nn.functional.relu,
-                                                           derivative_activation=torch.nn.functional.relu)
 
     # -- Create the optimal signature with a grid configuration from a multivariate Normal distribution: ---------------
     nr_dims = 2

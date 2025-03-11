@@ -1,13 +1,10 @@
 import torch
 from torch.distributions.distribution import Distribution
-from typing import Union
 
-from .multivariate_normal import MultivariateNormal, SparseMultivariateNormal, ActivatedMultivariateNormal
-from .tensors import kmean_clustering_batches
+from discretize_distributions.distributions.multivariate_normal import MultivariateNormal, SparseMultivariateNormal
+from discretize_distributions.tensors import kmean_clustering_batches
 
-__all__ = ['MixtureMultivariateNormal', 'MixtureActivatedMultivariateNormal', 'MixtureSparseMultivariateNormal',
-           'mixture_generator'
-           ]
+__all__ = ['MixtureMultivariateNormal', 'MixtureSparseMultivariateNormal', 'mixture_generator']
 
 
 PRECISION = torch.finfo(torch.float32).eps
@@ -88,11 +85,6 @@ class MixtureMultivariateNormal(Mixture):
         mixture_samples = self.mixture_distribution.sample(sample_shape)
         idx = mixture_samples.view(mixture_samples.shape + (1, 1)).repeat_interleave(component_samples.shape[-1], dim=-1)
         return torch.gather(component_samples, dim=-2, index=idx).squeeze(-2)
-
-    def activate(self, **kwargs):
-        component_distribution = self.component_distribution.activate(**kwargs)
-        return MixtureActivatedMultivariateNormal(component_distribution=component_distribution,
-                                                   mixture_distribution=self.mixture_distribution)
 
     def unique(self):
         stack = torch.cat((self.component_distribution.covariance_matrix,
@@ -184,16 +176,6 @@ def gmm_to_norm_sparse(gmm_loc: torch.Tensor, gmm_cov: torch.Tensor, gmm_probs: 
     return norm_loc, norm_cov, w
 
 
-class MixtureActivatedMultivariateNormal(MixtureMultivariateNormal):
-    def __init__(self,
-                 mixture_distribution: torch.distributions.Categorical,
-                 component_distribution: ActivatedMultivariateNormal,
-                 **kwargs):
-        super(MixtureActivatedMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
-                                                                 component_distribution=component_distribution,
-                                                                 **kwargs)
-
-
 class MixtureSparseMultivariateNormal(Mixture):
     def __init__(self, mixture_distribution: torch.distributions.Categorical,
                  component_distribution: SparseMultivariateNormal, validate_args=None):
@@ -210,8 +192,6 @@ class MixtureGenerator:
         if type(mixture_distribution) is torch.distributions.Categorical:
             if type(component_distribution) is MultivariateNormal:
                 return MixtureMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
-            elif type(component_distribution) is ActivatedMultivariateNormal:
-                return MixtureActivatedMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
             elif type(component_distribution) is SparseMultivariateNormal:
                 return MixtureSparseMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
             else:

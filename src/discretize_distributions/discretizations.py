@@ -1,13 +1,13 @@
 import torch
 from torch.utils.hipify.hipify_python import InputError
 
-from .multivariate_normal import MultivariateNormal, ActivatedMultivariateNormal
-from .categorical_float import CategoricalFloat
-from .mixture import MixtureMultivariateNormal, MixtureActivatedMultivariateNormal
-from .discretize import discretize_multi_norm_dist
-from .tensors import check_mat_diag
+from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
+from discretize_distributions.distributions.categorical_float import CategoricalFloat
+from discretize_distributions.distributions.mixture import MixtureMultivariateNormal
+from discretize_distributions.discretize import discretize_multi_norm_dist
 
 __all__ = ['DiscretizedMultivariateNormal',
+           'DiscretizedMixtureMultivariateNormal',
            'discretization_generator'
            ]
 
@@ -20,17 +20,9 @@ class DiscretizedMultivariateNormal(CategoricalFloat):
         self.dist = norm
         locs, probs, self.w2 = discretize_multi_norm_dist(norm=norm, **kwargs)
 
-        self.nr_signature_points_realized = probs.shape[-1]
+        self.nr_signature_points_realized = probs.shape[-1]   # \todo rename num_locs
 
         super().__init__(probs, locs)
-
-
-class DiscretizedActivatedMultivariateNormal(DiscretizedMultivariateNormal):
-    def __init__(self, norm: ActivatedMultivariateNormal, **kwargs):
-        if not isinstance(norm, ActivatedMultivariateNormal):
-            raise ValueError('distribution not of type ActivatedMultivariateNormal')
-        super(DiscretizedActivatedMultivariateNormal, self).__init__(norm=norm, **kwargs)
-        self.locs = norm.activation(self.locs)
 
 
 class DiscretizedMixtureMultivariateNormal(CategoricalFloat):
@@ -56,11 +48,6 @@ class DiscretizedMixtureMultivariateNormal(CategoricalFloat):
         super().__init__(probs, locs)
 
 
-class DiscretizedMixtureActivatedMultivariateNormal(DiscretizedMixtureMultivariateNormal):
-    def __init__(self, *args, **kwargs):
-        super(DiscretizedMixtureActivatedMultivariateNormal, self).__init__(*args, **kwargs)
-
-
 class DiscretizationGenerator:
     def __call__(self, dist, num_locs: int = None, nr_signature_points: int = None,
                             compute_w2: bool=True, **kwargs):
@@ -79,12 +66,8 @@ class DiscretizationGenerator:
 
         if type(dist) is MultivariateNormal:
             return DiscretizedMultivariateNormal(dist, num_locs=num_locs, **kwargs)
-        elif type(dist) is ActivatedMultivariateNormal:
-            return DiscretizedActivatedMultivariateNormal(dist, num_locs=num_locs, **kwargs)
         elif type(dist) is MixtureMultivariateNormal:
             return DiscretizedMixtureMultivariateNormal(dist, num_locs=num_locs, **kwargs)
-        elif type(dist) is MixtureActivatedMultivariateNormal:
-            return DiscretizedMixtureActivatedMultivariateNormal(dist, num_locs=num_locs, **kwargs)
         elif isinstance(dist, CategoricalFloat):
             return dist
         else:
