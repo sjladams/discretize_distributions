@@ -118,26 +118,3 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
                                   ))
                 else:
                     self.collapse()
-
-
-def gmm_to_norm_sparse(gmm_loc: torch.Tensor, gmm_cov: torch.Tensor, gmm_probs: torch.Tensor, **kwargs):
-    """
-    Compress GMM to Normal Distribution in sparse form
-    :param gmm_loc: mean of gmms stored in sparse fashion, i.e., with shape: (batch, mixtures, features, path_length)
-    :param gmm_cov: covariance matrices "", with shape: (batch, mixtures, features, path_length, path_length)
-    :param gmm_probs: probabilities of gmm elements with shape: (batch, mixtures)
-    :return:
-        gmm_loc: (batch, features, path_length)
-        gmm_cov: (batch, features, path_length, path_length)
-        w: Wasserstein distance induced by compression operation (only supported for diagonal gmms)
-    """
-    norm_loc = torch.einsum('...m,...mop->...op', gmm_probs, gmm_loc)
-    mean_cond_cov = torch.einsum('...m,...mopk->...opk', gmm_probs, gmm_cov)
-    mean_components = torch.einsum('...mop,...mok->...mopk',
-                                   gmm_loc - norm_loc.unsqueeze(-3),
-                                   gmm_loc - norm_loc.unsqueeze(-3))
-    cov_cond_mean = torch.einsum('...m,...mopk->...opk', gmm_probs, mean_components)
-    norm_cov = mean_cond_cov + cov_cond_mean
-
-    w = None
-    return norm_loc, norm_cov, w
