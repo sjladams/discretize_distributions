@@ -1,4 +1,5 @@
 import torch
+from typing import Union
 
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 from discretize_distributions.distributions.categorical_float import CategoricalFloat
@@ -24,8 +25,8 @@ class Discretization(CategoricalFloat):
 
 
 class DiscretizedMultivariateNormal(Discretization):
-    def __init__(self, norm: MultivariateNormal, num_locs: int):
-        assert isinstance(norm, MultivariateNormal), 'distribution not of type MultivariateNormal'
+    def __init__(self, norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal], num_locs: int):
+        assert isinstance(norm, (MultivariateNormal, torch.distributions.MultivariateNormal)), 'distribution not of type MultivariateNormal'
 
         locs, probs, w2 = discretize_multi_norm_dist(norm, num_locs)
 
@@ -61,8 +62,7 @@ class DiscretizationGenerator:
         :param num_locs:
         :return:
         """
-
-        if type(dist) is MultivariateNormal:
+        if isinstance(dist, (MultivariateNormal, torch.distributions.MultivariateNormal)):
             return DiscretizedMultivariateNormal(dist, *args, **kwargs)
         elif type(dist) is MixtureMultivariateNormal:
             return DiscretizedMixtureMultivariateNormal(dist, *args, **kwargs)

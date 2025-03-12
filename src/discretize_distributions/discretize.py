@@ -23,7 +23,9 @@ CONST_LOG_INV_SQRT_2PI = math.log(CONST_INV_SQRT_2PI)
 CONST_LOG_SQRT_2PI_E = 0.5 * math.log(2 * math.pi * math.e)
 
 
-def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int):
+def discretize_multi_norm_dist(
+        norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
+        num_locs: int) -> tuple:
     """
     Discretize a multivariate normal distribution according to Algorithm 2 in https://arxiv.org/pdf/2407.18707
     :param norm: Multivariate Normal distribution to be discretized

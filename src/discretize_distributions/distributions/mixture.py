@@ -1,4 +1,5 @@
 import torch
+from typing import Union
 
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 from discretize_distributions.tensors import kmean_clustering_batches
@@ -14,10 +15,10 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
 
     def __init__(self,
                  mixture_distribution: torch.distributions.Categorical,
-                 component_distribution: MultivariateNormal,
+                 component_distribution: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
                  validate_args=None):
-        assert isinstance(component_distribution, MultivariateNormal), \
-            "The Component Distribution needs to be an instance of distribtutions.MultivariateNormal"
+        assert isinstance(component_distribution, (MultivariateNormal, torch.distributions.MultivariateNormal)), \
+            "The Component Distribution needs to be an instance of MultivariateNormal"
         assert isinstance(mixture_distribution, torch.distributions.Categorical), \
             "The Mixtures need to be an instance of torch.distributions.Categorical"
 
