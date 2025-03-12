@@ -1,10 +1,9 @@
 from discretize_distributions.tensors import diag_matrix_mult_full_matrix, full_matrix_mult_diag_matrix, eigh, make_sym
 
 import torch
-from torch.distributions import constraints
 import math
 
-__all__ = ['MultivariateNormal', 'SparseMultivariateNormal']
+__all__ = ['MultivariateNormal',]
 
 PRECISION = torch.finfo(torch.float32).eps
 CONST_SQRT_2 = math.sqrt(2)
@@ -95,19 +94,3 @@ class MultivariateNormal(torch.distributions.Distribution):
 
     def _big_phi(self, x):
         return 0.5 * (1 + (self._to_std_rv(x) * CONST_INV_SQRT_2).erf())
-
-
-class SparseMultivariateNormal(torch.distributions.Distribution):
-    arg_constraints = {'loc': constraints.real_vector
-                       # 'covariance_matrix': constraints.positive_definite
-                        }
-    def __init__(self, loc: torch.Tensor, covariance_matrix: torch.Tensor):
-        """
-        :param loc: [batch_size, out_features, in_features]
-        :param covariance_matrix: [batch_size, out_features, in_features, in_features]
-        """
-        self.loc = loc
-        self.covariance_matrix = torch.max(covariance_matrix, covariance_matrix.movedim(-1, -2)) # ensure cov is psd
-        batch_shape = loc.shape[:-2]
-        event_shape = loc.shape[-2:]
-        super(SparseMultivariateNormal, self).__init__(batch_shape=batch_shape, event_shape=event_shape)

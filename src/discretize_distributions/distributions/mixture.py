@@ -1,10 +1,9 @@
 import torch
-from torch.distributions.distribution import Distribution
 
-from discretize_distributions.distributions.multivariate_normal import MultivariateNormal, SparseMultivariateNormal
+from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 from discretize_distributions.tensors import kmean_clustering_batches
 
-__all__ = ['MixtureMultivariateNormal', 'MixtureSparseMultivariateNormal', 'mixture_generator']
+__all__ = ['MixtureMultivariateNormal']
 
 
 PRECISION = torch.finfo(torch.float32).eps
@@ -174,30 +173,3 @@ def gmm_to_norm_sparse(gmm_loc: torch.Tensor, gmm_cov: torch.Tensor, gmm_probs: 
 
     w = None
     return norm_loc, norm_cov, w
-
-
-class MixtureSparseMultivariateNormal(Mixture):
-    def __init__(self, mixture_distribution: torch.distributions.Categorical,
-                 component_distribution: SparseMultivariateNormal, validate_args=None):
-        super(MixtureSparseMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
-                                                              component_distribution=component_distribution,
-                                                              validate_args=validate_args)
-
-
-class MixtureGenerator:
-    def __call__(self,
-                 mixture_distribution: Distribution,
-                 component_distribution: Distribution,
-                 **kwargs):
-        if type(mixture_distribution) is torch.distributions.Categorical:
-            if type(component_distribution) is MultivariateNormal:
-                return MixtureMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
-            elif type(component_distribution) is SparseMultivariateNormal:
-                return MixtureSparseMultivariateNormal(mixture_distribution, component_distribution, **kwargs)
-            else:
-                raise NotImplementedError
-        else:
-            raise NotImplementedError
-
-
-mixture_generator = MixtureGenerator()
