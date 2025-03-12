@@ -8,37 +8,8 @@ __all__ = ['MixtureMultivariateNormal']
 
 PRECISION = torch.finfo(torch.float32).eps
 
-class Mixture(torch.distributions.MixtureSameFamily):
-    def __init__(self,
-                 mixture_distribution,
-                 component_distribution,
-                 validate_args=None):
-        super(Mixture, self).__init__(mixture_distribution, component_distribution, validate_args)
 
-    @property
-    def stddev(self):
-        return (self.variance + PRECISION).sqrt()
-
-    def prob(self, value):
-        return self.log_prob(value).exp()
-
-    def log_disc_prob(self, x): # \todo: check if can be removed, what is the log_disc_prob?
-        if self._validate_args:
-            self._validate_sample(x)
-        x = self._pad(x)
-        log_prob_x = self.component_distribution.log_disc_prob(x)  # [S, B, k]
-        log_mix_prob = torch.log_softmax(self.mixture_distribution.logits,
-                                         dim=-1)  # [B, k]
-        return torch.logsumexp(log_prob_x + log_mix_prob, dim=-1)  # [S, B]
-
-    def disc_prob(self, value): # \todo check if can be removed
-        return self.log_disc_prob(value).exp()
-
-    @property
-    def num_components(self):
-        return self._num_component
-
-class MixtureMultivariateNormal(Mixture):
+class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
     has_rsample = True
 
     def __init__(self,
@@ -72,9 +43,6 @@ class MixtureMultivariateNormal(Mixture):
         cov_cond_mean = torch.sum(self.mixture_distribution.probs[..., None, None] * cov_cond_mean_components,
                                   dim=-1 - self._event_ndims * 2)
         return mean_cond_cov + cov_cond_mean
-
-    def simplify(self):
-        return MultivariateNormal(loc=self.mean, covariance_matrix=self.covariance_matrix)
 
     def rsample(self, sample_shape=torch.Size()): # \todo do more efficiently
         if not isinstance(sample_shape, torch.Size):
@@ -118,7 +86,7 @@ class MixtureMultivariateNormal(Mixture):
             self.collapse()
         else:
             self.unique()
-            if self.num_components <= n_max:
+            if self._num_component <= n_max:
                 pass
             else:
                 labels = kmean_clustering_batches(self.component_distribution.loc, n_max)
