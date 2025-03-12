@@ -90,7 +90,7 @@ def calculate_w2_disc_uni_stand_normal_alternative(locs: torch.Tensor) -> torch.
     return w2
 
 def pickle_load(tag):
-    if not (".npy" in tag or ".pickle" in tag):
+    if not (".npy" in tag or ".pickle" in tag or ".pkl" in tag):
         tag = f"{tag}.pickle"
     pickle_in = open(tag, "rb")
     if "npy" in tag:

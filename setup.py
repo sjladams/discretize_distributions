@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="discretize_distributions",
-    version="0.0.1",
+    version="1.0.0",
     author="Steven Adams",
     author_email="stevenjladams@gmail.com",
     description="Signatures of Probability Distributions",

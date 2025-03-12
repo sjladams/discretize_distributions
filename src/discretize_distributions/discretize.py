@@ -6,9 +6,9 @@ from typing import Union
 import math
 import os
 
-from .tensors import check_sym, get_edges
-from .utils import pickle_load, cdf, pdf, inv_cdf, calculate_mean_and_var_trunc_normal
-from .multivariate_normal import MultivariateNormal
+from .tensors import is_sym
+from .utils import pickle_load
+from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 
 GRID_CONFIGS = pickle_load(pkg_resources.resource_filename(__name__,
                                                            f'data{os.sep}lookup_grid_config.pickle'))
@@ -23,15 +23,16 @@ CONST_LOG_INV_SQRT_2PI = math.log(CONST_INV_SQRT_2PI)
 CONST_LOG_SQRT_2PI_E = 0.5 * math.log(2 * math.pi * math.e)
 
 
-def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int):
+def discretize_multi_norm_dist(
+        norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
+        num_locs: int) -> tuple:
     """
-    Discretizes a multivariate normal distribution.
-    :param norm:
-    :param num_locs:
-    :param compute_w2:
-    :return:
+    Discretize a multivariate normal distribution according to Algorithm 2 in https://arxiv.org/pdf/2407.18707
+    :param norm: Multivariate Normal distribution to be discretized
+    :param num_locs: Number of discretization locations
+    :return: Tuple of discretized locations, probabilities, and the exact 2-Wasserstein error
     """
-    assert check_sym(norm.covariance_matrix)
+    assert is_sym(norm.covariance_matrix)
 
     # Norm can be a degenerate Gaussian. Hence, we work in the generate space of dimension neigh.
     cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
@@ -39,15 +40,13 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int):
     eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
 
     discr_grid_config = get_optimal_grid_config(eigvals=eigvals, num_locs=num_locs)
-    num_locs = discr_grid_config.prod(-1)
+    num_locs_realized = discr_grid_config.prod(-1)
 
     w2_dirac_at_mean = eigvals.sum(-1).sqrt()
 
-    if torch.all(num_locs == 1):
+    if (num_locs_realized == 1).all():
         locs = norm.mean.unsqueeze(-2)
         probs = torch.ones(locs.shape[:-1])
-        lower_edges = torch.ones(locs.shape).fill_(-torch.inf)
-        upper_edges = torch.ones(locs.shape).fill_(torch.inf)
         w2 = w2_dirac_at_mean
     else:
         locs_stand, probs, trunc_mean, trunc_var = get_disc_stand_mult_norm(discr_grid_config=discr_grid_config)
@@ -60,14 +59,12 @@ def discretize_multi_norm_dist(norm: MultivariateNormal, num_locs: int):
         locs = transform_to_original_space(locs_stand, S_topk, norm.loc)
 
         # wasserstein computations
-        mean_part_grid = (trunc_mean - locs_stand).pow(2)
-        mean_part_grid = torch.einsum('...n,...cn->...c', eigvals_topk.values, mean_part_grid)
-        # mean_part_rest = 0 since \Tilde{m}_i = 0
+        mean_part = (trunc_mean - locs_stand).pow(2)
+        mean_part = torch.einsum('...n,...cn->...c', eigvals_topk.values, mean_part)
 
-        var_part_grid = torch.einsum('...i,...ci->...c', eigvals_topk.values, trunc_var)
-        # var_part_rest = eigvals.topk(dim=-1, k=neigh - num_dims_with_grid, largest=False).values.sum(-1).unsqueeze(-1)
+        var_part = torch.einsum('...i,...ci->...c', eigvals_topk.values, trunc_var)
 
-        w2 = torch.einsum('...c,...c->...', mean_part_grid + var_part_grid, probs).sqrt()
+        w2 = torch.einsum('...c,...c->...', mean_part + var_part, probs).sqrt()
 
     print("Signature w2: {:.4f} / {:.4f} for grid of size: {}".format(
         w2.mean(), w2_dirac_at_mean.mean(), probs.shape[-1]))

@@ -1,9 +1,28 @@
 import torch
-import discretize_distributions
+import discretize_distributions as dd
 from discretize_distributions.utils import calculate_w2_disc_uni_stand_normal, calculate_w2_disc_uni_stand_normal_alternative
 from discretize_distributions.discretize import GRID_CONFIGS, OPTIMAL_1D_GRIDS
 
+from matplotlib import pyplot as plt
+
 if __name__ == "__main__":
+    # # Visually check MultivariateNormal implementation for degenerate example
+    # norm = torch.distributions.MultivariateNormal(
+    #     loc=torch.ones(2),
+    #     covariance_matrix=torch.tensor([[1., 1.], [1., 1.]])
+    # )
+    # samples_norm = norm.sample((1000,))
+    # grid = torch.meshgrid(torch.linspace(-3, 3, 100), torch.linspace(-3, 3, 100), indexing='ij')
+    # values = torch.stack(grid, dim=-1)
+    # prob = norm.log_prob(values.view(-1, 2)).exp().view(100, 100)
+    #
+    # fig, ax = plt.subplots(1,2, figsize=(10,5))
+    # ax[0].hist2d(samples_norm[:,0], samples_norm[:,1], density=True)
+    # ax[0].set_title('Sampled based approximation of PDF')
+    # ax[1].pcolormesh(*grid, prob, shading='auto', cmap='viridis')
+    # ax[1].set_title('PDF')
+    # plt.show()
+
     # test wasserstein distances
     num_locs = 10
     locs = OPTIMAL_1D_GRIDS['locs'][num_locs]
@@ -15,18 +34,14 @@ if __name__ == "__main__":
     batch_size = torch.Size()
     num_dims = 2
     num_mix_elems = 5
-    component_distribution = discretize_distributions.MultivariateNormal(
+    component_distribution = dd.MultivariateNormal(
         loc=torch.randn(batch_size + (num_mix_elems, num_dims)),
         covariance_matrix=torch.diag_embed(torch.rand(batch_size + (num_mix_elems, num_dims))))
     mixture_distribution = torch.distributions.Categorical(probs=torch.rand(batch_size + (num_mix_elems,)))
-    gmm = discretize_distributions.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    gmm = dd.MixtureMultivariateNormal(mixture_distribution, component_distribution)
     first_elem_gmm = gmm[0]
-    gmm.compress(n_max=3)
 
-    # test activation
-    mult_normal_dist = discretize_distributions.MultivariateNormal(loc=torch.zeros(2), covariance_matrix=torch.eye(2))
-    activated_mult_normal_dist = mult_normal_dist.activate(activation=torch.nn.functional.relu,
-                                                           derivative_activation=torch.nn.functional.relu)
+    gmm = dd.compress_mixture_multivariate_normal(gmm, n_max=3)
 
     # -- Create the optimal signature with a grid configuration from a multivariate Normal distribution: ---------------
     nr_dims = 2
@@ -36,8 +51,9 @@ if __name__ == "__main__":
     mean = torch.zeros(nr_dims).unsqueeze(0).expand(batch_size + (nr_dims,))
     variance = torch.linspace(1, 3, nr_dims).expand(batch_size + (nr_dims,))
 
-    diag_mult_norm = discretize_distributions.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
-    disc_diag_mult_norm = discretize_distributions.discretization_generator(diag_mult_norm, num_locs=10)
+    # diag_mult_norm = dd.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
+    diag_mult_norm = torch.distributions.MultivariateNormal(loc=mean, precision_matrix=torch.diag_embed(variance.reciprocal()))
+    disc_diag_mult_norm = dd.discretization_generator(diag_mult_norm, num_locs=10)
     print(f'induced 2-wasserstein distance: {disc_diag_mult_norm.w2}')
 
     # example 2: d gaussians with full covariance matrix
@@ -45,12 +61,12 @@ if __name__ == "__main__":
     cov_mat = sqrt_cov_mat @ sqrt_cov_mat.swapaxes(-1, -2)
     cov_mat = cov_mat.unsqueeze(0).expand(batch_size + (nr_dims, nr_dims))
 
-    mult_norm = discretize_distributions.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
-    disc_mult_norm = discretize_distributions.discretization_generator(mult_norm, num_locs=10)
+    mult_norm = dd.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
+    disc_mult_norm = dd.discretization_generator(mult_norm, num_locs=10)
     print(f'induced 2-wasserstein distance: {disc_mult_norm.w2}')
 
     # example 3: discretization with outer shell
-    disc_diag_mult_norm_outer_shell = discretize_distributions.discretization_generator(diag_mult_norm, num_locs=10)
+    disc_diag_mult_norm_outer_shell = dd.discretization_generator(diag_mult_norm, num_locs=10)
     print(f'induced 2-wasserstein distance: {disc_diag_mult_norm_outer_shell.w2}')
 
     # example 4: higher dimensions
@@ -58,6 +74,6 @@ if __name__ == "__main__":
     mean = torch.zeros(nr_dims).unsqueeze(0).expand(batch_size + (nr_dims,))
     variance = torch.cat((torch.ones(1), torch.ones(nr_dims - 1) * 0.001)).unsqueeze(0).expand(batch_size + (nr_dims,))
 
-    diag_mult_norm = discretize_distributions.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
-    disc_diag_mult_norm = discretize_distributions.discretization_generator(diag_mult_norm, num_locs=10)
+    diag_mult_norm = dd.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
+    disc_diag_mult_norm = dd.discretization_generator(diag_mult_norm, num_locs=10)
     print(f'induced 2-wasserstein distance: {disc_diag_mult_norm.w2}')

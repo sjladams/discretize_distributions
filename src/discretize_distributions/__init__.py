@@ -1,19 +1,16 @@
-from .categorical_float import CategoricalFloat, ActivationCategoricalFloat, cross_product_categorical_floats
-from .mixture import MixtureMultivariateNormal, MixtureActivatedMultivariateNormal, MixtureSparseMultivariateNormal
-from .multivariate_normal import MultivariateNormal, ActivatedMultivariateNormal, SparseMultivariateNormal
-from .discretizations import DiscretizedMultivariateNormal, discretization_generator
+from .distributions import CategoricalFloat, MultivariateNormal, MixtureMultivariateNormal, \
+    cross_product_categorical_floats, DiscretizedMultivariateNormal, \
+    DiscretizedMixtureMultivariateNormal, discretization_generator, compress_mixture_multivariate_normal, \
+    compress_categorical_floats
 
-__all__ = ['CategoricalFloat',
-           'ActivationCategoricalFloat',
-           'cross_product_categorical_floats',
-           'MixtureMultivariateNormal',
-           'MixtureActivatedMultivariateNormal',
-           'MixtureSparseMultivariateNormal',
-           'MultivariateNormal',
-           'ActivatedMultivariateNormal',
-           'SparseMultivariateNormal',
-           'DiscretizedMultivariateNormal',
-           'discretization_generator',
-           ]
-
-
+__all__ = [
+    'CategoricalFloat',
+    'MultivariateNormal',
+    'MixtureMultivariateNormal',
+    'DiscretizedMultivariateNormal',
+    'DiscretizedMixtureMultivariateNormal',
+    'cross_product_categorical_floats',
+    'discretization_generator',
+    'compress_mixture_multivariate_normal',
+    'compress_categorical_floats',
+]

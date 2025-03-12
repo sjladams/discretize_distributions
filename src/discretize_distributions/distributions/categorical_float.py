@@ -5,7 +5,7 @@ from torch.distributions.utils import probs_to_logits, logits_to_probs, lazy_pro
 
 from discretize_distributions.tensors import kmean_clustering_batches
 
-__all__ = ['CategoricalFloat', 'ActivationCategoricalFloat', 'cross_product_categorical_floats']
+__all__ = ['CategoricalFloat', 'compress_categorical_floats', 'cross_product_categorical_floats']
 
 
 class CategoricalFloat(Distribution):
@@ -36,10 +36,14 @@ class CategoricalFloat(Distribution):
         elif not self.locs.shape[nr_batch_dims] == nr_locs:
             raise ValueError('number of locs do not match')
 
-        self.num_components = self.probs.size()[-1]
+        self._num_component = self.probs.size()[-1]
 
         super(CategoricalFloat, self).__init__(batch_shape=batch_shape, event_shape=event_shape,
                                                validate_args=validate_args)
+
+    @property
+    def num_components(self):
+        return self._num_component
 
     @constraints.dependent_property
     def support(self):
@@ -105,40 +109,30 @@ class CategoricalFloat(Distribution):
 
             return samples
 
-    def activate(self, activation: torch.nn.functional, derivative_activation, **kwargs):
-        return ActivationCategoricalFloat(probs=self.probs, locs=self.locs, activation=activation,
-                                          derivative_activation=derivative_activation)
 
-    def compress(self, n_max: int):
-        """
-        Compress CategoricalFloat from n support locations to n_max.
-        :param n_max: maximum support size
-        """
-        if self.num_components <= n_max:
-            pass
-        elif n_max == 1:
-            self.__init__(probs=torch.ones(self.probs.shape[:-2]).unsqueeze(-1), locs=torch.einsum('...ij,...i->...j', self.locs, self.probs).unsqueeze(-2))
-        else:
-            labels = kmean_clustering_batches(self.locs, n_max)
-            n = len(labels.unique())
+def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
+    """
+    Compress CategoricalFloat from n support locations to n_max.
+    """
+    if dist.num_components <= n_max:
+        probs, locs = dist.probs, dist.locs
+    elif n_max == 1:
+        probs = torch.ones(dist.probs.shape[:-2]).unsqueeze(-1),
+        locs = torch.einsum('...ij,...i->...j', dist.locs, dist.probs).unsqueeze(-2)
+    else:
+        labels = kmean_clustering_batches(dist.locs, n_max)
+        n = len(labels.unique())
 
-            labels = torch.zeros(labels.shape + (n,)).scatter_(
-                dim=-1,
-                index=labels.unsqueeze(-1),
-                src=torch.ones(labels.shape).unsqueeze(-1)
-            )
+        labels = torch.zeros(labels.shape + (n,)).scatter_(
+            dim=-1,
+            index=labels.unsqueeze(-1),
+            src=torch.ones(labels.shape).unsqueeze(-1)
+        )
 
-            mean_locs_per_cluster = labels.T @ self.locs / labels.sum(dim=0).unsqueeze(1)
-            probs = labels.T @ self.probs
+        locs = labels.T @ dist.locs / labels.sum(dim=0).unsqueeze(1)
+        probs = labels.T @ dist.probs
 
-            self.__init__(probs=probs, locs=mean_locs_per_cluster)
-
-
-class ActivationCategoricalFloat(CategoricalFloat):
-    def __init__(self, probs: torch.Tensor, locs: torch.Tensor, activation: torch.nn.functional, derivative_activation,
-                 *args, **kwargs):
-        self.derivative_activation = derivative_activation
-        super(ActivationCategoricalFloat, self).__init__(probs=probs, locs=activation(locs), **kwargs)
+    return CategoricalFloat(probs, locs)
 
 
 def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: CategoricalFloat):
