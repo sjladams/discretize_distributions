@@ -12,15 +12,15 @@ def handle_nan_inf(stats: tuple):
     return new_stats
 
 
-def diag_matrix_mult_full_matrix(vec: torch.Tensor, mat: torch.Tensor):
+def diag_mat_mult_full_mat(vec: torch.Tensor, mat: torch.Tensor):
     """
-    diag(vec) @ mat
+    batched version of diag(vec) @ mat
     """
     return torch.einsum('...i,...ik->...ik', vec, mat)
 
-def full_matrix_mult_diag_matrix(mat: torch.Tensor, vec: torch.Tensor, ):
+def full_mat_mult_diag_mat(mat: torch.Tensor, vec: torch.Tensor):
     """
-    mat @ diag(vec)
+    batched version of mat @ diag(vec)
     """
     return torch.einsum('...ik,...k->...ik', mat, vec)
 
@@ -41,7 +41,7 @@ def make_sym(mat: torch.Tensor):
     """
     return torch.max(mat, mat.swapaxes(-1, -2))
 
-def check_sym(mat: torch.Tensor, tol: float = 1e-8) -> torch.Tensor:
+def is_sym(mat: torch.Tensor, tol: float = 1e-8) -> torch.Tensor:
     """
     Check if a batch of square matrices are symmetric.
 
@@ -72,7 +72,6 @@ def kmean_clustering_batches(x: torch.Tensor, n: int):
 
     return remapped_labels
 
-
 def get_edges(locs: torch.Tensor):
     """
     Find the edges of the Voronoi partition with center at locs
@@ -96,8 +95,8 @@ def symmetrize_vector(vec: torch.Tensor) -> torch.Tensor:
         vec = torch.cat((-half.flip(0), half))
     return vec
 
-def check_mat_diag(mat: torch.Tensor) -> bool:
+def is_mat_diag(mat: torch.Tensor) -> bool:
     """
     Check if all elements of a batch of square matrices are diagonal
     """
-    return not (mat - mat.diagonal() > PRECISION).any()
+    return not (mat - torch.diag_embed(mat.diagonal(dim1=-2,dim2=-1), dim1=-2, dim2=-1)> PRECISION).any()

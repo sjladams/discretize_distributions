@@ -6,7 +6,7 @@ from typing import Union
 import math
 import os
 
-from .tensors import check_sym
+from .tensors import is_sym
 from .utils import pickle_load
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 
@@ -32,7 +32,7 @@ def discretize_multi_norm_dist(
     :param num_locs: Number of discretization locations
     :return: Tuple of discretized locations, probabilities, and the exact 2-Wasserstein error
     """
-    assert check_sym(norm.covariance_matrix)
+    assert is_sym(norm.covariance_matrix)
 
     # Norm can be a degenerate Gaussian. Hence, we work in the generate space of dimension neigh.
     cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
