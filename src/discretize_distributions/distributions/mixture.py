@@ -45,15 +45,6 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
                                   dim=-1 - self._event_ndims * 2)
         return mean_cond_cov + cov_cond_mean
 
-    def rsample(self, sample_shape=torch.Size()): # \todo do more efficiently
-        if not isinstance(sample_shape, torch.Size):
-            sample_shape = torch.Size(sample_shape)
-
-        component_samples = self.component_distribution.sample(sample_shape)
-        mixture_samples = self.mixture_distribution.sample(sample_shape)
-        idx = mixture_samples.view(mixture_samples.shape + (1, 1)).repeat_interleave(component_samples.shape[-1], dim=-1)
-        return torch.gather(component_samples, dim=-2, index=idx).squeeze(-2)
-
     def unique(self):
         stack = torch.cat((self.component_distribution.covariance_matrix,
                            self.component_distribution.loc.unsqueeze(-1)
