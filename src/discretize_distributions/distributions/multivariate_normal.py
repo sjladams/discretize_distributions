@@ -16,11 +16,9 @@ CONST_LOG_SQRT_2PI_E = 0.5 * math.log(2 * math.pi * math.e)
 class MultivariateNormal(torch.distributions.Distribution):
     def __init__(self, loc: torch.Tensor, covariance_matrix: torch.Tensor,
                  inherit_torch_distribution: bool = True, *args, **kwargs):
-        if loc.dim() < 1:
-            raise ValueError("loc must be at least one-dimensional.")
-        if covariance_matrix.dim() < 2:
-            raise ValueError("covariance_matrix must be at least two-dimensional, "
-                             "with optional leading batch dimensions")
+        assert not loc.dim() < 1, "loc must be at least one-dimensional."
+        assert not covariance_matrix.dim() < 2, ("covariance_matrix must be at least two-dimensional, "
+                                                 "with optional leading batch dimensions")
 
         batch_shape = torch.broadcast_shapes(covariance_matrix.shape[:-2], loc.shape[:-1])
         event_shape = torch.broadcast_shapes(loc.shape[-1:], covariance_matrix.shape[-1:])
@@ -78,19 +76,3 @@ class MultivariateNormal(torch.distributions.Distribution):
 
     def entropy(self):
         return self.degen_mult_normal_torch.entropy()
-
-    def _to_std_rv(self, value):
-        return (value - self.loc) * self._sqrt_diag_covariance_matrix.reciprocal()
-
-    def prob(self, value):
-        return self.log_prob(value).exp()
-
-    def cdf(self, value): # \todo check if well behaves under degenerative approach
-        if not self.diagonal_covariance_matrix:
-            raise NotImplementedError
-        elif self._validate_args:
-            self._validate_sample(value)
-        return torch.prod(self._big_phi(value), dim=-1)
-
-    def _big_phi(self, x):
-        return 0.5 * (1 + (self._to_std_rv(x) * CONST_INV_SQRT_2).erf())
