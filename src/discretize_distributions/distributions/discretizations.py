@@ -1,5 +1,4 @@
 import torch
-from typing import Optional
 
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 from discretize_distributions.distributions.categorical_float import CategoricalFloat
@@ -17,7 +16,7 @@ class Discretization(CategoricalFloat):
                  dist: torch.distributions.Distribution,
                  probs: torch.Tensor,
                  locs: torch.Tensor,
-                 w2: Optional[torch.Tensor]):
+                 w2: torch.Tensor):
         self.dist = dist
         self.num_locs = probs.shape[-1]
         self.w2 = w2
@@ -39,6 +38,7 @@ class DiscretizedMixtureMultivariateNormal(Discretization):
 
         disc_component_distribution = discretization_generator(gmm.component_distribution, num_locs)
 
+        # Combine the probs, locs and w2 for all components, accounting for their relative weights
         probs = torch.einsum('...ms,...m->...ms',
                              disc_component_distribution.probs,
                              gmm.mixture_distribution.probs)
@@ -46,12 +46,9 @@ class DiscretizedMixtureMultivariateNormal(Discretization):
         locs = disc_component_distribution.locs
         locs = locs.reshape(locs.shape[:-3] + (locs.shape[-3:-1].numel(), locs.shape[-1]))
 
-        if disc_component_distribution.w2 is not None:
-            w2 = torch.einsum('...m,...m->...',
-                              gmm.mixture_distribution.probs,
-                              disc_component_distribution.w2.pow(2)).sqrt()
-        else:
-            w2 = None
+        w2 = torch.einsum('...m,...m->...',
+                          gmm.mixture_distribution.probs,
+                          disc_component_distribution.w2.pow(2)).sqrt()
 
         super().__init__(gmm, probs, locs, w2)
 
