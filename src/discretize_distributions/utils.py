@@ -73,22 +73,6 @@ def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
     w2 = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
     return w2
 
-def calculate_w2_disc_uni_stand_normal_alternative(locs: torch.Tensor) -> torch.Tensor:
-    edges = get_edges(locs)
-
-    l, u = edges[:-1], edges[1:]
-    probs = cdf(u) - cdf(l)
-
-    l[l.isneginf()] = -REPLACE_INF
-    u[u.isinf()] = REPLACE_INF
-
-    w2s = (probs
-           + l*pdf(l) - u*pdf(u)
-           + probs*locs.pow(2)
-           -2*locs*(pdf(l) - pdf(u)))
-    w2 = w2s.sum(-1)
-    return w2
-
 def pickle_load(tag):
     if not (".npy" in tag or ".pickle" in tag or ".pkl" in tag):
         tag = f"{tag}.pickle"

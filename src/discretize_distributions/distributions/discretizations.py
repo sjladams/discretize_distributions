@@ -8,6 +8,7 @@ from discretize_distributions.discretize import discretize_multi_norm_dist
 
 __all__ = ['DiscretizedMultivariateNormal',
            'DiscretizedMixtureMultivariateNormal',
+           'DiscretizedCategoricalFloat',
            'discretization_generator'
            ]
 
@@ -54,6 +55,13 @@ class DiscretizedMixtureMultivariateNormal(Discretization):
         super().__init__(gmm, probs, locs, w2)
 
 
+class DiscretizedCategoricalFloat(Discretization):
+    def __init__(self, dist: CategoricalFloat, num_locs: int):
+        if (num_locs != dist.num_components).all():
+            raise NotImplementedError
+        super().__init__(dist, dist.probs, dist.locs, torch.zeros(dist.batch_shape))
+
+
 class DiscretizationGenerator:
     def __call__(self, dist, *args, **kwargs):
         """
@@ -67,7 +75,7 @@ class DiscretizationGenerator:
         elif type(dist) is MixtureMultivariateNormal:
             return DiscretizedMixtureMultivariateNormal(dist, *args, **kwargs)
         elif isinstance(dist, CategoricalFloat):
-            return dist
+            return DiscretizedCategoricalFloat(dist, *args, **kwargs)
         else:
             raise NotImplementedError
 
