@@ -4,7 +4,7 @@ from typing import Union, Tuple
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 from discretize_distributions.tensors import kmean_clustering_batches
 
-__all__ = ['MixtureMultivariateNormal', 'compress_mixture_multivariate_normal']
+__all__ = ['MixtureMultivariateNormal', 'compress_mixture_multivariate_normal', 'unique_mixture_multivariate_normal']
 
 
 PRECISION = torch.finfo(torch.float32).eps
@@ -66,7 +66,7 @@ def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max:
     if n_max == 1:
         return _collapse(dist)
     else:
-        dist = _unique(dist)
+        dist = unique_mixture_multivariate_normal(dist)
         if dist.num_components <= n_max:
             pass
         else:
@@ -111,7 +111,7 @@ def _collapse(dist: MixtureMultivariateNormal):
     )
     return MixtureMultivariateNormal(mixture_dist, component_dist)
 
-def _unique(dist: MixtureMultivariateNormal):
+def unique_mixture_multivariate_normal(dist: MixtureMultivariateNormal):
     stack = torch.cat((dist.component_distribution.covariance_matrix,
                        dist.component_distribution.loc.unsqueeze(-1)
                        ), dim=-1)
