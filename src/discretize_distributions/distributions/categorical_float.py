@@ -117,7 +117,7 @@ def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
     if dist.num_components <= n_max:
         probs, locs = dist.probs, dist.locs
     elif n_max == 1:
-        probs = torch.ones(dist.probs.shape[:-2]).unsqueeze(-1)
+        probs = torch.ones(dist.probs.shape[:-2]).unsqueeze(-1),
         locs = torch.einsum('...ij,...i->...j', dist.locs, dist.probs).unsqueeze(-2)
     else:
         labels = kmean_clustering_batches(dist.locs, n_max)
