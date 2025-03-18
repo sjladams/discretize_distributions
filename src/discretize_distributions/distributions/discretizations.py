@@ -57,7 +57,7 @@ class DiscretizedMixtureMultivariateNormal(Discretization):
 
 class DiscretizedCategoricalFloat(Discretization):
     def __init__(self, dist: CategoricalFloat, num_locs: int):
-        if (num_locs != dist.num_components).all():
+        if num_locs <= dist.num_components:
             raise NotImplementedError
         super().__init__(dist, dist.probs, dist.locs, torch.zeros(dist.batch_shape))
 
