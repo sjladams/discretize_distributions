@@ -28,15 +28,13 @@ class CategoricalFloat(Distribution):
 
         batch_shape = self.probs.shape[:-1]
         nr_batch_dims = len(batch_shape)
-        nr_locs = self.probs.shape[-1]
+        self._num_component = self.probs.shape[-1]
         event_shape = self.locs.shape[nr_batch_dims + 1:]
 
         if not self.locs.shape[0:nr_batch_dims] == batch_shape:
             raise ValueError('batch shapes do not match')
-        elif not self.locs.shape[nr_batch_dims] == nr_locs:
+        elif not self.locs.shape[nr_batch_dims] == self._num_component:
             raise ValueError('number of locs do not match')
-
-        self._num_component = self.probs.size()[-1]
 
         super(CategoricalFloat, self).__init__(batch_shape=batch_shape, event_shape=event_shape,
                                                validate_args=validate_args)
