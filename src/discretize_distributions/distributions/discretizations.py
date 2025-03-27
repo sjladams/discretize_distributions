@@ -29,9 +29,10 @@ class DiscretizedMultivariateNormal(Discretization):
     def __init__(self, norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal], num_locs: int):
         assert isinstance(norm, (MultivariateNormal, torch.distributions.MultivariateNormal)), 'distribution not of type MultivariateNormal'
 
-        locs, probs, w2 = discretize_multi_norm_dist(norm, num_locs)
+        locs, probs, w2, sq_l2_norm = discretize_multi_norm_dist(norm, num_locs)
 
         super().__init__(norm, probs, locs, w2)
+        self.sq_l2_norm = sq_l2_norm
 
 
 class DiscretizedMixtureMultivariateNormal(Discretization):

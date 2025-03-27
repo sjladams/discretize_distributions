@@ -66,10 +66,12 @@ def discretize_multi_norm_dist(
 
         w2 = torch.einsum('...c,...c->...', mean_part + var_part, probs).sqrt()
 
+        sq_l2_norm = mean_part + var_part
+
     print("Signature w2: {:.4f} / {:.4f} for grid of size: {}".format(
         w2.mean(), w2_dirac_at_mean.mean(), probs.shape[-1]))
 
-    return locs, probs, w2
+    return locs, probs, w2, sq_l2_norm
 
 
 def transform_to_original_space(points: torch.Tensor, T: torch.Tensor, bias: torch.Tensor):
