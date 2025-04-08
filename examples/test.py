@@ -1,11 +1,19 @@
 import torch
 import discretize_distributions as dd
-from discretize_distributions.utils import calculate_w2_disc_uni_stand_normal, calculate_w2_disc_uni_stand_normal_alternative
+from discretize_distributions.utils import calculate_w2_disc_uni_stand_normal
 from discretize_distributions.discretize import GRID_CONFIGS, OPTIMAL_1D_GRIDS
+from discretize_distributions.grid import Grid
 
 from matplotlib import pyplot as plt
 
 if __name__ == "__main__":
+    # test discretization of multivariate normal distribution via grids
+    grid  = Grid([torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])])
+    grid2 = Grid.from_shape((5, 3), torch.tensor([[0., 1.], [0., 4.]]))
+
+    norm = dd.MultivariateNormal(loc=torch.zeros(2), covariance_matrix=torch.diag(torch.tensor([1.,2.])))
+    locs, probs, w2 = dd.discretize_multi_norm_dist(norm, grid=grid)
+
     # # Visually check MultivariateNormal implementation for degenerate example
     # norm = torch.distributions.MultivariateNormal(
     #     loc=torch.ones(2),
@@ -27,7 +35,6 @@ if __name__ == "__main__":
     num_locs = 10
     locs = OPTIMAL_1D_GRIDS['locs'][num_locs]
     w2 = calculate_w2_disc_uni_stand_normal(locs)
-    w2_alt = calculate_w2_disc_uni_stand_normal_alternative(locs)
     w2_formal = OPTIMAL_1D_GRIDS['w2'][num_locs]
 
     # test mixture

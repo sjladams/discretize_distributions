@@ -8,6 +8,8 @@ import os
 
 import discretize_distributions.utils as utils
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
+from discretize_distributions.grid import Grid
+import discretize_distributions.tensors as tensors
 
 GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(__name__,
                                                            f'data{os.sep}lookup_grid_config.pickle'))
@@ -22,9 +24,47 @@ CONST_LOG_INV_SQRT_2PI = math.log(CONST_INV_SQRT_2PI)
 CONST_LOG_SQRT_2PI_E = 0.5 * math.log(2 * math.pi * math.e)
 
 
+__all__ = ['discretize_multi_norm_dist']
+
+
 def discretize_multi_norm_dist(
         norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
-        num_locs: int) -> tuple:
+        num_locs: Optional[int] = None,
+        grid: Optional[Grid] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if num_locs is not None:
+        return optimal_discretize_multi_norm_dist(norm, num_locs)
+    elif grid is not None:
+        w2 = grid_discretize_multi_norm_dist(norm, grid)
+        locs = grid.get_locs()
+
+        # probability computation, to be simplified:
+        probs_per_dim = [utils.cdf(grid.upper_vertices_per_dim[dim]) - utils.cdf(grid.lower_vertices_per_dim[dim])
+                         for dim in range(grid.dim)]
+        mesh = torch.meshgrid(*probs_per_dim, indexing='ij')
+        stacked = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+        probs = stacked.prod(-1)
+
+        return locs, probs, w2
+    else:
+        raise ValueError('Either num_locs or grid must be provided')
+
+
+def grid_discretize_multi_norm_dist(
+    norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
+    grid: Grid) -> torch.Tensor:
+    if not tensors.is_mat_diag(norm.covariance_matrix):
+        raise NotImplementedError('Only implemented for diagonal covariance matrices')
+    assert norm.batch_shape.numel() == 1, 'batches not yet supported'
+    assert len(norm.event_shape) == 1 and norm.event_shape[0] == grid.dim, 'dimensions grid and norm should match'
+
+    scaled_locs_per_dim = [grid.locs_per_dim[dim] / norm.variance[dim] for dim in range(grid.dim)]
+    w2_per_dim = [utils.calculate_w2_disc_uni_stand_normal(dim_locs) for dim_locs in scaled_locs_per_dim]
+    return torch.stack(w2_per_dim).sum()
+
+
+def optimal_discretize_multi_norm_dist(
+        norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
+        num_locs: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Discretize a multivariate normal distribution according to Algorithm 2 in https://arxiv.org/pdf/2407.18707
     :param norm: Multivariate Normal distribution to be discretized
