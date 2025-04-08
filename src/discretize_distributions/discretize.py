@@ -2,16 +2,16 @@ import torch
 import pkg_resources
 from xitorch.linalg import symeig
 from xitorch import LinearOperator
-from typing import Union
+from typing import Union, Optional, Tuple
 import math
 import os
 
-from .utils import pickle_load
+import discretize_distributions.utils as utils
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
 
-GRID_CONFIGS = pickle_load(pkg_resources.resource_filename(__name__,
+GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(__name__,
                                                            f'data{os.sep}lookup_grid_config.pickle'))
-OPTIMAL_1D_GRIDS = pickle_load(pkg_resources.resource_filename(__name__,
+OPTIMAL_1D_GRIDS = utils.pickle_load(pkg_resources.resource_filename(__name__,
                                                                f'data{os.sep}lookup_opt_grid_uni_stand_normal.pickle'))
 
 PRECISION = torch.finfo(torch.float32).eps
