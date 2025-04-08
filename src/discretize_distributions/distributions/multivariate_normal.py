@@ -18,6 +18,8 @@ class MultivariateNormal(torch.distributions.Distribution):
         if covariance_matrix.dim() < 2:
             raise ValueError("covariance_matrix must be at least two-dimensional, with optional leading batch dimensions")
 
+        assert tensors.is_sym(covariance_matrix)
+
         batch_shape = torch.broadcast_shapes(covariance_matrix.shape[:-2], loc.shape[:-1])
         event_shape = torch.broadcast_shapes(loc.shape[-1:], covariance_matrix.shape[-1:])
         self.covariance_matrix = covariance_matrix.expand(batch_shape + event_shape + event_shape)
