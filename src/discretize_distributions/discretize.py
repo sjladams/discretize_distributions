@@ -52,9 +52,12 @@ def discretize_multi_norm_dist(
 
         # Transform locs to original spaces
         S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
-        S_topk = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
+        S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
             norm.batch_shape + (neigh,) + norm.event_shape))
-        locs = transform_to_original_space(locs_stand, S_topk, norm.loc)
+        locs = torch.einsum('...no,...cn->...co', S, locs_stand) + norm.loc.unsqueeze(-2)
+
+        assert not torch.isnan(locs).any(), 'locs contain NaN values'
+        assert not torch.isinf(locs).any(), 'locs contain Inf values'
 
         # wasserstein computations
         mean_part = (trunc_mean - locs_stand).pow(2)
@@ -68,15 +71,6 @@ def discretize_multi_norm_dist(
         w2.mean(), w2_dirac_at_mean.mean(), probs.shape[-1]))
 
     return locs, probs, w2
-
-
-def transform_to_original_space(points: torch.Tensor, T: torch.Tensor, bias: torch.Tensor):
-    # split up matrix vector multiplication to ensure that inf*0 = 0. \Todo create more memory efficient method
-    points_original = torch.einsum('...no,...cn->...con', T, points)
-    points_original = torch.nan_to_num(points_original, nan=0., posinf=torch.inf, neginf=-torch.inf)
-    points_original = points_original.sum(-1)
-    points_original = points_original + bias.unsqueeze(-2)
-    return points_original
 
 
 def get_optimal_grid_config(eigvals: torch.Tensor, num_locs: int) -> torch.Tensor:
