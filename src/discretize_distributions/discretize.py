@@ -34,32 +34,33 @@ def discretize_multi_norm_dist(
     if num_locs is not None:
         return optimal_discretize_multi_norm_dist(norm, num_locs)
     elif grid is not None:
-        w2 = grid_discretize_multi_norm_dist(norm, grid)
-        locs = grid.get_locs()
-
-        # probability computation, to be simplified:
-        probs_per_dim = [utils.cdf(grid.upper_vertices_per_dim[dim]) - utils.cdf(grid.lower_vertices_per_dim[dim])
-                         for dim in range(grid.dim)]
-        mesh = torch.meshgrid(*probs_per_dim, indexing='ij')
-        stacked = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
-        probs = stacked.prod(-1)
-
-        return locs, probs, w2
+        return grid_discretize_multi_norm_dist(norm, grid)
     else:
         raise ValueError('Either num_locs or grid must be provided')
 
 
 def grid_discretize_multi_norm_dist(
     norm: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
-    grid: Grid) -> torch.Tensor:
+    grid: Grid) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if not tensors.is_mat_diag(norm.covariance_matrix):
         raise NotImplementedError('Only implemented for diagonal covariance matrices')
     assert norm.batch_shape.numel() == 1, 'batches not yet supported'
     assert len(norm.event_shape) == 1 and norm.event_shape[0] == grid.dim, 'dimensions grid and norm should match'
 
+    locs = grid.get_locs()
+
+    # probability computation, to be simplified:
+    probs_per_dim = [utils.cdf(grid.upper_vertices_per_dim[dim]) - utils.cdf(grid.lower_vertices_per_dim[dim])
+                     for dim in range(grid.dim)]
+    mesh = torch.meshgrid(*probs_per_dim, indexing='ij')
+    stacked = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+    probs = stacked.prod(-1)
+
     scaled_locs_per_dim = [grid.locs_per_dim[dim] / norm.variance[dim] for dim in range(grid.dim)]
     w2_per_dim = [utils.calculate_w2_disc_uni_stand_normal(dim_locs) for dim_locs in scaled_locs_per_dim]
-    return torch.stack(w2_per_dim).sum()
+    w2 = torch.stack(w2_per_dim).sum()
+    return locs, probs, w2
+
 
 
 def optimal_discretize_multi_norm_dist(
