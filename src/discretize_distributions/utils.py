@@ -70,8 +70,8 @@ def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
 
     probs = cdf(edges[1:]) - cdf(edges[:-1])
     trunc_mean, trunc_var = calculate_mean_and_var_trunc_normal(loc=0., scale=1., l=edges[:-1], u=edges[1:])
-    w2 = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
-    return w2
+    w2_sq = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
+    return w2_sq.sqrt()
 
 def pickle_load(tag):
     if not (".npy" in tag or ".pickle" in tag or ".pkl" in tag):
