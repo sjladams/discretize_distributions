@@ -3,9 +3,10 @@ import numpy as np
 import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 
-from .tensors import get_edges
+# from xitorch.linalg import symeig
+# from xitorch import LinearOperator
 
 INV_SQRT_2PI = 1 / math.sqrt(2 * math.pi)
 SQRT_PI = math.sqrt(math.pi)
@@ -48,8 +49,12 @@ def pdf(x: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
     """
     return INV_SQRT_2PI * (1 / scale) * torch.exp(-0.5 * ((x-mu) / scale).pow(2))
 
-def calculate_mean_and_var_trunc_normal(loc: Union[torch.Tensor, float], scale: Union[torch.Tensor, float],
-                                        l: torch.Tensor, u: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+def compute_mean_var_trunc_norm(
+        l: torch.Tensor, 
+        u: torch.Tensor,
+        loc: Union[torch.Tensor, float] = 0., 
+        scale: Union[torch.Tensor, float] = 1.
+) -> Tuple[torch.Tensor, torch.Tensor]:
     alpha = (l - loc) / scale
     beta = (u - loc) / scale
 
@@ -65,11 +70,11 @@ def calculate_mean_and_var_trunc_normal(loc: Union[torch.Tensor, float], scale: 
 
     return mean, variance
 
-def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
+def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor: # TODO remove
     edges = get_edges(locs)
 
     probs = cdf(edges[1:]) - cdf(edges[:-1])
-    trunc_mean, trunc_var = calculate_mean_and_var_trunc_normal(loc=0., scale=1., l=edges[:-1], u=edges[1:])
+    trunc_mean, trunc_var = compute_mean_var_trunc_norm(loc=0., scale=1., l=edges[:-1], u=edges[1:])
     w2_sq = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
     return w2_sq.sqrt()
 
@@ -88,11 +93,3 @@ def pickle_dump(obj, tag):
     pickle_out = open("{}.pickle".format(tag), "wb")
     pickle.dump(obj, pickle_out)
     pickle_out.close()
-
-
-
-
-
-
-
-

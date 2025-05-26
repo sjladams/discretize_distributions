@@ -11,19 +11,23 @@ PRECISION = torch.finfo(torch.float32).eps
 
 
 class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
-    has_rsample = False # \todo implement
-    def __init__(self,
-                 mixture_distribution: torch.distributions.Categorical,
-                 component_distribution: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
-                 validate_args=None):
-        assert isinstance(component_distribution, (MultivariateNormal, torch.distributions.MultivariateNormal)), \
-            "The Component Distribution needs to be an instance of MultivariateNormal"
-        assert isinstance(mixture_distribution, torch.distributions.Categorical), \
-            "The Mixtures need to be an instance of torch.distributions.Categorical"
+    def __init__(
+            self,
+            mixture_distribution: torch.distributions.Categorical,
+            component_distribution: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
+            validate_args=None
+    ):
+        if not isinstance(component_distribution, (MultivariateNormal, torch.distributions.MultivariateNormal)):
+            raise TypeError("The Component Distribution must be an instance of " \
+            "MultivariateNormal or torch.distributions.MultivariateNormal")
+        if not isinstance(mixture_distribution, torch.distributions.Categorical):
+            raise TypeError("The Mixture Distribution must be an instance of torch.distributions.Categorical")
 
-        super(MixtureMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
-                                                        component_distribution=component_distribution,
-                                                        validate_args=validate_args)
+        super(MixtureMultivariateNormal, self).__init__(
+            mixture_distribution=mixture_distribution,
+            component_distribution=component_distribution,
+            validate_args=validate_args
+        )
 
     def __getitem__(self, index: int):
         """
@@ -55,6 +59,7 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
     @property
     def num_components(self):
         return self._num_component
+
 
 def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max: int):
     """

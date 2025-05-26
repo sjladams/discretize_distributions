@@ -1,5 +1,21 @@
-/build/
-/src/discretize_distributions.egg-info
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+*.py[cod]
+*.so
+
+# IDEs and editors
+.vscode/
 .idea/
-/__pycache__/
-/src/discretize_distributions/__pycache__/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.env/
+.venv/
+venv/

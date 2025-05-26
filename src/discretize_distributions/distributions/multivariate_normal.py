@@ -1,8 +1,11 @@
+from typing import Optional
+import torch
+import math
+
 import discretize_distributions.tensors as tensors
 from torch.distributions.utils import _standard_normal
 from torch.distributions.multivariate_normal import _batch_mv, _batch_mahalanobis
-import torch
-import math
+
 
 __all__ = ['MultivariateNormal']
 
@@ -12,7 +15,17 @@ class MultivariateNormal(torch.distributions.Distribution):
     """
     Similar to torch.distributions.MultivariateNormal, but allows for degenerative covariance matrices.
     """
-    def __init__(self, loc: torch.Tensor, covariance_matrix: torch.Tensor):
+
+    has_rsample = True
+    _validate_args = False
+
+    def __init__(
+            self, 
+            loc: torch.Tensor, 
+            covariance_matrix: torch.Tensor, 
+            eig_vals: Optional[torch.Tensor] = None, 
+            eig_vectors: Optional[torch.Tensor] = None,
+    ):
         if loc.dim() < 1:
             raise ValueError("loc must be at least one-dimensional.")
         if covariance_matrix.dim() < 2:
@@ -29,10 +42,28 @@ class MultivariateNormal(torch.distributions.Distribution):
 
         # Account for possibly degenerative (spd) covariance matrices
         # (alternatively, one could use the Cholesky decomposition to construct the mahalanobis transformation matrix)
-        eig_vals, eig_vectors = tensors.eigh(self.covariance_matrix)
+        if eig_vals is None or eig_vectors is None:
+            eig_vals, eig_vectors = tensors.eigh(self.covariance_matrix)
+        elif eig_vals.shape != batch_shape + event_shape:
+            raise ValueError(f"eig_vals must have shape {batch_shape + event_shape}, but got {eig_vals.shape}")
+        elif eig_vectors.shape != batch_shape + event_shape + event_shape:
+            raise ValueError(f"eig_vectors must have shape {batch_shape + event_shape + event_shape}, but got {eig_vectors.shape}")
+
         eig_vals_sqrt = (eig_vals.abs() + PRECISION).sqrt() # ensure numerical stability
         self._mahalanobis_mat = tensors.diag_mat_mult_full_mat(eig_vals_sqrt.reciprocal(), eig_vectors.swapaxes(-1, -2))
         self._inv_mahalanobis_mat = tensors.full_mat_mult_diag_mat(eig_vectors, eig_vals_sqrt)
+
+        self.eig_vals = eig_vals
+        self.eig_vectors = eig_vectors
+
+        # # TODO shouldn't we be using below to account for degen
+        # cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
+        # neigh = torch.linalg.matrix_rank(norm.covariance_matrix, hermitian=True).min()
+        # eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
+
+        # S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
+        # S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
+        # norm.batch_shape + (neigh,) + norm.event_shape))
 
         super(MultivariateNormal, self).__init__(batch_shape, event_shape)
 
@@ -56,3 +87,6 @@ class MultivariateNormal(torch.distributions.Distribution):
             self._inv_mahalanobis_mat.diagonal(dim1=-2, dim2=-1).log().sum(-1)
         )
         return -0.5 * (self._event_shape[0] * math.log(2 * math.pi) + M) - half_log_det
+
+    def __getitem__(self, idx):
+        return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eig_vals[idx], self.eig_vectors[idx])
