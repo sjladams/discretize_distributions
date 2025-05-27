@@ -16,7 +16,7 @@ OPTIMAL_1D_GRIDS = utils.pickle_load(pkg_resources.resource_filename(
 def get_optimal_grid_scheme(
     norm: dd_dists.MultivariateNormal,
     num_locs: int
-) -> GridScheme:
+) -> GridScheme: # TODO add domain option ! 
     if norm.batch_shape != torch.Size([]):
         raise ValueError('batching not supported yet')
 
@@ -25,8 +25,8 @@ def get_optimal_grid_scheme(
     grid_config = grid_config[sorting]
 
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
-    grid = Grid(locs_per_dim, rot_mat=norm._inv_mahalanobis_mat, offset=norm.loc)
-    partition = GridPartition.from_grid_of_points(grid)
+    grid_of_locs = Grid(locs_per_dim, rot_mat=norm._inv_mahalanobis_mat, offset=norm.loc)
+    partition = GridPartition.from_grid_of_points(grid_of_locs)
 
     return GridScheme(grid_of_locs, partition)
 

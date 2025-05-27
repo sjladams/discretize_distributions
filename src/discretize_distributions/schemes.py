@@ -301,7 +301,6 @@ class GridScheme:
 
         self.locs = locs
         self.partition = partition
-
     @property
     def ndim(self):
         return self.locs.ndim
