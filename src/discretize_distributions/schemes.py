@@ -271,8 +271,8 @@ class GridPartition:
     @property
     def domain(self):
         return Cell(
-            self._lower_vertices.domain.lower_vertex.min(0).values,
-            self._upper_vertices.domain.upper_vertex.max(0).values,
+            self._lower_vertices.domain.lower_vertex,
+            self._upper_vertices.domain.upper_vertex,
             rot_mat=self.rot_mat,
             offset=self.offset
         )
