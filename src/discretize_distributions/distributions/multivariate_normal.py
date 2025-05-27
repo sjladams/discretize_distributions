@@ -50,8 +50,17 @@ class MultivariateNormal(torch.distributions.Distribution):
             raise ValueError(f"eig_vectors must have shape {batch_shape + event_shape + event_shape}, but got {eig_vectors.shape}")
 
         eig_vals_sqrt = (eig_vals.abs() + PRECISION).sqrt() # ensure numerical stability
-        self._mahalanobis_mat = tensors.diag_mat_mult_full_mat(eig_vals_sqrt.reciprocal(), eig_vectors.swapaxes(-1, -2))
-        self._inv_mahalanobis_mat = tensors.full_mat_mult_diag_mat(eig_vectors, eig_vals_sqrt)
+        covariance_matrix = torch.einsum('ij,jk,ki->ik', eig_vectors, torch.diag_embed(eig_vals), eig_vectors.T)
+        self._mahalanobis_mat = torch.einsum(
+            '...i,...ik->...ik', 
+            eig_vals_sqrt.reciprocal(), 
+            eig_vectors.T
+            )
+        self._inv_mahalanobis_mat = torch.einsum(
+            '...ik,...k->...ik', 
+            eig_vectors, 
+            eig_vals_sqrt
+        )
 
         self.eig_vals = eig_vals
         self.eig_vectors = eig_vectors
