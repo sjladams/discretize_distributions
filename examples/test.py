@@ -41,38 +41,39 @@ def set_axis(ax):
     return ax
 
 if __name__ == "__main__":
-    # mean = torch.tensor([0., 0.])
-    # cov_mat = torch.diag(torch.tensor([1.,5.]))
-    # norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
+    mean = torch.tensor([0., 0.])
+    cov_mat = torch.diag(torch.tensor([1.,5.]))
+    norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
 
-    # ## test discretization of multivariate normal distribution via self constructed grid scheme
-    # grid_locs = dd_schemes.Grid(
-    #     points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)], 
-    #     rot_mat=norm._inv_mahalanobis_mat, 
-    #     offset=norm.mean
-    # )
+    ## test discretization of multivariate normal distribution via self constructed grid scheme
+    grid_locs = dd_schemes.Grid(
+        points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)], 
+        rot_mat=norm.eig_vectors, 
+        scale_mat=torch.diag_embed(norm.eig_vals_sqrt),
+        offset=norm.mean
+    )
 
-    # grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
-    # grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
+    grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
+    grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
 
-    # disc_norm, w2 = dd.discretize(norm, grid_scheme)
+    disc_norm, w2 = dd.discretize(norm, grid_scheme)
 
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, norm)
-    # ax = plot_2d_cat_float(ax, disc_norm)
-    # ax = set_axis(ax)
-    # plt.show()
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, disc_norm)
+    ax = set_axis(ax)
+    plt.show()
 
-    # # test discretization of multivariate normal distribution via grid scheme with optimal grid configuration
-    # optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=10)
+    # test discretization of multivariate normal distribution via grid scheme with optimal grid configuration
+    optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=10)
 
-    # optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
+    optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
 
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, norm)
-    # ax = plot_2d_cat_float(ax, optimal_disc_norm)
-    # ax = set_axis(ax)
-    # plt.show()
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, optimal_disc_norm)
+    ax = set_axis(ax)
+    plt.show()
 
     ## test mixtures (equal covariances, close mean)
     batch_size = torch.Size()

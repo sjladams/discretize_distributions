@@ -69,8 +69,10 @@ def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
         grid_scheme: dd_schemes.GridScheme
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
-    if not torch.allclose(dist._inv_mahalanobis_mat, grid_scheme.partition.rot_mat, atol=TOL):
-        raise ValueError('The partition rotation matrix does not match the distribution\'s inverse mahalanobis matrix.')
+    if not torch.allclose(torch.diag_embed(dist.eig_vals_sqrt), grid_scheme.partition.scale_mat, atol=TOL):
+        raise ValueError('The partition scale matrix does not match the distribution\'s eigenvalues.')
+    if not torch.allclose(dist.eig_vectors, grid_scheme.partition.rot_mat, atol=TOL):
+        raise ValueError('The partition rotation matrix does not match the distribution\'s eigenvectors.')
 
     # set the grid scheme to the distribution reference frame:
     delta = torch.linalg.inv(grid_scheme.partition.rot_mat) @  (grid_scheme.partition.offset - dist.loc) # todo add inv_rot_mat to GridScheme

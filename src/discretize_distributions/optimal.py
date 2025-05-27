@@ -25,7 +25,12 @@ def get_optimal_grid_scheme(
     grid_config = grid_config[sorting]
 
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
-    grid_of_locs = Grid(locs_per_dim, rot_mat=norm._inv_mahalanobis_mat, offset=norm.loc)
+    grid_of_locs = Grid(
+        locs_per_dim, 
+        rot_mat=norm.eig_vectors, 
+        scale_mat=torch.diag_embed(norm.eig_vals_sqrt),
+        offset=norm.loc
+    )
     partition = GridPartition.from_grid_of_points(grid_of_locs)
 
     return GridScheme(grid_of_locs, partition)

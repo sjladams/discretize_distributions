@@ -49,23 +49,12 @@ class MultivariateNormal(torch.distributions.Distribution):
         elif eig_vectors.shape != batch_shape + event_shape + event_shape:
             raise ValueError(f"eig_vectors must have shape {batch_shape + event_shape + event_shape}, but got {eig_vectors.shape}")
 
-        eig_vals_sqrt = (eig_vals.abs() + PRECISION).sqrt() # ensure numerical stability
-        covariance_matrix = torch.einsum('ij,jk,ki->ik', eig_vectors, torch.diag_embed(eig_vals), eig_vectors.T)
-        self._mahalanobis_mat = torch.einsum(
-            '...i,...ik->...ik', 
-            eig_vals_sqrt.reciprocal(), 
-            eig_vectors.T
-            )
-        self._inv_mahalanobis_mat = torch.einsum(
-            '...ik,...k->...ik', 
-            eig_vectors, 
-            eig_vals_sqrt
-        )
-
         self.eig_vals = eig_vals
         self.eig_vectors = eig_vectors
 
         # # TODO shouldn't we be using below to account for degen
+
+        # covariance_matrix = torch.einsum('ij,jk,kl->il', eig_vectors, torch.diag_embed(eig_vals), eig_vectors.T)
         # cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
         # neigh = torch.linalg.matrix_rank(norm.covariance_matrix, hermitian=True).min()
         # eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
@@ -75,6 +64,26 @@ class MultivariateNormal(torch.distributions.Distribution):
         # norm.batch_shape + (neigh,) + norm.event_shape))
 
         super(MultivariateNormal, self).__init__(batch_shape, event_shape)
+
+    @property
+    def eig_vals_sqrt(self):
+        return (self.eig_vals.abs() + PRECISION).sqrt() # ensure numerical stability
+
+    @property
+    def mahalanobis_mat(self):
+        return torch.einsum(
+            '...i,...ik->...ik', 
+            self.eig_vals_sqrt.reciprocal(), 
+            self.eig_vectors.T
+            )
+
+    @property
+    def inv_mahalanobis_mat(self):
+        return torch.einsum(
+            '...ik,...k->...ik', 
+            self.eig_vectors, 
+            self.eig_vals_sqrt
+        )
 
     @property
     def mean(self):
@@ -87,13 +96,13 @@ class MultivariateNormal(torch.distributions.Distribution):
     def rsample(self, sample_shape=torch.Size()):
         shape = self._extended_shape(sample_shape)
         eps = _standard_normal(shape, dtype=self.loc.dtype, device=self.loc.device)
-        return self.loc + _batch_mv(self._inv_mahalanobis_mat, eps)
+        return self.loc + _batch_mv(self.inv_mahalanobis_mat, eps)
 
     def log_prob(self, value):
         diff = value - self.loc
-        M = _batch_mahalanobis(self._inv_mahalanobis_mat, diff)
+        M = _batch_mahalanobis(self.inv_mahalanobis_mat, diff)
         half_log_det = (
-            self._inv_mahalanobis_mat.diagonal(dim1=-2, dim2=-1).log().sum(-1)
+            self.inv_mahalanobis_mat.diagonal(dim1=-2, dim2=-1).log().sum(-1)
         )
         return -0.5 * (self._event_shape[0] * math.log(2 * math.pi) + M) - half_log_det
 
