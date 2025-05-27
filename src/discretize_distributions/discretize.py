@@ -71,13 +71,15 @@ def discretize_multi_norm_using_grid_scheme(
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     if not torch.allclose(dist._inv_mahalanobis_mat, grid_scheme.partition.rot_mat, atol=TOL):
         raise ValueError('The partition rotation matrix does not match the distribution\'s inverse mahalanobis matrix.')
-    if not torch.allclose(dist.mean, grid_scheme.partition.offset, atol=TOL):
-        raise ValueError('The partition offset does not match the distribution\'s mean.')
 
-    probs_per_dim = [
-        utils.cdf(u) - utils.cdf(l) 
-        for l, u in  zip(grid_scheme.partition.lower_vertices_per_dim, grid_scheme.upper_vertices_per_dim)
-    ]
+    # set the grid scheme to the distribution reference frame:
+    delta = torch.linalg.inv(grid_scheme.partition.rot_mat) @  (grid_scheme.partition.offset - dist.loc) # todo add inv_rot_mat to GridScheme
+    locs_per_dim = [elem + delta[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
+    lower_vertices_per_dim = [elem + delta[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
+    upper_vertices_per_dim = [elem + delta[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
+
+    # construct the discretized distribution:
+    probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
     probs = dd_schemes.Grid(probs_per_dim)
 
     disc_dist = dd_dists.CategoricalGrid(grid_scheme.locs, probs)
@@ -85,24 +87,23 @@ def discretize_multi_norm_using_grid_scheme(
 
     # Wasserstein distance error computation:
     trunc_mean_var_per_dim = [
-        utils.compute_mean_var_trunc_norm(l, u) 
-        for l, u in  zip(grid_scheme.lower_vertices_per_dim, grid_scheme.upper_vertices_per_dim)
+        utils.compute_mean_var_trunc_norm(l, u) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)
     ]
     w2_sq_per_dim = [
         ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
-        in zip(grid_scheme.locs_per_dim, trunc_mean_var_per_dim, probs_per_dim, dist.eig_vals)
+        in zip(locs_per_dim, trunc_mean_var_per_dim, probs_per_dim, dist.eig_vals)
     ]
     w2 = torch.stack(w2_sq_per_dim).sum().sqrt()
 
-    # # Alternative computation (check)
+    # # Old alternative computation (kept here for reference):
     # trunc_means = dd_schemes.Grid([m for (m, _) in trunc_mean_var_per_dim])
     # trunc_vars = dd_schemes.Grid([v for (_, v) in trunc_mean_var_per_dim])
+    # grid_locs_dummy = dd_schemes.Grid([l for l in locs_per_dim])
 
-    # w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - grid_scheme.locs.points).pow(2)
+    # w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - grid_locs_dummy.points).pow(2)
     # w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eig_vals)
     # w2_alt = torch.einsum('c,c->', w2_sq_mean_var_alt, probs.points.prod(-1)).sqrt()
-    # w2= w2_alt
 
     print(f"Signature w2: {w2:.4f} / {dist.eig_vals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
-    
+
     return disc_dist, w2
