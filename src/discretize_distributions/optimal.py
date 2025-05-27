@@ -28,7 +28,7 @@ def get_optimal_grid_scheme(
     grid = Grid(locs_per_dim, rot_mat=norm._inv_mahalanobis_mat, offset=norm.loc)
     partition = GridPartition.from_grid_of_points(grid)
 
-    return GridScheme(grid, partition)
+    return GridScheme(grid_of_locs, partition)
 
 
 def get_optimal_grid_config(

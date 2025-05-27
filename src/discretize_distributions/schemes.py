@@ -167,10 +167,6 @@ class Grid:
             rot_mat=self.rot_mat,
             offset=self.offset
         )
-    
-
-def get_full_space_cell(ndim: int) -> Cell:
-    return Cell(torch.full((ndim,), -torch.inf), torch.full((ndim,), torch.inf))
 
 
 class GridPartition:
@@ -209,18 +205,26 @@ class GridPartition:
     def from_grid_of_points(
         grid_of_points: Grid, 
         domain: Optional[Cell] = None
-    ):
+    ): 
         """Computes (lower, upper) vertices of axis-aligned Voronoi cells w.r.t. grid over domain."""
 
         if domain is None:
-            domain = get_full_space_cell(grid_of_points.ndim)
+            domain = create_cell_spanning_Rn(
+                grid_of_points.ndim, 
+                rot_mat=grid_of_points.rot_mat, 
+                offset=grid_of_points.offset
+            )
         else:
             if not torch.allclose(domain.rot_mat, grid_of_points.rot_mat, atol=TOL):
                 raise ValueError("Domain rotation matrix must match the grid rotation matrix")
             if not torch.allclose(domain.offset, grid_of_points.offset, atol=TOL):
                 raise ValueError("Domain offset must match the grid offset.")
+            
+        # This is not an unaovidable check, but simplifies the implementation. To relax this, saturate the vertices.
+        if not check_grid_in_domain(grid_of_points, domain):
+            raise ValueError("Grid is not fully contained within the domain.") 
 
-        lower_vertices_per_dim, upper_vertices_per_dim = [], []
+        lower_vertices_per_dim, upper_vertices_per_dim = [], [] 
         for idx, points in enumerate(grid_of_points.points_per_dim):
             vertices = (points[1:] + points[:-1]) / 2
             lower_vertices_per_dim.append(torch.cat(
@@ -272,6 +276,10 @@ class GridPartition:
             rot_mat=self.rot_mat,
             offset=self.offset
         )
+
+    @property
+    def domain_spanning_Rn(self) -> bool:
+        return self.domain.lower_vertex.eq(-torch.inf).all() and self.domain.upper_vertex.eq(torch.inf).all()
     
     def __getitem__(self, idx):
         return GridPartition(
@@ -286,6 +294,11 @@ class GridScheme:
             locs: Grid,
             partition: GridPartition
     ):
+        if len(locs) != len(partition):
+            raise ValueError("Number of locations must match the number of partitions.")
+        if locs.ndim != partition.ndim:
+            raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
+
         self.locs = locs
         self.partition = partition
 
@@ -332,7 +345,7 @@ class MultiGridScheme:
     ):
         self.grid_schemes = grid_schemes
         self.outer_loc = outer_loc
-        self.domain = domain if domain is not None else get_full_space_cell(grid_schemes[0].ndim)
+        self.domain = domain if domain is not None else create_cell_spanning_Rn(grid_schemes[0].ndim)
 
         if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
             raise ValueError("All grid schemes must have the same number of dimensions.")
@@ -341,3 +354,30 @@ class MultiGridScheme:
 
 class Scheme:
     pass 
+
+
+### --- Utility Functions --- ###
+def create_cell_spanning_Rn(n: int, **kwargs) -> Cell:
+    return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), **kwargs)
+
+def check_grid_in_domain(
+    grid: Grid, 
+    domain: Cell
+) -> bool:
+    """
+    Checks if the grid is fully contained within the domain.
+    """
+    if not torch.allclose(domain.rot_mat, grid.rot_mat, atol=TOL):
+        raise ValueError("Domain rotation matrix must match the grid rotation matrix")
+    if not torch.allclose(domain.offset, grid.offset, atol=TOL):
+        raise ValueError("Domain offset must match the grid offset.")
+    if not len(domain) == 1:
+        raise ValueError("Domain must be a single cell.")
+    
+    for idx in range(grid.ndim):
+        if not torch.all(
+            (grid.points_per_dim[idx] >= domain.lower_vertex[idx]) & 
+            (grid.points_per_dim[idx] <= domain.upper_vertex[idx])
+        ):
+            return False
+    return True

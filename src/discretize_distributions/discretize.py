@@ -13,11 +13,13 @@ __all__ = ['discretize', 'discretize_gmms_the_old_way']
 def discretize_gmms_the_old_way(
     dist: dd_dists.MixtureMultivariateNormal,
     grid_schemes: List[dd_schemes.GridScheme],
-):
+): 
     if not dist.num_components == len(grid_schemes):
         raise ValueError(
             f'Number of components {dist.num_components} does not match number of grid schemes {len(grid_schemes)}.'
         )
+    assert all([elem.partition.domain_spanning_Rn for elem in grid_schemes]), \
+        'All grid schemes must span the full R^n domain.'
     
     probs, locs, w2_sq = [], [], []
     for idx in range(dist.num_components):
