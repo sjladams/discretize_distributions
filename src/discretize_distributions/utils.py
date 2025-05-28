@@ -5,9 +5,6 @@ import math
 from stable_trunc_gaussian import TruncatedGaussian
 from typing import Union, Optional, Tuple
 
-# from xitorch.linalg import symeig
-# from xitorch import LinearOperator
-
 INV_SQRT_2PI = 1 / math.sqrt(2 * math.pi)
 SQRT_PI = math.sqrt(math.pi)
 SQRT_2 = math.sqrt(2)
@@ -74,6 +71,15 @@ def compute_mean_var_trunc_norm(
     variance = (1 + fraction_1 - fraction_2) * scale ** 2
 
     return mean, variance
+
+def get_edges(locs: torch.Tensor):
+    """
+    Find the edges of the Voronoi partition with center at locs
+    :param locs: center of Voronoi partition; Size(nr_locs,)
+    :return: edges
+    """
+    edges = torch.cat((torch.ones(1).fill_(-torch.inf), locs[:-1] + 0.5 * locs.diff(), torch.ones(1).fill_(torch.inf)))
+    return edges
 
 def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor: # TODO remove
     edges = get_edges(locs)
