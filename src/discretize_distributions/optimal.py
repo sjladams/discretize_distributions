@@ -20,9 +20,7 @@ def get_optimal_grid_scheme(
     if norm.batch_shape != torch.Size([]):
         raise ValueError('batching not supported yet')
 
-    sorting = torch.sort(norm.eig_vals, descending=True).indices # TODO move this inside get_optimal_grid_config
-    grid_config = get_optimal_grid_config(eigvals=norm.eig_vals[sorting], num_locs=num_locs)
-    grid_config = grid_config[sorting]
+    grid_config = get_optimal_grid_config(eig_vals=norm.eig_vals, num_locs=num_locs)
 
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
     grid_of_locs = Grid(
@@ -37,7 +35,7 @@ def get_optimal_grid_scheme(
 
 
 def get_optimal_grid_config(
-        eigvals: torch.Tensor, 
+        eig_vals: torch.Tensor,
         num_locs: int
     ) -> torch.Tensor:
     """
@@ -45,19 +43,16 @@ def get_optimal_grid_config(
     an decrease of eigenvalue over the dimensions, i.e., config (d0, d1, .., dn) assumes eig(do)>=eig(d1)>=eig(dn).
     The total number of dimensions included per configuration, equals the maximum number dimensions that can create a
     grid of size signature_points, i.e., equals log2(nr_signature_points).
-    :param eigvals:
+    :param eig_vals:
     :param num_locs: number of discretization points, i.e., size of grid.  per discretized Gaussian.
     :return:
     """
-
-    if not torch.all(eigvals[..., 1:] <= eigvals[..., :-1]):
-        raise ValueError("The last dimension of eigvals must be in descending order.")
-
-    batch_shape = eigvals.shape[:-1]
-    neigh = eigvals.shape[-1]
+    batch_shape = eig_vals.shape[:-1]
+    neigh = eig_vals.shape[-1]
+    eig_vals_sorted, sort_idxs = eig_vals.sort(descending=True)    
 
     if num_locs not in GRID_CONFIGS:
-        if eigvals.unique().numel() == 1:
+        if eig_vals_sorted.unique().numel() == 1:
             opt_config = (torch.ones(batch_shape + (neigh,)) * int(num_locs ** (1 / neigh))).to(torch.int64)
             return opt_config
 
@@ -73,7 +68,7 @@ def get_optimal_grid_config(
         costs = torch.tensor(costs)[..., :neigh] # only select the grids that are relevant for the number of dimensions
         dims_configs = costs.shape[-1]
 
-        objective = torch.einsum('ij,...j->...i', costs, eigvals.sort(descending=True).values[..., :dims_configs])
+        objective = torch.einsum('ij,...j->...i', costs, eig_vals_sorted[..., :dims_configs])
         opt_config_idxs = objective.argmin(dim=-1)
 
         opt_config = [GRID_CONFIGS[num_locs]['configs'][idx] for idx in opt_config_idxs.flatten()]
@@ -82,7 +77,7 @@ def get_optimal_grid_config(
 
     # append grid of size 1 to dimensions that are not yet included in the optimal grid.
     opt_config = torch.cat((opt_config, torch.ones(batch_shape + (neigh - opt_config.shape[-1],)).to(opt_config.dtype)), dim=-1)
-    return opt_config
+    return opt_config[sort_idxs]
 
 
 def get_optimal_grid(grid_config: torch.Tensor) -> Grid:
