@@ -94,7 +94,7 @@ class CategoricalGrid(Distribution):
     ):
         if probs.shape != locs.shape:
             raise ValueError("probs grid shape must match locs grid shape (excluding event dim)")
-        if probs.ndim != locs.ndim:
+        if probs.ndim_support != locs.ndim_support:
             raise ValueError("probs and locs must have the same number of dimensions")
         
         assert torch.allclose(probs.rot_mat, torch.eye(probs.ndim), atol=TOL), "probs grid should have no rotation"
