@@ -52,6 +52,15 @@ def discretize(
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
         if isinstance(scheme, dd_schemes.MultiGridScheme):
             raise NotImplementedError
+            # Outline approach:
+            # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
+
+            for idx in range(len(scheme.grid_schemes)):
+                disc_component, w2_component = discretize(dist, scheme.grid_schemes[idx])
+
+            # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
+
+            # Step 3: combine the results of the discretization of each component and the outer_locs
         elif isinstance(scheme, dd_schemes.GridScheme):
             probs, w2_sq = [], []
             for idx in range(dist.num_components):
