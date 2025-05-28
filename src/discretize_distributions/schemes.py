@@ -12,7 +12,41 @@ from typing import Union, Optional, Sequence, Tuple
 TOL = 1e-8
 
 
-class Cell:
+class Axes:
+    def __init__(
+        self,
+        ndim_support: int,
+        rot_mat: Optional[torch.Tensor] = None, 
+        scales: Optional[torch.Tensor] = None,
+        offset: Optional[torch.Tensor] = None
+    ):
+        self.ndim_support = ndim_support
+        scales = torch.ones(self.ndim_support) if scales is None else scales
+        rot_mat = torch.eye(self.ndim_support) if rot_mat is None else rot_mat
+        self.ndim = rot_mat.shape[-2]
+        offset = torch.zeros(self.ndim) if offset is None else offset
+
+        if rot_mat.shape[-2] != offset.shape[-1]:
+            raise ValueError("Rotation matrix should have the same number of output dimensions as the offset.")
+        if rot_mat.shape[-1] != ndim_support:
+            raise ValueError("Rotation matrix must have the same number of input dimensions as the points per dimension.")
+        if not (scales > 0).all():
+            raise ValueError("Scales must be positive.")
+
+        self.rot_mat = rot_mat
+        self.scales = scales
+        self.offset = offset
+    
+    @property
+    def transform_mat(self):
+        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
+    
+    @property
+    def inv_transform_mat(self):
+        return torch.einsum('i,ij->ij', self.scales.reciprocal(),  self.rot_mat.T)
+
+
+class Cell(Axes):
     """
     A (batched) hyperrectangular cell in ℝⁿ, defined by lower and upper vertices.
     Axis alignment is with respect to a given transformation matrix and offset.
@@ -26,8 +60,6 @@ class Cell:
             scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
     ):
-        self.ndim = lower_vertex.shape[-1]
-
         if upper_vertex.shape != lower_vertex.shape:
             raise ValueError("Lower and upper vertices must have the same shape.")
         if (upper_vertex < lower_vertex).any():
@@ -35,19 +67,13 @@ class Cell:
         
         self.lower_vertex = lower_vertex
         self.upper_vertex = upper_vertex
-        
-        rot_mat = torch.eye(self.ndim) if rot_mat is None else rot_mat
-        scales = torch.ones(self.ndim) if scales is None else scales
-        offset = torch.zeros(self.ndim) if offset is None else offset
 
-        if rot_mat.shape != (self.ndim, self.ndim) or scales.shape != (self.ndim,):
-            raise ValueError("Rotation and scaling matrix must be square and match the number of dimensions.")
-        if offset.shape != (self.ndim,):
-            raise ValueError("Offset must be a vector with the same number of dimensions as the grid.")
-
-        self.rot_mat = rot_mat
-        self.scales = scales
-        self.offset = offset
+        super().__init__(
+            ndim_support=lower_vertex.shape[-1],
+            rot_mat=rot_mat,
+            scales=scales,
+            offset=offset
+        )
     
     @property
     def transform_mat(self):
@@ -66,7 +92,7 @@ class Cell:
         )
 
 
-class Grid:
+class Grid(Axes):
     def __init__(
             self, 
             points_per_dim: Sequence[torch.Tensor], 
@@ -78,24 +104,13 @@ class Grid:
         points_per_dim: list of 1D torch tensors, each of shape (n_i,)
         example: [torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])]
         """
-        self._points_per_dim = points_per_dim
-        
-        rot_mat = torch.eye(self.ndim) if rot_mat is None else rot_mat
-        scales = torch.ones(self.ndim) if scales is None else scales
-        offset = torch.zeros(self.ndim) if offset is None else offset
-        
-        if rot_mat.shape != (self.ndim, self.ndim) or scales.shape != (self.ndim, ):
-            raise ValueError("Rotation and scaling matrix must be square and match the number of dimensions.")
-        if offset.shape != (self.ndim,):
-            raise ValueError("Offset must be a vector with the same number of dimensions as the grid.")
-
-        # TODO check if rot_mat is orthogonal
-        if not (scales> 0).all():
-            raise ValueError("Scales must be positive.")
-
-        self.rot_mat = rot_mat
-        self.scales = scales
-        self.offset = offset
+        self.points_per_dim = points_per_dim
+        super().__init__(
+            ndim_support=len(points_per_dim),  # TODO use same notation for distributions, no?
+            rot_mat=rot_mat,
+            scales=scales,
+            offset=offset
+        )
     
     @staticmethod
     def from_shape(
@@ -112,27 +127,11 @@ class Grid:
         return Grid(points_per_dim, rot_mat=domain.rot_mat, scales=domain.scales, offset=domain.offset)
     
     @property
-    def ndim(self):
-        return len(self.points_per_dim)
-    
-    @property
     def shape(self):
         return torch.Size(tuple(len(p) for p in self.points_per_dim))
     
     def __len__(self):
         return torch.prod(torch.as_tensor(self.shape)).item()
-
-    @property
-    def points_per_dim(self):
-        return self._points_per_dim
-    
-    @property
-    def transform_mat(self):
-        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
-    
-    @property
-    def inv_transform_mat(self):
-        return torch.einsum('i,ij->ij', self.scales.reciprocal(),  self.rot_mat.T)
     
     @property
     def points(self):
@@ -165,13 +164,13 @@ class Grid:
                 idx = idx.unsqueeze(0)
             
             unravelled = torch.unravel_index(idx, self.shape)
-            points = [self.points_per_dim[d][unravelled[d]] for d in range(self.ndim)]
+            points = [self.points_per_dim[d][unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
         return torch.einsum('ij, ...j->...i', self.transform_mat, points) + self.offset
     
     def _select_axes(self, idx: Tuple[slice]):
-        idx = idx + (slice(None),) * (self.ndim - len(idx))
+        idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
         indexed_points = [self.points_per_dim[d][i] for d, i in enumerate(idx)]
         return indexed_points
@@ -180,7 +179,7 @@ class Grid:
         if not isinstance(idx, tuple):
             idx = (idx,)
         
-        idx = idx + (slice(None),) * (self.ndim - len(idx))
+        idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
         return Grid(
             self._select_axes(idx),
@@ -190,7 +189,7 @@ class Grid:
         )
 
 
-class GridPartition:
+class GridPartition(Axes):
     def __init__(
             self, 
             lower_vertices: Grid, 
@@ -203,6 +202,12 @@ class GridPartition:
         
         self._lower_vertices = lower_vertices
         self._upper_vertices = upper_vertices
+        super().__init__(
+            ndim_support=lower_vertices.ndim_support,
+            rot_mat=lower_vertices.rot_mat,
+            scales=lower_vertices.scales,
+            offset=lower_vertices.offset
+        )
     
     @staticmethod
     def from_vertices_per_dim(
@@ -266,10 +271,6 @@ class GridPartition:
             scales=grid_of_points.scales,
             offset=grid_of_points.offset
         )
-
-    @property
-    def ndim(self):
-        return self._lower_vertices.ndim
     
     @property
     def shape(self):
@@ -282,26 +283,6 @@ class GridPartition:
     @property
     def upper_vertices_per_dim(self):
         return self._upper_vertices.points_per_dim
-    
-    @property
-    def rot_mat(self):
-        return self._lower_vertices.rot_mat
-    
-    @property
-    def scales(self):
-        return self._lower_vertices.scales
-    
-    @property
-    def transform_mat(self):
-        return self._lower_vertices.transform_mat
-    
-    @property
-    def inv_transform_mat(self):
-        return self._lower_vertices.inv_transform_mat
-    
-    @property
-    def offset(self):
-        return self._lower_vertices.offset
     
     def __len__(self):
         return len(self._lower_vertices)
@@ -340,6 +321,7 @@ class GridScheme:
 
         self.locs = locs
         self.partition = partition
+        
     @property
     def ndim(self):
         return self.locs.ndim
