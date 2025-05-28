@@ -237,7 +237,7 @@ class GridPartition(Axes):
 
         if domain is None:
             domain = create_cell_spanning_Rn(
-                grid_of_points.ndim, 
+                grid_of_points.ndim_support, 
                 rot_mat=grid_of_points.rot_mat, 
                 scales=grid_of_points.scales,
                 offset=grid_of_points.offset
@@ -396,7 +396,7 @@ def check_grid_in_domain(
     if not len(domain) == 1:
         raise ValueError("Domain must be a single cell.")
     
-    for idx in range(grid.ndim):
+    for idx in range(grid.ndim_support):
         if not torch.all(
             (grid.points_per_dim[idx] >= domain.lower_vertex[idx]) & 
             (grid.points_per_dim[idx] <= domain.upper_vertex[idx])
