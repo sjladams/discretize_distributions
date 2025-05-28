@@ -50,8 +50,8 @@ if __name__ == "__main__":
     ## via self constructed grid scheme
     grid_locs = dd_schemes.Grid(
         points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)], 
-        rot_mat=norm.eig_vectors, 
-        scales=norm.eig_vals_sqrt,
+        rot_mat=norm.eigvecs, 
+        scales=norm.eigvals_sqrt,
         offset=norm.mean
     )
 
@@ -151,8 +151,8 @@ if __name__ == "__main__":
     #     lower_vertex=torch.tensor([-1., -1.]),
     #     upper_vertex=torch.tensor([1., 1.]),
     #     offset=gmm.component_distribution[i].loc,
-    #     rot_mat= gmm.component_distribution[i].eig_vectors,
-    #     scales=gmm.component_distribution[i].eig_vals_sqrt
+    #     rot_mat= gmm.component_distribution[i].eigvecs,
+    #     scales=gmm.component_distribution[i].eigvals_sqrt
     # )
     # grid_scheme = dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10, domain=domain)
 

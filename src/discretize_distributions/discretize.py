@@ -90,11 +90,11 @@ def discretize_multi_norm_using_grid_scheme(
     # althought the eigenbasis is shared, there might be 90-degree rotations, so we need to account for te relative rates
     partition_scales_rearanged = torch.einsum(
         '...ij,...jk,...k->...i', 
-        dist.eig_vectors.T, 
+        dist.eigvecs.T, 
         grid_scheme.partition.rot_mat, 
         grid_scheme.partition.scales
     )
-    relative_scales = partition_scales_rearanged / dist.eig_vals_sqrt
+    relative_scales = partition_scales_rearanged / dist.eigvals_sqrt
     locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
     lower_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
     upper_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
@@ -112,7 +112,7 @@ def discretize_multi_norm_using_grid_scheme(
     ]
     w2_sq_per_dim = torch.stack([
         ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
-        in zip(locs_per_dim, trunc_mean_var_per_dim, probs_per_dim, dist.eig_vals)
+        in zip(locs_per_dim, trunc_mean_var_per_dim, probs_per_dim, dist.eigvals)
     ])
     w2 = w2_sq_per_dim.sum().sqrt()
 
@@ -122,11 +122,11 @@ def discretize_multi_norm_using_grid_scheme(
     # grid_locs_dummy = dd_schemes.Grid([l for l in locs_per_dim])
 
     # w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - grid_locs_dummy.points).pow(2)
-    # w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eig_vals)
+    # w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eigvals)
     # w2_alt = torch.einsum('c,c->', w2_sq_mean_var_alt, probs.points.prod(-1)).sqrt()
 
     assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
 
-    print(f"Signature w2: {w2:.4f} / {dist.eig_vals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
+    print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
     return disc_dist, w2

@@ -24,8 +24,8 @@ class MultivariateNormal(torch.distributions.Distribution):
             self, 
             loc: torch.Tensor, 
             covariance_matrix: torch.Tensor, 
-            eig_vals: Optional[torch.Tensor] = None, 
-            eig_vectors: Optional[torch.Tensor] = None,
+            eigvals: Optional[torch.Tensor] = None, 
+            eigvecs: Optional[torch.Tensor] = None,
     ):
         if loc.dim() < 1:
             raise ValueError("loc must be at least one-dimensional.")
@@ -40,25 +40,25 @@ class MultivariateNormal(torch.distributions.Distribution):
 
         self.is_covariance_matrix_diagonal = tensors.is_mat_diag(self.covariance_matrix)
 
-        if eig_vals is None or eig_vectors is None:
+        if eigvals is None or eigvecs is None:
             # (alternatively, one could use the Cholesky decomposition to construct the mahalanobis transformation matrix)
-            eig_vals, eig_vectors = tensors.eigh(self.covariance_matrix)
-            event_shape_support = eig_vals.shape[-1:]
+            eigvals, eigvecs = tensors.eigh(self.covariance_matrix)
+            event_shape_support = eigvals.shape[-1:]
             # # TODO check if the transformation matrices work for possibly degenerative (spd) covariance matrices. We previously explicitly used this:
             # # Note that in this case the mahalanobis also changes to:
             # S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
             # S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
             # norm.batch_shape + (neigh,) + norm.event_shape))
         else:
-            event_shape_support = torch.broadcast_shapes(eig_vals.shape[-1:], eig_vectors.shape[-1:])
-            eig_vals = eig_vals.expand(batch_shape + event_shape_support)
-            eig_vectors = eig_vectors.expand(batch_shape + event_shape + event_shape)
+            event_shape_support = torch.broadcast_shapes(eigvals.shape[-1:], eigvecs.shape[-1:])
+            eigvals = eigvals.expand(batch_shape + event_shape_support)
+            eigvecs = eigvecs.expand(batch_shape + event_shape + event_shape)
 
-        if (eig_vals < - TOL).any() or not tensors.is_sym(covariance_matrix, atol=TOL):
+        if (eigvals < - TOL).any() or not tensors.is_sym(covariance_matrix, atol=TOL):
             raise ValueError("covariance matrix is not positive semi-definite")
 
-        self.eig_vals = eig_vals
-        self.eig_vectors = eig_vectors
+        self.eigvals = eigvals
+        self.eigvecs = eigvecs
         self.event_shape_support = event_shape_support
         super(MultivariateNormal, self).__init__(batch_shape, event_shape)
 
@@ -71,23 +71,23 @@ class MultivariateNormal(torch.distributions.Distribution):
         return self.event_shape_support[0]
 
     @property
-    def eig_vals_sqrt(self):
-        return (self.eig_vals.abs() + PRECISION).sqrt() # ensure numerical stability
+    def eigvals_sqrt(self):
+        return (self.eigvals.abs() + PRECISION).sqrt() # ensure numerical stability
 
     @property
     def mahalanobis_mat(self):
         return torch.einsum(
             '...i,...ik->...ik', 
-            self.eig_vals_sqrt.reciprocal(), 
-            self.eig_vectors.T
+            self.eigvals_sqrt.reciprocal(), 
+            self.eigvecs.T
             )
 
     @property
     def inv_mahalanobis_mat(self):
         return torch.einsum(
             '...ik,...k->...ik', 
-            self.eig_vectors, 
-            self.eig_vals_sqrt
+            self.eigvecs, 
+            self.eigvals_sqrt
         )
 
     @property
@@ -116,7 +116,7 @@ class MultivariateNormal(torch.distributions.Distribution):
         return -0.5 * (self._event_shape[0] * math.log(2 * math.pi) + M) - half_log_det
 
     def __getitem__(self, idx):
-        return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eig_vals[idx], self.eig_vectors[idx])
+        return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eigvals[idx], self.eigvecs[idx])
 
     def _extended_shape(self, sample_shape: torch.Size = torch.Size()) -> torch.Size:
         if not isinstance(sample_shape, torch.Size):
