@@ -106,7 +106,7 @@ class Grid(Axes):
         """
         self.points_per_dim = points_per_dim
         super().__init__(
-            ndim_support=len(points_per_dim),  # TODO use same notation for distributions, no?
+            ndim_support=len(points_per_dim),
             rot_mat=rot_mat,
             scales=scales,
             offset=offset
@@ -321,7 +321,7 @@ class GridScheme:
 
         self.locs = locs
         self.partition = partition
-        
+
     @property
     def ndim(self):
         return self.locs.ndim
