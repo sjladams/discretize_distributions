@@ -34,6 +34,7 @@ class MultivariateNormal(torch.distributions.Distribution):
         
         batch_shape = torch.broadcast_shapes(covariance_matrix.shape[:-2], loc.shape[:-1])
         event_shape = torch.broadcast_shapes(loc.shape[-1:], covariance_matrix.shape[-1:])
+
         self.covariance_matrix = covariance_matrix.expand(batch_shape + event_shape + event_shape)
         self.loc = loc.expand(batch_shape + event_shape)
 
@@ -42,23 +43,32 @@ class MultivariateNormal(torch.distributions.Distribution):
         if eig_vals is None or eig_vectors is None:
             # (alternatively, one could use the Cholesky decomposition to construct the mahalanobis transformation matrix)
             eig_vals, eig_vectors = tensors.eigh(self.covariance_matrix)
-
+            event_shape_support = eig_vals.shape[-1:]
             # # TODO check if the transformation matrices work for possibly degenerative (spd) covariance matrices. We previously explicitly used this:
             # # Note that in this case the mahalanobis also changes to:
             # S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
             # S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
             # norm.batch_shape + (neigh,) + norm.event_shape))
-        elif eig_vals.shape != batch_shape + event_shape:
-            raise ValueError(f"eig_vals must have shape {batch_shape + event_shape}, but got {eig_vals.shape}")
-        elif eig_vectors.shape != batch_shape + event_shape + event_shape:
-            raise ValueError(f"eig_vectors must have shape {batch_shape + event_shape + event_shape}, but got {eig_vectors.shape}")
-        elif (eig_vals < - TOL).any() or not tensors.is_sym(covariance_matrix, atol=TOL):
+        else:
+            event_shape_support = torch.broadcast_shapes(eig_vals.shape[-1:], eig_vectors.shape[-1:])
+            eig_vals = eig_vals.expand(batch_shape + event_shape_support)
+            eig_vectors = eig_vectors.expand(batch_shape + event_shape + event_shape)
+
+        if (eig_vals < - TOL).any() or not tensors.is_sym(covariance_matrix, atol=TOL):
             raise ValueError("covariance matrix is not positive semi-definite")
 
         self.eig_vals = eig_vals
-        self.eig_vectors = eig_vectors        
-
+        self.eig_vectors = eig_vectors
+        self.event_shape_support = event_shape_support
         super(MultivariateNormal, self).__init__(batch_shape, event_shape)
+
+    @property
+    def ndim(self):
+        assert self.event_shape[0]
+
+    @property
+    def ndim_support(self):
+        return self.event_shape_support[0]
 
     @property
     def eig_vals_sqrt(self):
@@ -94,6 +104,10 @@ class MultivariateNormal(torch.distributions.Distribution):
         return self.loc + _batch_mv(self.inv_mahalanobis_mat, eps)
 
     def log_prob(self, value):
+        if self.event_shape != self.event_shape_support:
+            raise NotImplementedError(
+                "Log probability is not implemented for the degenerate case."
+            )
         diff = value - self.loc
         M = _batch_mahalanobis(self.inv_mahalanobis_mat, diff)
         half_log_det = (
@@ -103,3 +117,8 @@ class MultivariateNormal(torch.distributions.Distribution):
 
     def __getitem__(self, idx):
         return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eig_vals[idx], self.eig_vectors[idx])
+
+    def _extended_shape(self, sample_shape: torch.Size = torch.Size()) -> torch.Size:
+        if not isinstance(sample_shape, torch.Size):
+            sample_shape = torch.Size(sample_shape)
+        return torch.Size(sample_shape + self._batch_shape + self.event_shape_support)
