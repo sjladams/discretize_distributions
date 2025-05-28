@@ -82,7 +82,7 @@ def get_edges(locs: torch.Tensor):
     edges = torch.cat((torch.ones(1).fill_(-torch.inf), locs[:-1] + 0.5 * locs.diff(), torch.ones(1).fill_(torch.inf)))
     return edges
 
-def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor: # TODO remove
+def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
     print('TO BE DEPRECATED!')
     edges = get_edges(locs)
 

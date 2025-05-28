@@ -80,7 +80,8 @@ def get_optimal_grid_config(
     return opt_config[sort_idxs]
 
 
-def get_optimal_grid(grid_config: torch.Tensor) -> Grid:
+### --- Backup (TODO remove) --------------------------------------------------------------------------------------- ###
+def get_optimal_grid(grid_config: torch.Tensor, **kwargs) -> dd_schemes.Grid:
     default_grid_size = grid_config.prod(-1).max()
     attributes = ['locs', 'probs', 'trunc_mean', 'trunc_var', 'lower_edges', 'upper_edges']
     grids = batch_handler_get_nd_dim_grids_from_optimal_1d_grid(grid_config, attributes,
@@ -89,9 +90,6 @@ def get_optimal_grid(grid_config: torch.Tensor) -> Grid:
     probs = grids['probs'].prod(-1)  # Calculate product across the last dimension
     return grids['locs'], probs, grids['trunc_mean'], grids['trunc_var']
 
-
-
-### --- Batched versions ------------------------------------------------------------------------------------------- ###
 def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor,
                                                         attributes: Union[list, str],
                                                         **kwargs) -> dict:
