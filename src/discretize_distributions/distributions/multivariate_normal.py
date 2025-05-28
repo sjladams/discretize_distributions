@@ -10,6 +10,7 @@ from torch.distributions.multivariate_normal import _batch_mv, _batch_mahalanobi
 __all__ = ['MultivariateNormal']
 
 PRECISION = torch.finfo(torch.float32).eps
+TOL = 1e-8
 
 class MultivariateNormal(torch.distributions.Distribution):
     """
@@ -30,9 +31,7 @@ class MultivariateNormal(torch.distributions.Distribution):
             raise ValueError("loc must be at least one-dimensional.")
         if covariance_matrix.dim() < 2:
             raise ValueError("covariance_matrix must be at least two-dimensional, with optional leading batch dimensions")
-
-        assert tensors.is_sym(covariance_matrix)
-
+        
         batch_shape = torch.broadcast_shapes(covariance_matrix.shape[:-2], loc.shape[:-1])
         event_shape = torch.broadcast_shapes(loc.shape[-1:], covariance_matrix.shape[-1:])
         self.covariance_matrix = covariance_matrix.expand(batch_shape + event_shape + event_shape)
@@ -40,28 +39,28 @@ class MultivariateNormal(torch.distributions.Distribution):
 
         self.is_covariance_matrix_diagonal = tensors.is_mat_diag(self.covariance_matrix)
 
-        # Account for possibly degenerative (spd) covariance matrices
-        # (alternatively, one could use the Cholesky decomposition to construct the mahalanobis transformation matrix)
         if eig_vals is None or eig_vectors is None:
+            # (alternatively, one could use the Cholesky decomposition to construct the mahalanobis transformation matrix)
             eig_vals, eig_vectors = tensors.eigh(self.covariance_matrix)
+
+            # # TODO account for possibly degenerative (spd) covariance matrices, using:
+            # cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
+            # neigh = torch.linalg.matrix_rank(norm.covariance_matrix, hermitian=True).min()
+            # eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
+
+            # # Note that in this case the mahalanobis also changes to:
+            # S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
+            # S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
+            # norm.batch_shape + (neigh,) + norm.event_shape))
         elif eig_vals.shape != batch_shape + event_shape:
             raise ValueError(f"eig_vals must have shape {batch_shape + event_shape}, but got {eig_vals.shape}")
         elif eig_vectors.shape != batch_shape + event_shape + event_shape:
             raise ValueError(f"eig_vectors must have shape {batch_shape + event_shape + event_shape}, but got {eig_vectors.shape}")
+        elif (eig_vals < - TOL).any() or not tensors.is_sym(covariance_matrix, atol=TOL):
+            raise ValueError("covariance matrix is not positive semi-definite")
 
         self.eig_vals = eig_vals
-        self.eig_vectors = eig_vectors
-
-        # # TODO shouldn't we be using below to account for degen
-
-        # covariance_matrix = torch.einsum('ij,jk,kl->il', eig_vectors, torch.diag_embed(eig_vals), eig_vectors.T)
-        # cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
-        # neigh = torch.linalg.matrix_rank(norm.covariance_matrix, hermitian=True).min()
-        # eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
-
-        # S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
-        # S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
-        # norm.batch_shape + (neigh,) + norm.event_shape))
+        self.eig_vectors = eig_vectors        
 
         super(MultivariateNormal, self).__init__(batch_shape, event_shape)
 

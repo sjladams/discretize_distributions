@@ -17,7 +17,7 @@ TOL = 1e-8
 class Cell:
     """
     A (batched) hyperrectangular cell in ℝⁿ, defined by lower and upper vertices.
-    Axis alignment is with respect to a given rotation matrix and offset.
+    Axis alignment is with respect to a given transformation matrix and offset.
     Supports batching: lower_vertex and upper_vertex shape [ndim] or [batch, ndim].
     """
     def __init__(
@@ -25,7 +25,7 @@ class Cell:
             lower_vertex: torch.Tensor,
             upper_vertex: torch.Tensor, 
             rot_mat: Optional[torch.Tensor] = None, 
-            scale_mat: Optional[torch.Tensor] = None,
+            scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
     ):
         self.ndim = lower_vertex.shape[-1]
@@ -39,16 +39,16 @@ class Cell:
         self.upper_vertex = upper_vertex
         
         rot_mat = torch.eye(self.ndim) if rot_mat is None else rot_mat
-        scale_mat = torch.eye(self.ndim) if scale_mat is None else scale_mat
+        scales = torch.ones(self.ndim) if scales is None else scales
         offset = torch.zeros(self.ndim) if offset is None else offset
 
-        if rot_mat.shape != (self.ndim, self.ndim) or scale_mat.shape != (self.ndim, self.ndim):
+        if rot_mat.shape != (self.ndim, self.ndim) or scales.shape != (self.ndim,):
             raise ValueError("Rotation and scaling matrix must be square and match the number of dimensions.")
         if offset.shape != (self.ndim,):
             raise ValueError("Offset must be a vector with the same number of dimensions as the grid.")
 
         self.rot_mat = rot_mat
-        self.scale_mat = scale_mat
+        self.scales = scales
         self.offset = offset
     
     def __len__(self):
@@ -59,7 +59,7 @@ class Cell:
             self.lower_vertex[idx], 
             self.upper_vertex[idx], 
             rot_mat=self.rot_mat,
-            scale_mat=self.scale_mat, 
+            scales=self.scales, 
             offset=self.offset
         )
 
@@ -69,7 +69,7 @@ class Grid:
             self, 
             points_per_dim: Sequence[torch.Tensor], 
             rot_mat: Optional[torch.Tensor] = None, 
-            scale_mat: Optional[torch.Tensor] = None,
+            scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
     ):
         """
@@ -79,16 +79,20 @@ class Grid:
         self._points_per_dim = points_per_dim
         
         rot_mat = torch.eye(self.ndim) if rot_mat is None else rot_mat
-        scale_mat = torch.eye(self.ndim) if scale_mat is None else scale_mat
+        scales = torch.ones(self.ndim) if scales is None else scales
         offset = torch.zeros(self.ndim) if offset is None else offset
         
-        if rot_mat.shape != (self.ndim, self.ndim) or scale_mat.shape != (self.ndim, self.ndim):
+        if rot_mat.shape != (self.ndim, self.ndim) or scales.shape != (self.ndim, ):
             raise ValueError("Rotation and scaling matrix must be square and match the number of dimensions.")
         if offset.shape != (self.ndim,):
             raise ValueError("Offset must be a vector with the same number of dimensions as the grid.")
 
+        # TODO check if rot_mat is orthogonal
+        if not (scales> 0).all():
+            raise ValueError("Scales must be positive.")
+
         self.rot_mat = rot_mat
-        self.scale_mat = scale_mat
+        self.scales = scales
         self.offset = offset
     
     @staticmethod
@@ -123,7 +127,11 @@ class Grid:
     
     @property
     def transform_mat(self):
-        return self.rot_mat @ self.scale_mat
+        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
+    
+    @property
+    def inv_transform_mat(self):
+        return torch.einsum('i,ij->ij', self.scales.reciprocal(),  self.rot_mat.T)
     
     @property
     def points(self):
@@ -135,7 +143,7 @@ class Grid:
             torch.stack([p.min() for p in self.points_per_dim]),
             torch.stack([p.max() for p in self.points_per_dim]),
             rot_mat=self.rot_mat,
-            scale_mat=self.scale_mat,
+            scales=self.scales,
             offset=self.offset
         )
     
@@ -176,7 +184,7 @@ class Grid:
         return Grid(
             self._select_axes(idx),
             rot_mat=self.rot_mat,
-            scale_mat=self.scale_mat,
+            scales=self.scales,
             offset=self.offset
         )
 
@@ -200,7 +208,7 @@ class GridPartition:
             lower_vertices_per_dim: Sequence[torch.Tensor], 
             upper_vertices_per_dim: Sequence[torch.Tensor], 
             rot_mat: Optional[torch.Tensor] = None, 
-            scale_mat: Optional[torch.Tensor] = None,
+            scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
     ):
         for idx, (l, u) in enumerate(zip(lower_vertices_per_dim, upper_vertices_per_dim)):
@@ -210,8 +218,8 @@ class GridPartition:
                 raise ValueError(f"Upper vertices at index {idx} must be greater than or equal to lower vertices.")
 
         return GridPartition(
-            Grid(lower_vertices_per_dim, rot_mat=rot_mat, scale_mat=scale_mat, offset=offset),
-            Grid(upper_vertices_per_dim, rot_mat=rot_mat, scale_mat=scale_mat, offset=offset)
+            Grid(lower_vertices_per_dim, rot_mat=rot_mat, scales=scales, offset=offset),
+            Grid(upper_vertices_per_dim, rot_mat=rot_mat, scales=scales, offset=offset)
         )
 
     @staticmethod
@@ -225,13 +233,13 @@ class GridPartition:
             domain = create_cell_spanning_Rn(
                 grid_of_points.ndim, 
                 rot_mat=grid_of_points.rot_mat, 
-                scale_mat=grid_of_points.scale_mat,
+                scales=grid_of_points.scales,
                 offset=grid_of_points.offset
             )
         else:
             if not torch.allclose(domain.rot_mat, grid_of_points.rot_mat, atol=TOL):
                 raise ValueError("Domain rotation matrix must match the grid rotation matrix")
-            if not torch.allclose(domain.scale_mat, grid_of_points.scale_mat, atol=TOL):
+            if not torch.allclose(domain.scales, grid_of_points.scales, atol=TOL):
                 raise ValueError("Domain scale matrix must match the grid scale matrix")
             if not torch.allclose(domain.offset, grid_of_points.offset, atol=TOL):
                 raise ValueError("Domain offset must match the grid offset.")
@@ -254,7 +262,7 @@ class GridPartition:
             lower_vertices_per_dim, 
             upper_vertices_per_dim, 
             rot_mat=grid_of_points.rot_mat, 
-            scale_mat=grid_of_points.scale_mat,
+            scales=grid_of_points.scales,
             offset=grid_of_points.offset
         )
 
@@ -279,12 +287,16 @@ class GridPartition:
         return self._lower_vertices.rot_mat
     
     @property
-    def scale_mat(self):
-        return self._lower_vertices.scale_mat
+    def scales(self):
+        return self._lower_vertices.scales
     
     @property
     def transform_mat(self):
         return self._lower_vertices.transform_mat
+    
+    @property
+    def inv_transform_mat(self):
+        return self._lower_vertices.inv_transform_mat
     
     @property
     def offset(self):
@@ -299,7 +311,7 @@ class GridPartition:
             self._lower_vertices.domain.lower_vertex,
             self._upper_vertices.domain.upper_vertex,
             rot_mat=self.rot_mat,
-            scale_mat=self.scale_mat,
+            scales=self.scales,
             offset=self.offset
         )
 
@@ -394,7 +406,7 @@ def check_grid_in_domain(
     """
     if not torch.allclose(domain.rot_mat, grid.rot_mat, atol=TOL):
         raise ValueError("Domain rotation matrix must match the grid rotation matrix")
-    if not torch.allclose(domain.scale_mat, grid.scale_mat, atol=TOL):
+    if not torch.allclose(domain.scales, grid.scales, atol=TOL):
         raise ValueError("Domain scale matrix must match the grid scale matrix")
     if not torch.allclose(domain.offset, grid.offset, atol=TOL):
         raise ValueError("Domain offset must match the grid offset.")

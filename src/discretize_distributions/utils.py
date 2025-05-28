@@ -19,6 +19,11 @@ SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 REPLACE_INF = 1e10
 
 
+def have_common_eigenbasis(Sigma1, Sigma2, atol=1e-6):
+    """Check whether two symmetric matrices share an eigenbasis by testing if they commute."""
+    comm = torch.einsum('...ij,...jk->...ik', Sigma1, Sigma2) - torch.einsum('...ij,...jk->...ik', Sigma2, Sigma1)
+    return torch.allclose(comm, torch.zeros_like(comm), atol=atol)
+
 def cdf(x: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
     """
     cdf normal distribution

@@ -69,16 +69,26 @@ def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
         grid_scheme: dd_schemes.GridScheme
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
-    if not torch.allclose(torch.diag_embed(dist.eig_vals_sqrt), grid_scheme.partition.scale_mat, atol=TOL):
-        raise ValueError('The partition scale matrix does not match the distribution\'s eigenvalues.')
-    if not torch.allclose(dist.eig_vectors, grid_scheme.partition.rot_mat, atol=TOL):
-        raise ValueError('The partition rotation matrix does not match the distribution\'s eigenvectors.')
+    if not utils.have_common_eigenbasis(
+        dist.covariance_matrix, 
+        torch.einsum('...ij,...jk->...ik', grid_scheme.partition.transform_mat, grid_scheme.partition.transform_mat.T),
+        atol=TOL
+    ):
+        raise ValueError('The distribution and the grid scheme do not share a common eigenbasis.')
 
     # set the grid scheme to the distribution reference frame:
-    delta = torch.linalg.inv(grid_scheme.partition.rot_mat) @  (grid_scheme.partition.offset - dist.loc) # todo add inv_rot_mat to GridScheme
-    locs_per_dim = [elem + delta[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
-    lower_vertices_per_dim = [elem + delta[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
-    upper_vertices_per_dim = [elem + delta[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
+    delta = grid_scheme.partition.inv_transform_mat @ (grid_scheme.partition.offset - dist.loc)
+    # althought the eigenbasis is shared, there might be 90-degree rotations, so we need to account for te relative rates
+    partition_scales_rearanged = torch.einsum(
+        '...ij,...jk,...k->...i', 
+        dist.eig_vectors.T, 
+        grid_scheme.partition.rot_mat, 
+        grid_scheme.partition.scales
+    )
+    relative_scales = partition_scales_rearanged / dist.eig_vals_sqrt
+    locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
+    lower_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
+    upper_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
@@ -91,11 +101,11 @@ def discretize_multi_norm_using_grid_scheme(
     trunc_mean_var_per_dim = [
         utils.compute_mean_var_trunc_norm(l, u) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)
     ]
-    w2_sq_per_dim = [
+    w2_sq_per_dim = torch.stack([
         ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
         in zip(locs_per_dim, trunc_mean_var_per_dim, probs_per_dim, dist.eig_vals)
-    ]
-    w2 = torch.stack(w2_sq_per_dim).sum().sqrt()
+    ])
+    w2 = w2_sq_per_dim.sum().sqrt()
 
     # # Old alternative computation (kept here for reference):
     # trunc_means = dd_schemes.Grid([m for (m, _) in trunc_mean_var_per_dim])
@@ -105,6 +115,8 @@ def discretize_multi_norm_using_grid_scheme(
     # w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - grid_locs_dummy.points).pow(2)
     # w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eig_vals)
     # w2_alt = torch.einsum('c,c->', w2_sq_mean_var_alt, probs.points.prod(-1)).sqrt()
+
+    assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
 
     print(f"Signature w2: {w2:.4f} / {dist.eig_vals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
