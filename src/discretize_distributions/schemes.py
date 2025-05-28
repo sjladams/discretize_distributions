@@ -1,9 +1,7 @@
 import torch
 from typing import Union, Optional, Sequence, Tuple
 
-# TODO: rename file
 # TODO: batchify, robustify, add test, doctring
-# TODO: test offsetting
 # TODO: create toch.nn.Modules from Cell, Grid, GridPartition, GridQuantization
 # for i, axis in enumerate(points_per_dim):
 #     self.register_parameter(f"axis_{i}", torch.nn.Parameter(axis, requires_grad=False))
@@ -51,6 +49,10 @@ class Cell:
         self.scales = scales
         self.offset = offset
     
+    @property
+    def transform_mat(self):
+        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
+
     def __len__(self):
         return 1 if self.lower_vertex.ndim == 1 else self.lower_vertex.shape[0]
 
@@ -98,8 +100,7 @@ class Grid:
     @staticmethod
     def from_shape(
         shape: torch.Size, 
-        domain: Cell, 
-        *args, **kwargs
+        domain: Cell
     ):
         if len(shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
@@ -108,7 +109,7 @@ class Grid:
             torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], shape[dim]) 
             for dim in range(len(shape))
         ]
-        return Grid(points_per_dim, *args, **kwargs)
+        return Grid(points_per_dim, rot_mat=domain.rot_mat, scales=domain.scales, offset=domain.offset)
     
     @property
     def ndim(self):

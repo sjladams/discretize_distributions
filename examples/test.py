@@ -130,6 +130,16 @@ if __name__ == "__main__":
 
     ### --- Outline New Approach ----------------------------------------------------------------------------------- ### 
 
+    # Example of optimal grid w.r.t. to the i-th component of the gmm restricted to a domain:
+    domain = dd_schemes.Cell(
+        lower_vertex=torch.tensor([-1., -1.]),
+        upper_vertex=torch.tensor([1., 1.]),
+        offset=gmm.component_distribution[i].loc,
+        rot_mat= gmm.component_distribution[i].eig_vectors,
+        scales=gmm.component_distribution[i].eig_vals_sqrt
+    )
+    grid_scheme = dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10, domain=domain)
+
     # Given a GMM with all elements having the same eigenbasis for the covariance matrix (start with diagonal covariance matrices):
     # Step 1: Generate a MultiGridScheme for the GMM:
     # 

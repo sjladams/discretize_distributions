@@ -1,10 +1,10 @@
-from typing import Union
+from typing import Union, Optional
 import pkg_resources
 import discretize_distributions.utils as utils
 import os
 import torch
 
-from discretize_distributions.schemes import Grid, GridPartition, GridScheme
+import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 
 GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
@@ -12,26 +12,43 @@ GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
 OPTIMAL_1D_GRIDS = utils.pickle_load(pkg_resources.resource_filename(
     __name__, f'data{os.sep}lookup_opt_grid_uni_stand_normal.pickle'))
 
+TOL = 1e-8
 
 def get_optimal_grid_scheme(
     norm: dd_dists.MultivariateNormal,
-    num_locs: int
-) -> GridScheme: # TODO add domain option ! 
+    num_locs: int, 
+    domain: Optional[dd_schemes.Cell] = None
+) -> dd_schemes.GridScheme:
     if norm.batch_shape != torch.Size([]):
         raise ValueError('batching not supported yet')
 
     grid_config = get_optimal_grid_config(eig_vals=norm.eig_vals, num_locs=num_locs)
-
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
-    grid_of_locs = Grid(
+
+    if domain is not None:
+        if not torch.allclose(norm.inv_mahalanobis_mat, domain.transform_mat, atol=TOL):
+            raise ValueError('The domain transform matrix does not match the inverse mahalanobis matrix of the ' \
+            'distribution.')
+        if not torch.allclose(norm.loc, domain.offset, atol=TOL):
+            raise ValueError('The domain offset does not match the location of the distribution.')
+        
+        locs_per_dim = [
+            c[(c >= l) & (c <= u)] for c, l, u in 
+            zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
+        ]
+
+    grid_of_locs = dd_schemes.Grid(
         locs_per_dim, 
         rot_mat=norm.eig_vectors, 
         scales=norm.eig_vals_sqrt,
         offset=norm.loc
     )
-    partition = GridPartition.from_grid_of_points(grid_of_locs)
 
-    return GridScheme(grid_of_locs, partition)
+    print(f'Requested grid size: {num_locs}, realized grid size over domain: {len(grid_of_locs)}')
+
+    partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
+
+    return dd_schemes.GridScheme(grid_of_locs, partition)
 
 
 def get_optimal_grid_config(
