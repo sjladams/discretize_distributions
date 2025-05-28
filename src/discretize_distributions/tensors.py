@@ -5,6 +5,9 @@ from xitorch import LinearOperator
 
 PRECISION = torch.finfo(torch.float32).eps
 
+# TODO clean up
+
+
 def handle_nan_inf(stats: tuple):
     new_stats = tuple()
     for elem in stats:
@@ -13,24 +16,26 @@ def handle_nan_inf(stats: tuple):
 
 
 def diag_mat_mult_full_mat(vec: torch.Tensor, mat: torch.Tensor):
+    print('TO BE DEPRECATED!')
     """
     batched version of diag(vec) @ mat
     """
     return torch.einsum('...i,...ik->...ik', vec, mat)
 
 def full_mat_mult_diag_mat(mat: torch.Tensor, vec: torch.Tensor):
+    print('TO BE DEPRECATED!')
     """
     batched version of mat @ diag(vec)
     """
     return torch.einsum('...ik,...k->...ik', mat, vec)
 
 def eigh(mat: torch.Tensor):
-    neigh = torch.linalg.matrix_rank(mat).min()
+    neigh = torch.linalg.matrix_rank(mat).min() # TODO use  hermitian=True ?
     if neigh == mat.shape[-1]:
         eigvals, eigvectors = torch.linalg.eigh(mat)
     else:
         cov_mat_xitorch = LinearOperator.m(mat)
-        eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest')
+        eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
     return eigvals, eigvectors
 
 def make_sym(mat: torch.Tensor):
@@ -41,7 +46,7 @@ def make_sym(mat: torch.Tensor):
     """
     return torch.max(mat, mat.swapaxes(-1, -2))
 
-def is_sym(mat: torch.Tensor, tol: float = 1e-8) -> torch.Tensor:
+def is_sym(mat: torch.Tensor, atol: float = 1e-8) -> torch.Tensor:
     """
     Check if a batch of square matrices are symmetric.
 
@@ -49,7 +54,7 @@ def is_sym(mat: torch.Tensor, tol: float = 1e-8) -> torch.Tensor:
     :param tol: Tolerance for floating point comparison
     :return: Tensor of shape (batch_size,) with boolean values indicating symmetry
     """
-    return torch.allclose(mat, mat.transpose(-1, -2), atol=tol)
+    return torch.allclose(mat, mat.transpose(-1, -2), atol=atol)
 
 def kmean_clustering_batches(x: torch.Tensor, n: int):
     """
@@ -78,6 +83,7 @@ def get_edges(locs: torch.Tensor):
     :param locs: center of Voronoi partition; Size(nr_locs,)
     :return: edges
     """
+    print('TO BE DEPRECATED!')
     edges = torch.cat((torch.ones(1).fill_(-torch.inf), locs[:-1] + 0.5 * locs.diff(), torch.ones(1).fill_(torch.inf)))
     return edges
 

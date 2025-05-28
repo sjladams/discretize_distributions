@@ -78,10 +78,12 @@ def get_edges(locs: torch.Tensor):
     :param locs: center of Voronoi partition; Size(nr_locs,)
     :return: edges
     """
+    print('TO BE DEPRECATED!')
     edges = torch.cat((torch.ones(1).fill_(-torch.inf), locs[:-1] + 0.5 * locs.diff(), torch.ones(1).fill_(torch.inf)))
     return edges
 
 def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor: # TODO remove
+    print('TO BE DEPRECATED!')
     edges = get_edges(locs)
 
     probs = cdf(edges[1:]) - cdf(edges[:-1])

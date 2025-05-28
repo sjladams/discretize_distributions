@@ -43,11 +43,7 @@ class MultivariateNormal(torch.distributions.Distribution):
             # (alternatively, one could use the Cholesky decomposition to construct the mahalanobis transformation matrix)
             eig_vals, eig_vectors = tensors.eigh(self.covariance_matrix)
 
-            # # TODO account for possibly degenerative (spd) covariance matrices, using:
-            # cov_mat_xitorch = LinearOperator.m(norm.covariance_matrix)
-            # neigh = torch.linalg.matrix_rank(norm.covariance_matrix, hermitian=True).min()
-            # eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
-
+            # # TODO check if the transformation matrices work for possibly degenerative (spd) covariance matrices. We previously explicitly used this:
             # # Note that in this case the mahalanobis also changes to:
             # S = torch.einsum('...on,...n->...no', eigvectors, (eigvals.clip(0, torch.inf) + PRECISION).sqrt())
             # S = torch.gather(S, dim=-2, index=eigvals_topk.indices.unsqueeze(-1).expand(
