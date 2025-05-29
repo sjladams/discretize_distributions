@@ -1,16 +1,15 @@
 from typing import Union, Optional
-import pkg_resources
-import discretize_distributions.utils as utils
-import os
 import torch
+from importlib.resources import files
+import pickle
 
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 
-GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
-    __name__, f'data{os.sep}lookup_grid_config.pickle'))
-OPTIMAL_1D_GRIDS = utils.pickle_load(pkg_resources.resource_filename(
-    __name__, f'data{os.sep}lookup_opt_grid_uni_stand_normal.pickle'))
+with files('discretize_distributions.data').joinpath('lookup_grid_config.pickle').open('rb') as f:
+    GRID_CONFIGS = pickle.load(f)
+with files('discretize_distributions.data').joinpath('lookup_opt_grid_uni_stand_normal.pickle').open('rb') as f:
+    OPTIMAL_1D_GRIDS = pickle.load(f)
 
 TOL = 1e-8
 
