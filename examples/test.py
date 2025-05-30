@@ -118,6 +118,7 @@ if __name__ == "__main__":
     ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
 
     ## Discretize the whole GMM at once:
+    l = grid_schemes[0]
     disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
 
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -153,9 +154,50 @@ if __name__ == "__main__":
     #     offset=gmm.component_distribution[i].loc,
     #     rot_mat= gmm.component_distribution[i].eigvecs,
     #     scales=gmm.component_distribution[i].eigvals_sqrt
+
+    # Given a GMM with all elements having the same eigenbasis for the covariance matrix (start with diagonal covariance matrices):
+    # Step 1: Generate a MultiGridScheme for the GMM:
+    z = torch.tensor([-1.0, -1.0])
+    points_per_dim_list = []
+    for i in range(2):
+        points_per_dim = []
+        for _ in range(num_dims):
+            num_points = torch.randint(2, 6, (1,)).item()
+            points = torch.linspace(-1, 1, num_points)
+            points_per_dim.append(points)
+        points_per_dim_list.append(points_per_dim)
+
+    schemes = []
+    for i in range(2):  # random 2 grids
+        grid_locs = dd_schemes.Grid(
+            points_per_dim=points_per_dim_list[i],
+            rot_mat=norm.eig_vectors,
+            scales=norm.eig_vals_sqrt,
+            offset=norm.mean
+        )
+        domain = dd_schemes.Cell(lower_vertex=torch.randint(-10, 0, (num_dims,)),
+                                 upper_vertex=torch.randint(0, 10, (num_dims,)),
+                                 rot_mat=norm.eig_vectors,
+                                 scales=norm.eig_vals_sqrt,
+                                 offset=norm.mean)
+        grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs, domain)
+        grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
+        schemes.append(grid_scheme)
+
+    mix_grid = dd_schemes.MultiGridScheme(grid_schemes=schemes, outer_loc=z)
+
+    disc, w2 = dd.discretize(gmm, mix_grid)
+
+    # Step 1.1: Construct each GridScheme (e.g. using 'get_optimal_grid_scheme'). For this, you want to include the
+    # option to provide the domain to the funciton. Also, make sure that each GridScheme has the same eigenbasis 
+    # (possibly rotated by 90 degrees). That is, e.g., in case you want to use a single GridScheme, we couldn't simply use:
+    # dd_dists.MultivariateNormal(
+    #     loc=gmm.mean, 
+    #     covariance_matrix=gmm.covariance_matrix # scheme should have same orientation as GMM (so we can't use gmm.coveriance_matrix)
+    #     ),  
+    # num_locs=10
     # )
     # grid_scheme = dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10, domain=domain)
-
     # # Given a GMM with all elements having the same eigenbasis for the covariance matrix (start with diagonal covariance matrices):
     # # Step 1: Generate a MultiGridScheme for the GMM:
     # # 

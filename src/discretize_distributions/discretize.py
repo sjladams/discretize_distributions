@@ -44,24 +44,43 @@ def discretize(
     if not dist.batch_shape == torch.Size([]):
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
 
-    if not isinstance(scheme, dd_schemes.GridScheme):
-        raise NotImplementedError(f'Discretization scheme {scheme.__class__.__name__} is not supported yet.')
+    # if not isinstance(scheme, dd_schemes.GridScheme):
+    #     raise NotImplementedError(f'Discretization scheme {scheme.__class__.__name__} is not supported yet.')
 
     if isinstance(dist, dd_dists.MultivariateNormal):
-        return discretize_multi_norm_using_grid_scheme(dist, scheme)
+        return discretize_multi_norm_using_grid_scheme(dist, scheme)  # Gaussian with one grid
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
-        if isinstance(scheme, dd_schemes.MultiGridScheme):
-            raise NotImplementedError
+        if isinstance(scheme, dd_schemes.MultiGridScheme):  # multiple grids
+            # raise NotImplementedError
             # Outline approach:
-            # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
 
             for idx in range(len(scheme.grid_schemes)):
+                # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
                 disc_component, w2_component = discretize(dist, scheme.grid_schemes[idx])
 
-            # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
+                # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
+                domain = scheme.grid_schemes[idx].partition.domain  # domain of grid scheme for idx
+                rot_mat = scheme.grid_schemes[idx].locs.rot_mat  # from Grid class
+                scales = scheme.grid_schemes[idx].locs.scales
+                offset = scheme.grid_schemes[idx].locs.offset
+                lower_vertices_per_dim = [domain.lower_vertex[i].unsqueeze(0) for i in
+                                          range(domain.lower_vertex.shape[0])]
+                upper_vertices_per_dim = [domain.upper_vertex[i].unsqueeze(0) for i in
+                                          range(domain.upper_vertex.shape[0])]
+                grid_partition = dd_schemes.GridPartition.from_vertices_per_dim(
+                    lower_vertices_per_dim, upper_vertices_per_dim,
+                    rot_mat=rot_mat, scales=scales, offset=offset
+                )
+                grid_loc = scheme.outer_loc
+                points_per_dim = [grid_loc[i].unsqueeze(0) for i in range(grid_loc.shape[0])]
+                grid = dd_schemes.Grid(points_per_dim, rot_mat, scales, offset)
+                grid_scheme = dd_schemes.GridScheme(locs=grid, partition=grid_partition)
+                disc_component_inner, w2_component_inner = discretize(dist, grid_scheme)
+
+                return disc_component, w2_component
 
             # Step 3: combine the results of the discretization of each component and the outer_locs
-        elif isinstance(scheme, dd_schemes.GridScheme):
+        elif isinstance(scheme, dd_schemes.GridScheme):  # one grid
             probs, w2_sq = [], []
             for idx in range(dist.num_components):
                 disc_component, w2_component = discretize(dist.component_distribution[idx], scheme)
