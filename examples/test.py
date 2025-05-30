@@ -65,17 +65,34 @@ if __name__ == "__main__":
     ax = plot_2d_cat_float(ax, disc_norm)
     ax = set_axis(ax)
     ax.set_title(f'Self constructed grid (2-Wasserstein distance: {w2:.2f})')
+    # grid_locs = dd_schemes.Grid(
+    #     points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)],
+    #     rot_mat=norm.eig_vectors,
+    #     scales=norm.eig_vals_sqrt,
+    #     offset=norm.mean
+    # )
+    #
+    # grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
+    # grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
+    #
+    # disc_norm, w2 = dd.discretize(norm, grid_scheme)
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, norm)
+    # ax = plot_2d_cat_float(ax, disc_norm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'Self constructed grid (2-Wasserstein distance: {w2:.2f})')
 
     ## via grid scheme with optimal grid configuration
-    optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=10)
-
-    optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, norm)
-    ax = plot_2d_cat_float(ax, optimal_disc_norm)
-    ax = set_axis(ax)
-    ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
+    # optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=10)
+    #
+    # optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, norm)
+    # ax = plot_2d_cat_float(ax, optimal_disc_norm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
 
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
@@ -105,29 +122,29 @@ if __name__ == "__main__":
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     ## Discretize per component (the old way):
-    grid_schemes = []
-    for i in range(num_mix_elems):
-        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
-
-    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat_float(ax, disc_gmm)
-    ax = set_axis(ax)
-    ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
+    # grid_schemes = []
+    # for i in range(num_mix_elems):
+    #     grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+    #
+    # disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat_float(ax, disc_gmm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
 
     ## Discretize the whole GMM at once:
-    l = grid_schemes[0]
-    disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat_float(ax, disc_gmm)
-    ax = set_axis(ax)
-    ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
-
-    plt.show()
+    # l = grid_schemes[0]
+    # disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat_float(ax, disc_gmm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
+    #
+    # plt.show()
 
     ### -- Degenerate Gaussians ------------------------------------------------------------------------------------ ###
     mean = torch.randn(2)
@@ -168,18 +185,23 @@ if __name__ == "__main__":
         points_per_dim_list.append(points_per_dim)
 
     schemes = []
-    for i in range(2):  # random 2 grids
+    for i in range(2):  # random 2 grids with use of norm atm
         grid_locs = dd_schemes.Grid(
             points_per_dim=points_per_dim_list[i],
             rot_mat=norm.eig_vectors,
             scales=norm.eig_vals_sqrt,
             offset=norm.mean
+        )  # later defined rotation, scales etc by the gaussian component inside the grid!
+        grid_points = grid_locs.points
+        grid_min = grid_points.min(dim=0).values
+        grid_max = grid_points.max(dim=0).values
+        domain = dd_schemes.Cell(
+            lower_vertex=grid_min,
+            upper_vertex=grid_max,
+            rot_mat=norm.eig_vectors,
+            scales=norm.eig_vals_sqrt,
+            offset=norm.mean
         )
-        domain = dd_schemes.Cell(lower_vertex=torch.randint(-10, 0, (num_dims,)),
-                                 upper_vertex=torch.randint(0, 10, (num_dims,)),
-                                 rot_mat=norm.eig_vectors,
-                                 scales=norm.eig_vals_sqrt,
-                                 offset=norm.mean)
         grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs, domain)
         grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
         schemes.append(grid_scheme)
@@ -187,6 +209,7 @@ if __name__ == "__main__":
     mix_grid = dd_schemes.MultiGridScheme(grid_schemes=schemes, outer_loc=z)
 
     disc, w2 = dd.discretize(gmm, mix_grid)
+    print(f'w2:{w2}')
 
     # Step 1.1: Construct each GridScheme (e.g. using 'get_optimal_grid_scheme'). For this, you want to include the
     # option to provide the domain to the funciton. Also, make sure that each GridScheme has the same eigenbasis 

@@ -39,7 +39,8 @@ def discretize_gmms_the_old_way(
 
 def discretize(
         dist: torch.distributions.Distribution,
-        scheme: dd_schemes.Scheme
+        scheme: dd_schemes.Scheme,
+        return_outer_loc_mass: bool = False
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     if not dist.batch_shape == torch.Size([]):
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
@@ -51,12 +52,28 @@ def discretize(
         return discretize_multi_norm_using_grid_scheme(dist, scheme)  # Gaussian with one grid
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
         if isinstance(scheme, dd_schemes.MultiGridScheme):  # multiple grids
-            # raise NotImplementedError
-            # Outline approach:
+
+            # w2 over the whole space of R^n
+            grid_loc = scheme.outer_loc
+            points_per_dim = [grid_loc[i].unsqueeze(0) for i in range(grid_loc.shape[0])]
+            grid_whole_space = dd_schemes.Grid(points_per_dim)  # how about scaling, rotation, offset?
+            num_dim = grid_loc.shape[0]
+            lower_vertices_per_dim = [torch.full((1,), float('-inf')) for _ in range(num_dim)]
+            upper_vertices_per_dim = [torch.full((1,), float('inf')) for _ in range(num_dim)]
+            grid_partition_whole_space = grid_partition = dd_schemes.GridPartition.from_vertices_per_dim(
+                lower_vertices_per_dim,
+                upper_vertices_per_dim)
+            grid_scheme_whole_space = dd_schemes.GridScheme(locs=grid_whole_space, partition=grid_partition_whole_space)
+            disc_component_whole_space, w2_component_whole_space = discretize(dist, grid_scheme_whole_space)
+
+            w2_grids = torch.zeros(1)
+            w2_bounded = torch.zeros(1)
 
             for idx in range(len(scheme.grid_schemes)):
+
                 # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
-                disc_component, w2_component = discretize(dist, scheme.grid_schemes[idx])
+                disc_component, w2_component, outer_loc_mass = discretize(dist, scheme.grid_schemes[idx], return_outer_loc_mass=True)
+                w2_grids += w2_component.pow(2)
 
                 # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
                 domain = scheme.grid_schemes[idx].partition.domain  # domain of grid scheme for idx
@@ -71,26 +88,37 @@ def discretize(
                     lower_vertices_per_dim, upper_vertices_per_dim,
                     rot_mat=rot_mat, scales=scales, offset=offset
                 )
-                grid_loc = scheme.outer_loc
-                points_per_dim = [grid_loc[i].unsqueeze(0) for i in range(grid_loc.shape[0])]
                 grid = dd_schemes.Grid(points_per_dim, rot_mat, scales, offset)
                 grid_scheme = dd_schemes.GridScheme(locs=grid, partition=grid_partition)
                 disc_component_inner, w2_component_inner = discretize(dist, grid_scheme)
-
-                return disc_component, w2_component
+                w2_bounded += w2_component_inner.pow(2)
 
             # Step 3: combine the results of the discretization of each component and the outer_locs
+            w2 = (w2_component_whole_space.pow(2) + w2_grids - w2_bounded).sqrt()
+            return disc_component_whole_space, w2
+
         elif isinstance(scheme, dd_schemes.GridScheme):  # one grid
             probs, w2_sq = [], []
+            outer_loc_probs = 0.0
             for idx in range(dist.num_components):
                 disc_component, w2_component = discretize(dist.component_distribution[idx], scheme)
-                probs.append(disc_component.probs * dist.mixture_distribution.probs[idx])
-                w2_sq.append(w2_component.pow(2) * dist.mixture_distribution.probs[idx])
-    
-            probs = torch.stack(probs, dim=-1).sum(-1)
-            w2 = torch.stack(w2_sq).sum().sqrt()
+                probs_component = disc_component.probs
+                pi = dist.mixture_distribution.probs[idx]
 
-            return dd_dists.CategoricalFloat(scheme.locs.points, probs), w2
+                outer_loc_mass_p = 1.0 - probs_component.sum()
+                outer_loc_probs += outer_loc_mass_p * pi
+
+                probs.append(probs_component * pi)
+                w2_sq.append(w2_component.pow(2) * pi)
+
+            probs = torch.stack(probs, dim=-1).sum(-1)
+            x = probs.sum()
+            w2 = torch.stack(w2_sq, dim=0).sum(dim=0).sqrt()
+            disc = dd_dists.CategoricalFloat(scheme.locs.points, probs)
+
+            if return_outer_loc_mass:
+                return disc, w2, outer_loc_probs
+            return disc, w2
 
 
 def discretize_multi_norm_using_grid_scheme(
@@ -123,7 +151,7 @@ def discretize_multi_norm_using_grid_scheme(
     probs = dd_schemes.Grid(probs_per_dim)
 
     disc_dist = dd_dists.CategoricalGrid(grid_scheme.locs, probs)
-    disc_dist = disc_dist.to_categorical_float() # TODO allow to output CategoricalGrid
+    disc_dist = disc_dist.to_categorical_float()  # TODO allow to output CategoricalGrid
 
     # Wasserstein distance error computation:
     trunc_mean_var_per_dim = [
