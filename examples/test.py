@@ -43,9 +43,9 @@ def set_axis(ax):
 if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test discretization of multivariate normal distribution ------------------------------------------------ ###
-    mean = torch.tensor([0., 0.])
-    cov_mat = torch.diag(torch.tensor([1.,5.]))
-    norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
+    # mean = torch.tensor([0., 0.])
+    # cov_mat = torch.diag(torch.tensor([1.,5.]))
+    # norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
 
     ## via self constructed grid scheme
     grid_locs = dd_schemes.Grid(
@@ -109,7 +109,7 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
         ),
         close=dict(
-            loc=torch.tensor([[0.1, 0.1], [-0.1,-0.1]]),
+            loc=torch.tensor([[0.1, 0.1], [0.2,0.2]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         )
     )
@@ -122,10 +122,10 @@ if __name__ == "__main__":
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     ## Discretize per component (the old way):
-    # grid_schemes = []
-    # for i in range(num_mix_elems):
-    #     grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
-    #
+    grid_schemes = []
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+
     # disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
     #
     # fig, ax = plt.subplots(figsize=(8, 8))
@@ -133,9 +133,8 @@ if __name__ == "__main__":
     # ax = plot_2d_cat_float(ax, disc_gmm)
     # ax = set_axis(ax)
     # ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
-
-    ## Discretize the whole GMM at once:
-    # l = grid_schemes[0]
+    #
+    # # Discretize the whole GMM at once:
     # disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
     #
     # fig, ax = plt.subplots(figsize=(8, 8))
@@ -174,13 +173,14 @@ if __name__ == "__main__":
 
     # Given a GMM with all elements having the same eigenbasis for the covariance matrix (start with diagonal covariance matrices):
     # Step 1: Generate a MultiGridScheme for the GMM:
+    norm = gmm.component_distribution[0]  # use the first component for rotation etc
     z = torch.tensor([-1.0, -1.0])
     points_per_dim_list = []
     for i in range(2):
         points_per_dim = []
         for _ in range(num_dims):
             num_points = torch.randint(2, 6, (1,)).item()
-            points = torch.linspace(-1, 1, num_points)
+            points = torch.linspace(-3.0, 0.0, num_points)
             points_per_dim.append(points)
         points_per_dim_list.append(points_per_dim)
 
@@ -196,8 +196,8 @@ if __name__ == "__main__":
         grid_min = grid_points.min(dim=0).values
         grid_max = grid_points.max(dim=0).values
         domain = dd_schemes.Cell(
-            lower_vertex=grid_min,
-            upper_vertex=grid_max,
+            lower_vertex=grid_min - 0.1,
+            upper_vertex=grid_max + 0.1,
             rot_mat=norm.eig_vectors,
             scales=norm.eig_vals_sqrt,
             offset=norm.mean
@@ -207,8 +207,7 @@ if __name__ == "__main__":
         schemes.append(grid_scheme)
 
     mix_grid = dd_schemes.MultiGridScheme(grid_schemes=schemes, outer_loc=z)
-
-    disc, w2 = dd.discretize(gmm, mix_grid)
+    disc, w2, outer_loc_mass = dd.discretize(gmm, mix_grid)
     print(f'w2:{w2}')
 
     # Step 1.1: Construct each GridScheme (e.g. using 'get_optimal_grid_scheme'). For this, you want to include the
