@@ -126,24 +126,24 @@ if __name__ == "__main__":
     for i in range(num_mix_elems):
         grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
 
-    # disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
-    #
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, gmm)
-    # ax = plot_2d_cat_float(ax, disc_gmm)
-    # ax = set_axis(ax)
-    # ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
-    #
-    # # Discretize the whole GMM at once:
-    # disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
-    #
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, gmm)
-    # ax = plot_2d_cat_float(ax, disc_gmm)
-    # ax = set_axis(ax)
-    # ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
-    #
-    # plt.show()
+    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
+
+    # Discretize the whole GMM at once:
+    disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
+
+    plt.show()
 
     ### -- Degenerate Gaussians ------------------------------------------------------------------------------------ ###
     mean = torch.randn(2)
