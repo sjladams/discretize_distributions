@@ -4,6 +4,7 @@ import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
 from typing import Union, Optional, Tuple
+from sklearn.neighbors import NearestNeighbors
 
 INV_SQRT_2PI = 1 / math.sqrt(2 * math.pi)
 SQRT_PI = math.sqrt(math.pi)
@@ -106,3 +107,83 @@ def pickle_dump(obj, tag):
     pickle_out = open("{}.pickle".format(tag), "wb")
     pickle.dump(obj, pickle_out)
     pickle_out.close()
+
+
+def estimate_eps(samples, min_samples=20, plot=False):
+    samples_np = samples.detach().numpy()
+    nbrs = NearestNeighbors(n_neighbors=min_samples).fit(samples_np)
+    distances, _ = nbrs.kneighbors(samples_np)
+    k_distances = distances[:, -1]
+    k_distances = np.sort(k_distances)  # sorted in increasing order based on distance
+    # x = np.arange(len(k_distances))
+    # kl = KneeLocator(x, k_distances, curve='convex', direction='increasing')
+    # eps = k_distances[kl.knee]
+    eps = np.percentile(k_distances, 95)
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.plot(k_distances[::-1])
+        plt.axhline(y=eps, color='r', linestyle='--', label=f'$\epsilon$ = {eps:.4f}')
+        # plt.title(f"k-distance plot (min_samples={min_samples})")
+        plt.xlabel("Sorted index")
+        plt.ylabel("k-distance")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    return eps
+
+
+def collapse_into_gaussian(locs, covs, probs):
+    assert locs.shape[0] == covs.shape[0] == probs.shape[0], "Mismatched number of components"
+    weights = probs / probs.sum()
+    mean = (weights.unsqueeze(1) * locs).sum(dim=0)
+
+    D = locs.shape[1]
+    cov = torch.zeros(D, D, device=locs.device, dtype=locs.dtype)
+
+    for i in range(locs.shape[0]):
+        diff = (locs[i] - mean).unsqueeze(0)
+        cov += weights[i] * (covs[i] + diff.T @ diff)  # can produce non-diagonal parts! what to do here??
+
+    return mean, cov
+
+
+def merge_shell(shell1, shell2):
+    new_shell = []
+    for (low1, high1), (low2, high2) in zip(shell1, shell2):
+        low = min(low1, low2)
+        high = max(high1, high2)
+        new_shell.append((low, high))
+    return new_shell
+
+
+def group_means_by_shells(means, centers, eps):
+    visited = set()
+    shell_groups = [[] for _ in centers]
+
+    for j, mean in enumerate(means):
+        if j in visited:
+            continue
+
+        closed_shell_index = None
+        best_distance = float('inf')  # start at max distance
+
+        for i, center in enumerate(centers):
+            if torch.all(torch.abs(mean - center) < 2 * eps):
+                distance = torch.norm(mean - center)
+                if distance < best_distance:
+                    best_distance = distance
+                    closed_shell_index = i
+
+        if closed_shell_index is not None:
+            shell_groups[closed_shell_index].append(j)
+            visited.add(j)
+
+    return shell_groups
+
+
+def check_overlap(cell1, cell2, tol=1e-4):
+    for low1, high1, low2, high2 in zip(cell1.lower_vertex, cell1.upper_vertex, cell2.lower_vertex, cell2.upper_vertex):
+        if high1 <= low2 + tol or low1 >= high2 - tol:
+            return False
+    return True

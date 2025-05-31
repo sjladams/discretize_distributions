@@ -3,7 +3,7 @@ import os
 import torch
 from typing import List
 
-from .utils import pickle_dump, pickle_load
+from discretize_distributions.utils import pickle_dump, pickle_load
 
 
 def generate_feasible_combinations(N: int, n: int, max_element_value: int = None):
@@ -105,7 +105,7 @@ def generate_lookup_grid_config(num_loc_options: List, tag: str):
 
 
 if __name__ == '__main__':
-    generate_lookup_grid_config(num_loc_options=[1, 10, 100], tag="lookup_grid_config_NEW")
+    generate_lookup_grid_config(num_loc_options=[1, 10, 100, 200], tag="lookup_grid_config_NEW")
 
 
 
