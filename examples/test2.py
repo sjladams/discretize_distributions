@@ -46,8 +46,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
-    num_mix_elems = 2
-    setting = "spread"
+    num_mix_elems = 4
+    setting = "random"
 
     options = dict(
         overlapping=dict(
@@ -69,12 +69,12 @@ if __name__ == "__main__":
     )
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
-    mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8]))
+    mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     # --- Uniform grid over whole space ---
     grid_locs = dd_schemes.Grid(
-        points_per_dim=[torch.linspace(-4, 8.0, 10), torch.linspace(-2., 5., 10)],
+        points_per_dim=[torch.linspace(-4, 8.0, 5), torch.linspace(-2., 5., 3)],
         offset=gmm.component_distribution[0].loc,
         rot_mat=gmm.component_distribution[0].eigvecs,
         scales=gmm.component_distribution[0].eigvals_sqrt

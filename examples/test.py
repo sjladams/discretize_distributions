@@ -98,7 +98,7 @@ if __name__ == "__main__":
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
     num_mix_elems = 2
-    setting = "spread"
+    setting = "equal"
     
     options = dict(
         overlapping=dict(
@@ -117,38 +117,42 @@ if __name__ == "__main__":
             loc=torch.tensor([[-1.0, -1.0], [2.0, 2.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
+        equal=dict(
+            loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
+        ),
     )
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                         #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.3, .8])
+                                                           torch.tensor([.5, .5])
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     ## Discretize per component (the old way):
-    # grid_schemes = []
-    # for i in range(num_mix_elems):
-    #     grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
-    #
-    # disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
-    #
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, gmm)
-    # ax = plot_2d_cat_float(ax, disc_gmm)
-    # ax = set_axis(ax)
-    # ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
-    #
-    # # Discretize the whole GMM at once:
-    # disc_gmm, w2, _ = dd.discretize(gmm, grid_schemes[0])
-    #
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, gmm)
-    # ax = plot_2d_cat_float(ax, disc_gmm)
-    # ax = set_axis(ax)
-    # ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
-    #
-    # plt.show()
+    grid_schemes = []
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+
+    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
+
+    # Discretize the whole GMM at once:
+    disc_gmm, w2, _ = dd.discretize(gmm, grid_schemes[0])
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
+
+    plt.show()
 
     ### -- Degenerate Gaussians ------------------------------------------------------------------------------------ ###
     # mean = torch.randn(2)
@@ -181,7 +185,7 @@ if __name__ == "__main__":
 
     # uniform grid over whole space with same amount of locs as mix_grids
     grid_locs = dd_schemes.Grid(
-        points_per_dim=[torch.linspace(-4, 8.0, 10), torch.linspace(-2., 5., 10)],
+        points_per_dim=[torch.linspace(-5, 5.0, 10), torch.linspace(-5., 5., 10)],
         offset=gmm.component_distribution[0].loc,
         rot_mat=gmm.component_distribution[0].eigvecs,
         scales=gmm.component_distribution[0].eigvals_sqrt
@@ -200,7 +204,7 @@ if __name__ == "__main__":
     plt.show()
 
     # Example of optimal grid w.r.t. to the i-th component of the gmm restricted to a domain:
-    num_locs = 100
+    # num_locs = 100
     # vertices_list = [
     #     (torch.tensor([2.0, 1.0]), torch.tensor([4., 3.])),
     #     (torch.tensor([-1., -2.0]), torch.tensor([0.0, 0.0]))
@@ -227,9 +231,9 @@ if __name__ == "__main__":
     #
     # z = torch.tensor([1.0, 1.0])
 
-    mix_grid = dd_optimal.dbscan_shells(gmm=gmm)
+    mix_grid = dd_optimal.dbscan_shells(gmm=gmm, eps=1)
     # mix_grid = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
-    disc, w2, outer_loc_mass = dd.discretize(gmm, mix_grid)
+    disc, w2, mass_inside_grids = dd.discretize(gmm, mix_grid)
     print(f'w2: {w2.item()}')  # when grids overlap the w2 error is NAN
 
     fig, ax = plt.subplots(figsize=(8, 8))

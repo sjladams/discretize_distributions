@@ -187,3 +187,18 @@ def check_overlap(cell1, cell2, tol=1e-4):
         if high1 <= low2 + tol or low1 >= high2 - tol:
             return False
     return True
+
+
+def transform_to_global(locs, rot_mat, scales, offset):
+    scaled = locs * scales.unsqueeze(0)
+    rotated = scaled @ rot_mat.T
+    global_locs = rotated + offset.unsqueeze(0)
+
+    return global_locs
+
+
+def transform_to_local(x_global, rot_mat, scales, offset):
+    centered = x_global - offset
+    rotated = centered @ rot_mat
+    local = rotated / scales
+    return local
