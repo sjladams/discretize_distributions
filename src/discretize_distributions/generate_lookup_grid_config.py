@@ -3,7 +3,7 @@ import torch
 from typing import List, Optional, Tuple
 from importlib.resources import files
 
-from discretize_distributions.utils import pickle_dump, pickle_load
+from utils import pickle_dump, pickle_load
 import argparse
 import pickle
 
@@ -119,7 +119,7 @@ def generate_grid_configs(num_locs_options: List):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate lookup grid configuration.")
     parser.add_argument('--num_locs_options', type=int, nargs='+', default=[1, 10, 100, 1000],
-                        help='List of location options (e.g., --num_loc_options 1 10 100)')
+                        help='List of location options (e.g., --num_locs_options 1 10 100)')
     parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
     args = parser.parse_args()
 
