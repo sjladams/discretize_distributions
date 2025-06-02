@@ -186,7 +186,7 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
         min_samples = 20
     if eps is None:  # elbow method for eps
         eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)
-
+    print(f'Chosen epsilon: {eps}')
     X = samples.detach().numpy()
     clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
     labels = clustering.labels_

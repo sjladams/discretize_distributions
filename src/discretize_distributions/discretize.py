@@ -74,9 +74,10 @@ def discretize(
             offset = scheme.grid_schemes[0].locs.offset
             grid_partition_whole_space = dd_schemes.GridPartition.from_vertices_per_dim(lower_vertices_per_dim,
                                                                                         upper_vertices_per_dim,
-                                                                                        rot_mat=rot_mat,
-                                                                                        scales=scales,
-                                                                                        offset=offset)
+                                                                                        # rot_mat=rot_mat,
+                                                                                        # scales=scales,
+                                                                                        # offset=offset
+                                                                                        )
 
             grid_scheme_whole_space = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition_whole_space)
 
@@ -94,22 +95,20 @@ def discretize(
 
                 # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
                 domain = scheme.grid_schemes[idx].partition.domain  # domain of grid scheme for idx
-                rot_mat = scheme.grid_schemes[idx].locs.rot_mat  # from Grid class
-                scales = scheme.grid_schemes[idx].locs.scales
-                offset = scheme.grid_schemes[idx].locs.offset
+                # rot_mat = scheme.grid_schemes[idx].locs.rot_mat  # from Grid class
+                # scales = scheme.grid_schemes[idx].locs.scales
+                # offset = scheme.grid_schemes[idx].locs.offset
                 lower_vertices_per_dim = [domain.lower_vertex[i].unsqueeze(0) for i in
                                           range(domain.lower_vertex.shape[0])]
                 upper_vertices_per_dim = [domain.upper_vertex[i].unsqueeze(0) for i in
                                           range(domain.upper_vertex.shape[0])]
                 grid_partition = dd_schemes.GridPartition.from_vertices_per_dim(
                     lower_vertices_per_dim, upper_vertices_per_dim,
-                    rot_mat=rot_mat, scales=scales, offset=offset
+                    # rot_mat=rot_mat, scales=scales, offset=offset
                 )
-                grid = dd_schemes.Grid(points_per_dim, rot_mat, scales, offset)
-                grid_scheme = dd_schemes.GridScheme(locs=grid, partition=grid_partition)
+                # grid = dd_schemes.Grid(points_per_dim, rot_mat, scales, offset)
+                grid_scheme = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition)
                 _, w2_component_inner, mass_inside_grid2 = discretize(dist, grid_scheme)
-
-
 
                 print(f'w2 for grid {idx} to z: {w2_component_inner}')
 
@@ -174,6 +173,21 @@ def discretize_multi_norm_using_grid_scheme(
     locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
     lower_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
     upper_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
+
+    # debugging
+    # probs_per_dim = []
+    # for i, (l, u) in enumerate(zip(lower_vertices_per_dim, upper_vertices_per_dim)):
+    #     cdf_l = utils.cdf(l)
+    #     cdf_u = utils.cdf(u)
+    #     diff = cdf_u - cdf_l
+    #     print(f"Dimension {i}: lower={l}, upper={u}, cdf(lower)={cdf_l}, cdf(upper)={cdf_u}, diff={diff}")
+    #     probs_per_dim.append(diff)
+    #
+    # probs = dd_schemes.Grid(probs_per_dim)
+    # print("Final probs:", probs.points)
+    #
+    # mass_inside_grid = probs.points.prod(-1).sum()
+    # print("Mass inside grid:", mass_inside_grid)
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
