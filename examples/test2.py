@@ -46,8 +46,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
-    num_mix_elems = 4
-    setting = "random"
+    num_mix_elems = 2
+    setting = "equal"
 
     options = dict(
         overlapping=dict(
@@ -66,15 +66,47 @@ if __name__ == "__main__":
             loc=torch.tensor([[-1.0, -1.0], [2.0, 2.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
+        equal=dict(
+            loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
+        ),
     )
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
-    mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
+    mixture_distribution = torch.distributions.Categorical(probs=
+                                                           #    torch.rand((num_mix_elems,))
+                                                           torch.tensor([.5, .5])
+                                                           )
+    # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+
+    ## Discretize per component (the old way):
+    grid_schemes = []
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+
+    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
+
+    # Discretize the whole GMM at once:
+    disc_gmm, w2, _ = dd.discretize(gmm, grid_schemes[0])
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
+
+    plt.show()
 
     # --- Uniform grid over whole space ---
     grid_locs = dd_schemes.Grid(
-        points_per_dim=[torch.linspace(-4, 8.0, 5), torch.linspace(-2., 5., 3)],
+        points_per_dim=[torch.linspace(-4, 8.0, 9), torch.linspace(-2., 5., 5)],  # same nr locs as mix grid scheme
         offset=gmm.component_distribution[0].loc,
         rot_mat=gmm.component_distribution[0].eigvecs,
         scales=gmm.component_distribution[0].eigvals_sqrt

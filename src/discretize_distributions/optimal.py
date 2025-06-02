@@ -166,10 +166,15 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
     return grids
 
 def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
-    # assuming knowledge about gmm to set eps and min_samples
-    # rule of thumb for min_samples
-    # dim = len(means[-1])
-    # min_samples = dim + 1
+    """
+    Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
+    including the outer loc as the average of the means of the components in the GMM.
+
+    :param gmm: GMM
+    :param num_locs: number of locations per grid (roughly as it's also clipped by grid's domain)
+    :param eps: hyperparameter for DBSCAN, if not set its approximated by the 'knee-method'
+    :param min_samples: hyperparameter for DBSCAN, if not set, use max value fo 20
+    """
 
     num_components = gmm.component_distribution.batch_shape[0]
     num_samples = torch.tensor([100*num_components])  # equal to nr of signature locations, ensuring it detects enough

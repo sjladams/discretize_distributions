@@ -56,24 +56,14 @@ def discretize(
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
         if isinstance(scheme, dd_schemes.MultiGridScheme):  # multiple grids
 
-            w2_component_sq, total_mass_inside_grids, disc_components = torch.zeros(1), torch.zeros(1), []
-
-            for idx in range(len(scheme.grid_schemes)):
-
-                # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
-                disc_component, w2_component, mass_inside_grid = discretize(dist, scheme.grid_schemes[idx])
-                disc_components.append(disc_component)
-                print(f'w2 for grid {idx}: {w2_component}')
-                w2_component_sq += w2_component.pow(2)
-                total_mass_inside_grids += mass_inside_grid
-
-            # mass of outer loc
-            mass_outer_loc = 1 - total_mass_inside_grids
+            w2_component_sq, total_mass_inside_grids, w2_component_inner_sq = torch.zeros(1), torch.zeros(1), torch.zeros(1)
+            disc_components = []
 
             # w2 over the whole space of R^n to location z
             grid_loc = scheme.outer_loc
             points_per_dim = [grid_loc[i].unsqueeze(0) for i in range(grid_loc.shape[0])]
-            grid_outer_loc = dd_schemes.Grid(points_per_dim)  # how about scaling, rotation, offset? - global coordinates
+            grid_outer_loc = dd_schemes.Grid(
+                points_per_dim)  # how about scaling, rotation, offset? - global coordinates vs local coordinates?
 
             num_dim = grid_loc.shape[0]
 
@@ -86,20 +76,16 @@ def discretize(
             grid_scheme_whole_space = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition_whole_space)
 
             _, w2_component_whole_space, mass_whole_space = discretize(dist, grid_scheme_whole_space)
-
-            # solving expectation instead using truncated gaussian - same result
-            # means = dist.component_distribution.loc
-            # probs = dist.mixture_distribution.probs
-            # covs = dist.component_distribution.covariance_matrix
-            # mean, cov = utils.collapse_into_gaussian(means, covs, probs)
-            # w2_component_whole_space_sq = torch.trace(cov) + (mean - scheme.outer_loc).pow(2).sum()
-            # w2_component_whole_space = w2_component_whole_space_sq.sqrt()
-
             print(f'w2 for whole space to z: {w2_component_whole_space}')
 
-
-            w2_component_inner_sq = torch.zeros(1)
             for idx in range(len(scheme.grid_schemes)):
+
+                # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
+                disc_component, w2_component, mass_inside_grid = discretize(dist, scheme.grid_schemes[idx])
+                disc_components.append(disc_component)
+                print(f'w2 for grid {idx}: {w2_component}')
+                w2_component_sq += w2_component.pow(2)
+                total_mass_inside_grids += mass_inside_grid
 
                 # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
                 domain = scheme.grid_schemes[idx].partition.domain  # domain of grid scheme for idx
@@ -122,8 +108,10 @@ def discretize(
 
                 w2_component_inner_sq += w2_component_inner.pow(2)
 
-            # Step 3: combine the results of the discretization of each component and the outer_locs
+            # mass of outer loc
+            mass_outer_loc = 1 - total_mass_inside_grids
 
+            # Step 3: combine the results of the discretization of each component and the outer_locs
             w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_sq).sqrt()
 
             # add outer loc to disc
@@ -137,9 +125,9 @@ def discretize(
             locs = torch.cat([locs, outer_loc_expanded], dim=0)
             probs = torch.cat([probs, mass_outer_loc], dim=0)
 
-            disc_total = dd_dists.CategoricalFloat(locs, probs)
+            disc_total = dd_dists.CategoricalFloat(locs, probs)  # new disc with location z included!
 
-            return disc_total, w2, total_mass_inside_grids
+            return disc_total, w2, total_mass_inside_grids  # how to remove this 'mass' part?
 
         elif isinstance(scheme, dd_schemes.GridScheme):
             probs, w2_sq, masses = [], [], []
