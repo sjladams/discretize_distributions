@@ -6,9 +6,9 @@ import pickle
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 
-with files('discretize_distributions.data').joinpath('lookup_grid_config.pickle').open('rb') as f:
+with files('discretize_distributions.data').joinpath('grid_configs.pickle').open('rb') as f:
     GRID_CONFIGS = pickle.load(f)
-with files('discretize_distributions.data').joinpath('lookup_opt_grid_uni_stand_normal.pickle').open('rb') as f:
+with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').open('rb') as f:
     OPTIMAL_1D_GRIDS = pickle.load(f)
 
 TOL = 1e-8
@@ -80,15 +80,14 @@ def get_optimal_grid_config(
     if num_locs == 1:
         opt_config = torch.empty(batch_shape + (0,)).to(torch.int64)
     else:
-        costs = GRID_CONFIGS[num_locs]['costs']
-        costs = torch.tensor(costs)[..., :neigh] # only select the grids that are relevant for the number of dimensions
+        costs = GRID_CONFIGS[num_locs]['w2'][..., :neigh] # only select the grids that are relevant for the number of dimensions
         dims_configs = costs.shape[-1]
 
         objective = torch.einsum('ij,...j->...i', costs, eigvals_sorted[..., :dims_configs])
         opt_config_idxs = objective.argmin(dim=-1)
 
-        opt_config = [GRID_CONFIGS[num_locs]['configs'][idx] for idx in opt_config_idxs.flatten()]
-        opt_config = torch.tensor(opt_config).reshape(batch_shape + (-1,))
+        opt_config = [GRID_CONFIGS[num_locs]['configs'][int(idx)] for idx in opt_config_idxs.flatten()]
+        opt_config = torch.stack(opt_config).reshape(batch_shape + (-1,))
         opt_config = opt_config[..., :neigh]
 
     # append grid of size 1 to dimensions that are not yet included in the optimal grid.
@@ -99,7 +98,7 @@ def get_optimal_grid_config(
 ### --- Backup (TODO remove) --------------------------------------------------------------------------------------- ###
 def get_optimal_grid(grid_config: torch.Tensor, **kwargs) -> dd_schemes.Grid:
     default_grid_size = grid_config.prod(-1).max()
-    attributes = ['locs', 'probs', 'trunc_mean', 'trunc_var', 'lower_edges', 'upper_edges']
+    attributes = ['locs', 'probs']
     grids = batch_handler_get_nd_dim_grids_from_optimal_1d_grid(grid_config, attributes,
                                                                 default_grid_size=default_grid_size,
                                                                 **kwargs)

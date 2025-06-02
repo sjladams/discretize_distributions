@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
@@ -72,37 +71,36 @@ def compute_mean_var_trunc_norm(
 
     return mean, variance
 
-def get_edges(locs: torch.Tensor):
+def get_vertices(centers: torch.Tensor) -> torch.Tensor:
     """
-    Find the edges of the Voronoi partition with center at locs
-    :param locs: center of Voronoi partition; Size(nr_locs,)
-    :return: edges
+    Find the vertices of the 1D Voronoi partition w.r.t. the points
+    :param locs: centers of Voronoi partition; Size(num_locs,)
+    :return: vertices of the Voronoi partition; Size(num_locs + 1, ) 
     """
-    print('TO BE DEPRECATED!')
-    edges = torch.cat((torch.ones(1).fill_(-torch.inf), locs[:-1] + 0.5 * locs.diff(), torch.ones(1).fill_(torch.inf)))
-    return edges
+    return torch.cat((
+        torch.ones(1).fill_(-torch.inf), 
+        centers[:-1] + 0.5 * centers.diff(), 
+        torch.ones(1).fill_(torch.inf)
+    ))
 
-def calculate_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
-    print('TO BE DEPRECATED!')
-    edges = get_edges(locs)
+def compute_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
+    vertices = get_vertices(locs)
 
-    probs = cdf(edges[1:]) - cdf(edges[:-1])
-    trunc_mean, trunc_var = compute_mean_var_trunc_norm(loc=0., scale=1., l=edges[:-1], u=edges[1:])
+    probs = cdf(vertices[1:]) - cdf(vertices[:-1])
+    trunc_mean, trunc_var = compute_mean_var_trunc_norm(loc=0., scale=1., l=vertices[:-1], u=vertices[1:])
     w2_sq = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
     return w2_sq.sqrt()
 
 def pickle_load(tag):
-    if not (".npy" in tag or ".pickle" in tag or ".pkl" in tag):
+    if not (".pickle" in tag or ".pkl" in tag):
         tag = f"{tag}.pickle"
     pickle_in = open(tag, "rb")
-    if "npy" in tag:
-        to_return = np.load(pickle_in)
-    else:
-        to_return = pickle.load(pickle_in)
+    to_return = pickle.load(pickle_in)
     pickle_in.close()
     return to_return
 
 def pickle_dump(obj, tag):
-    pickle_out = open("{}.pickle".format(tag), "wb")
-    pickle.dump(obj, pickle_out)
-    pickle_out.close()
+    if not (tag.endswith('.pickle') or tag.endswith('.pkl')):
+        tag = f"{tag}.pickle"
+    with open(tag, "wb") as pickle_out:
+        pickle.dump(obj, pickle_out)
