@@ -69,9 +69,14 @@ def discretize(
 
             lower_vertices_per_dim = [torch.full((1,), float('-inf')) for _ in range(num_dim)]
             upper_vertices_per_dim = [torch.full((1,), float('inf')) for _ in range(num_dim)]
-
+            scales = scheme.grid_schemes[0].locs.scales
+            rot_mat = scheme.grid_schemes[0].locs.rot_mat
+            offset = scheme.grid_schemes[0].locs.offset
             grid_partition_whole_space = dd_schemes.GridPartition.from_vertices_per_dim(lower_vertices_per_dim,
-                                                                                        upper_vertices_per_dim)
+                                                                                        upper_vertices_per_dim,
+                                                                                        rot_mat=rot_mat,
+                                                                                        scales=scales,
+                                                                                        offset=offset)
 
             grid_scheme_whole_space = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition_whole_space)
 
@@ -104,6 +109,8 @@ def discretize(
                 grid_scheme = dd_schemes.GridScheme(locs=grid, partition=grid_partition)
                 _, w2_component_inner, mass_inside_grid2 = discretize(dist, grid_scheme)
 
+
+
                 print(f'w2 for grid {idx} to z: {w2_component_inner}')
 
                 w2_component_inner_sq += w2_component_inner.pow(2)
@@ -112,7 +119,7 @@ def discretize(
             mass_outer_loc = 1 - total_mass_inside_grids
 
             # Step 3: combine the results of the discretization of each component and the outer_locs
-            w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_sq).sqrt()
+            w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_inner_sq).sqrt()
 
             # add outer loc to disc
             locs_list = [dc.locs for dc in disc_components]
