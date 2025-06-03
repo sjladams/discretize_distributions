@@ -3,6 +3,9 @@ import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
 from typing import Union, Optional, Tuple
+from torch_kmeans import KMeans
+from xitorch.linalg import symeig
+from xitorch import LinearOperator
 
 INV_SQRT_2PI = 1 / math.sqrt(2 * math.pi)
 SQRT_PI = math.sqrt(math.pi)
@@ -13,6 +16,77 @@ INV_PI = 1/math.pi
 SQRT_2_DIV_SQRT_PI = SQRT_2 / SQRT_PI
 
 REPLACE_INF = 1e10
+
+PRECISION = torch.finfo(torch.float32).eps
+
+
+def eigh(mat: torch.Tensor):
+    neigh = torch.linalg.matrix_rank(mat).min() # TODO use  hermitian=True ?
+    if neigh == mat.shape[-1]:
+        eigvals, eigvectors = torch.linalg.eigh(mat)
+    else:
+        cov_mat_xitorch = LinearOperator.m(mat)
+        eigvals, eigvectors = symeig(cov_mat_xitorch, neig=neigh, mode='uppest') # shape eigvals: (..., event_shape, neigh)
+    return eigvals, eigvectors
+
+def make_sym(mat: torch.Tensor):
+    """
+    ensure mat is a symmetric (hermitian) matrix
+    :param mat:
+    :return:
+    """
+    return torch.max(mat, mat.swapaxes(-1, -2))
+
+def is_sym(mat: torch.Tensor, atol: float = 1e-8) -> torch.Tensor:
+    """
+    Check if a batch of square matrices are symmetric.
+
+    :param matrices: Tensor of shape (batch_size, n, n)
+    :param tol: Tolerance for floating point comparison
+    :return: Tensor of shape (batch_size,) with boolean values indicating symmetry
+    """
+    return torch.allclose(mat, mat.transpose(-1, -2), atol=atol)
+
+def kmean_clustering_batches(x: torch.Tensor, n: int):
+    """
+    Do K-means clustering for batches of samples
+    :param x: (batch, num_samples, features)
+    :param n: number of clusters
+    :return: cluster_assignment: (batch, num_samples)
+    """
+    kmeans_torch = KMeans(n_clusters=n, verbose=False)
+    if len(x.shape) == 2:
+        labels = kmeans_torch(x.unsqueeze(0)).labels.squeeze(0)
+    else:
+        labels = kmeans_torch(x).labels
+
+    # Ensure labels are consecutive integers
+    # There were cases where a particular cluster was empty, generating issues later
+    unique_labels = torch.unique(labels, sorted=True)
+    remap = {old_label.item(): new_label for new_label, old_label in enumerate(unique_labels)}
+    remapped_labels = labels.clone().apply_(lambda x: remap[x])
+
+    return remapped_labels
+
+def symmetrize_vector(vec: torch.Tensor) -> torch.Tensor:
+    """
+    :param vec: Size(n, )
+    :return: Size(n,)
+    """
+    n = vec.shape[0]
+    split = torch.cat((-vec[:n // 2].flip(0).view(1, -1), vec[- (n // 2):].view(1, -1)), dim=0)
+    half = split.mean(0)
+    if n % 2 == 1:
+        vec = torch.cat((-half.flip(0), torch.zeros(1), half))
+    else:
+        vec = torch.cat((-half.flip(0), half))
+    return vec
+
+def is_mat_diag(mat: torch.Tensor) -> bool:
+    """
+    Check if all elements of a batch of square matrices are diagonal
+    """
+    return not (mat - torch.diag_embed(mat.diagonal(dim1=-2,dim2=-1), dim1=-2, dim2=-1)> PRECISION).any()
 
 
 def have_common_eigenbasis(Sigma1, Sigma2, atol=1e-6):

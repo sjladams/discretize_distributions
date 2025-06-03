@@ -2,7 +2,7 @@ import torch
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 
-from discretize_distributions.tensors import kmean_clustering_batches
+from discretize_distributions.utils import kmean_clustering_batches
 from discretize_distributions.schemes import Grid
 
 TOL = 1e-8

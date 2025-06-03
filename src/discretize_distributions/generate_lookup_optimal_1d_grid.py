@@ -5,8 +5,7 @@ from tqdm import tqdm
 import argparse
 from importlib.resources import files
 
-from utils import pickle_dump, compute_w2_disc_uni_stand_normal
-from tensors import symmetrize_vector
+from utils import pickle_dump, compute_w2_disc_uni_stand_normal, symmetrize_vector
 
 
 def compute_locs(

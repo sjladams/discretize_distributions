@@ -2,7 +2,7 @@ from typing import Optional
 import torch
 import math
 
-import discretize_distributions.tensors as tensors
+import discretize_distributions.utils as utils
 from torch.distributions.utils import _standard_normal
 from torch.distributions.multivariate_normal import _batch_mv, _batch_mahalanobis
 

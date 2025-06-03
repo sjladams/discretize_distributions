@@ -2,7 +2,7 @@ import torch
 from typing import Union, Tuple
 
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
-from discretize_distributions.tensors import kmean_clustering_batches
+from discretize_distributions.utils import kmean_clustering_batches
 
 __all__ = ['MixtureMultivariateNormal', 'compress_mixture_multivariate_normal', 'unique_mixture_multivariate_normal']
 
