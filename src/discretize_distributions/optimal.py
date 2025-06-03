@@ -13,6 +13,20 @@ with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').
 
 TOL = 1e-8
 
+
+class Info:
+    def __init__(self, grid_configs, optimal_1d_grids):
+        self.num_locs_options = torch.tensor(list(grid_configs.keys()), dtype=torch.int)
+        self.max_num_locs_per_dim = torch.tensor(list(optimal_1d_grids['locs'].keys()), dtype=torch.int).max()
+
+    def __str__(self):
+        return (
+            f"Available grid sizes (num_locs_options): {self.num_locs_options.tolist()}\n"
+            f"Maximum number of locations per dimension (max_num_locs_per_dim): {int(self.max_num_locs_per_dim)}"
+        )
+    
+info = Info(GRID_CONFIGS, OPTIMAL_1D_GRIDS)
+
 def get_optimal_grid_scheme(
     norm: dd_dists.MultivariateNormal,
     num_locs: int, 

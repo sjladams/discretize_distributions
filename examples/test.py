@@ -42,6 +42,8 @@ def set_axis(ax):
 
 if __name__ == "__main__":
     torch.manual_seed(3)
+    print(dd.info)
+
     ### --- test discretization of multivariate normal distribution ------------------------------------------------ ###
     mean = torch.tensor([0., 0.])
     cov_mat = torch.diag(torch.tensor([1.,5.]))
