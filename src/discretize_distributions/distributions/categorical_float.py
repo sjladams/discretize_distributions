@@ -88,22 +88,22 @@ class CategoricalGrid(Distribution):
 
     def __init__(
             self, 
-            locs: Grid, 
-            probs: Grid,
+            grid_of_locs: Grid,
+            grid_of_probs: Grid,
             validate_args=None
     ):
-        if probs.shape != locs.shape:
+        if grid_of_probs.shape != grid_of_locs.shape:
             raise ValueError("probs grid shape must match locs grid shape (excluding event dim)")
-        if probs.ndim_support != locs.ndim_support:
+        if grid_of_probs.ndim_support != grid_of_locs.ndim_support:
             raise ValueError("probs and locs must have the same number of dimensions")
         
-        assert torch.allclose(probs.rot_mat, torch.eye(probs.ndim), atol=TOL), "probs grid should have no rotation"
+        assert torch.allclose(grid_of_probs.rot_mat, torch.eye(grid_of_probs.ndim), atol=TOL), "probs grid should have no rotation"
 
-        self.probs = probs
-        self.locs = locs
+        self.grid_of_probs = grid_of_probs
+        self.grid_of_locs = grid_of_locs
 
         # event_shape is the last dimension of locs
-        event_shape = torch.Size((probs.ndim,))
+        event_shape = torch.Size((grid_of_probs.ndim,))
         batch_shape = torch.Size()  # No explicit batch for now
 
         super().__init__(
@@ -116,9 +116,7 @@ class CategoricalGrid(Distribution):
         """
         Converts the CategoricalGrid to a CategoricalFloat distribution.
         """
-        probs = self.probs.query(slice(None)).prod(dim=-1)
-        locs = self.locs.query(slice(None))
-        return CategoricalFloat(probs=probs, locs=locs)
+        return CategoricalFloat(probs=self.probs, locs=self.locs)
 
     @property
     def mean(self):
@@ -136,6 +134,13 @@ class CategoricalGrid(Distribution):
     def sample(self, sample_shape=torch.Size()):
         raise NotImplementedError
 
+    @property
+    def probs(self):
+        return self.grid_of_probs.query(slice(None)).prod(dim=-1)  
+    
+    @property
+    def locs(self):
+        return self.grid_of_locs.query(slice(None))
 
 
 ### Utility functions for CategoricalFloat distributions --------------------------- ###

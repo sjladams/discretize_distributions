@@ -192,21 +192,21 @@ class Grid(Axes):
 class GridPartition(Axes):
     def __init__(
             self, 
-            lower_vertices: Grid, 
-            upper_vertices: Grid,
+            grid_of_lower_vertices: Grid, 
+            grid_of_upper_vertices: Grid,
     ):
-        if not torch.allclose(lower_vertices.rot_mat, upper_vertices.rot_mat, atol=TOL):
+        if not torch.allclose(grid_of_lower_vertices.rot_mat, grid_of_upper_vertices.rot_mat, atol=TOL):
             raise ValueError("Lower and upper vertices must have the same rotation matrix.")
-        if not torch.allclose(lower_vertices.offset, upper_vertices.offset, atol=TOL):
+        if not torch.allclose(grid_of_lower_vertices.offset, grid_of_upper_vertices.offset, atol=TOL):
             raise ValueError("Lower and upper vertices must have the same offset.")
         
-        self._lower_vertices = lower_vertices
-        self._upper_vertices = upper_vertices
+        self.grid_of_lower_vertices = grid_of_lower_vertices
+        self.grid_of_upper_vertices = grid_of_upper_vertices
         super().__init__(
-            ndim_support=lower_vertices.ndim_support,
-            rot_mat=lower_vertices.rot_mat,
-            scales=lower_vertices.scales,
-            offset=lower_vertices.offset
+            ndim_support=grid_of_lower_vertices.ndim_support,
+            rot_mat=grid_of_lower_vertices.rot_mat,
+            scales=grid_of_lower_vertices.scales,
+            offset=grid_of_lower_vertices.offset
         )
     
     @staticmethod
@@ -274,24 +274,32 @@ class GridPartition(Axes):
     
     @property
     def shape(self):
-        return self._lower_vertices.shape
+        return self.grid_of_lower_vertices.shape
     
     @property
     def lower_vertices_per_dim(self):
-        return self._lower_vertices.points_per_dim
+        return self.grid_of_lower_vertices.points_per_dim
     
     @property
     def upper_vertices_per_dim(self):
-        return self._upper_vertices.points_per_dim
+        return self.grid_of_upper_vertices.points_per_dim
+    
+    @property
+    def lower_vertices(self):
+        return self.grid_of_lower_vertices.points
+    
+    @property
+    def upper_vertices(self):
+        return self.grid_of_upper_vertices.points
     
     def __len__(self):
-        return len(self._lower_vertices)
+        return len(self.grid_of_lower_vertices)
 
     @property
     def domain(self):
         return Cell(
-            self._lower_vertices.domain.lower_vertex,
-            self._upper_vertices.domain.upper_vertex,
+            self.grid_of_lower_vertices.domain.lower_vertex,
+            self.grid_of_upper_vertices.domain.upper_vertex,
             rot_mat=self.rot_mat,
             scales=self.scales,
             offset=self.offset
@@ -303,32 +311,32 @@ class GridPartition(Axes):
     
     def __getitem__(self, idx):
         return GridPartition(
-            lower_vertices=self._lower_vertices[idx],
-            upper_vertices=self._upper_vertices[idx]
+            grid_of_lower_vertices=self.grid_of_lower_vertices[idx],
+            grid_of_upper_vertices=self.grid_of_upper_vertices[idx]
         )
 
 
 class GridScheme:
     def __init__(
             self, 
-            locs: Grid,
+            grid_of_locs: Grid,
             partition: GridPartition
     ):
-        if len(locs) != len(partition):
+        if len(grid_of_locs) != len(partition):
             raise ValueError("Number of locations must match the number of partitions.")
-        if locs.ndim != partition.ndim:
+        if grid_of_locs.ndim != partition.ndim:
             raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
 
-        self.locs = locs
+        self.grid_of_locs = grid_of_locs
         self.partition = partition
 
     @property
     def ndim(self):
-        return self.locs.ndim
+        return self.grid_of_locs.ndim
 
     @property
     def shape(self):
-        return self.locs.shape
+        return self.grid_of_locs.shape
     
     @property
     def domain(self):
@@ -336,7 +344,11 @@ class GridScheme:
     
     @property
     def locs_per_dim(self):
-        return self.locs.points_per_dim
+        return self.grid_of_locs.points_per_dim
+    
+    @property
+    def locs(self):
+        return self.grid_of_locs.points
     
     @property
     def lower_vertices_per_dim(self):
@@ -344,16 +356,16 @@ class GridScheme:
     
     @property
     def upper_vertices_per_dim(self):
-        return self.partition.upper_vertices_per_dim
+        return self.partition.grid_of_upper_vertices_per_dim
     
     def __getitem__(self, idx):
         return GridScheme(
-            locs=self.locs[idx],
+            grid_of_locs=self.grid_of_locs[idx],
             partition=self.partition[idx]
         )
 
     def __len__(self):
-        return len(self.locs)
+        return len(self.grid_of_locs)
 
 
 class MultiGridScheme:

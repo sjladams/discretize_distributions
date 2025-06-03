@@ -40,7 +40,7 @@ def discretize_gmms_the_old_way(
 def discretize(
         dist: torch.distributions.Distribution,
         scheme: dd_schemes.Scheme
-) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
+) -> Tuple[Union[dd_dists.CategoricalFloat, dd_dists.CategoricalGrid], torch.Tensor]:
     if not dist.batch_shape == torch.Size([]):
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
 
@@ -71,13 +71,13 @@ def discretize(
             probs = torch.stack(probs, dim=-1).sum(-1)
             w2 = torch.stack(w2_sq).sum().sqrt()
 
-            return dd_dists.CategoricalFloat(scheme.locs.points, probs), w2
+            return dd_dists.CategoricalFloat(scheme.locs, probs), w2
 
 
 def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
         grid_scheme: dd_schemes.GridScheme
-) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
+) -> Tuple[dd_dists.CategoricalGrid, torch.Tensor]:
     if not utils.have_common_eigenbasis(
         dist.covariance_matrix, 
         torch.einsum('...ij,...jk->...ik', grid_scheme.partition.transform_mat, grid_scheme.partition.transform_mat.T),
@@ -95,7 +95,7 @@ def discretize_multi_norm_using_grid_scheme(
         grid_scheme.partition.scales
     )
     relative_scales = partition_scales_rearanged / dist.eigvals_sqrt
-    locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
+    locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.grid_of_locs.points_per_dim)]
     lower_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
     upper_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
 
@@ -103,8 +103,7 @@ def discretize_multi_norm_using_grid_scheme(
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
     probs = dd_schemes.Grid(probs_per_dim)
 
-    disc_dist = dd_dists.CategoricalGrid(grid_scheme.locs, probs)
-    disc_dist = disc_dist.to_categorical_float() # TODO allow to output CategoricalGrid
+    disc_dist = dd_dists.CategoricalGrid(grid_scheme.grid_of_locs, probs)
 
     # Wasserstein distance error computation:
     trunc_mean_var_per_dim = [
