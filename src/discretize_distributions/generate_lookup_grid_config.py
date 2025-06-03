@@ -71,7 +71,6 @@ def generate_feasible_grid_configs(
 
     backtrack([], 1, 1)
 
-    # Filter out strictly dominated combinations # TODO define dominated combinations in the docstring
     filtered_configs = []
     w2s = []
     for comb in configs:
