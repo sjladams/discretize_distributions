@@ -207,20 +207,20 @@ def transform_to_local(x_global, rot_mat, scales, offset):
 
 
 def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
-    density_samples = dist.sample((10000,)).detach().cpu().numpy()
+    density_samples = dist.sample((10000,)).detach().numpy()
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
                bins=[50, 50], density=True, cmap='viridis')
     ax.scatter(samples[:, 0], samples[:, 1],
                c=labels, cmap='Set1', s=10, alpha=0.3)
 
     if centers:
-        centers_tensor = torch.stack(centers).detach().cpu().numpy()
+        centers_tensor = torch.stack(centers).detach().numpy()
         ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
                    c='red', marker='x', s=100)
 
     for shell, _ in shells:
-        lower = shell.lower_vertex.detach().cpu().numpy()
-        upper = shell.upper_vertex.detach().cpu().numpy()
+        lower = shell.lower_vertex.detach().numpy()
+        upper = shell.upper_vertex.detach().numpy()
         width = upper[0] - lower[0]
         height = upper[1] - lower[1]
         rect = plt.Rectangle(lower, width, height,

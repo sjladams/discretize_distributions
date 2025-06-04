@@ -7,6 +7,7 @@ import discretize_distributions.optimal as dd_optimal
 
 from matplotlib import pyplot as plt
 from copy import deepcopy
+import discretize_distributions.utils as utils
 
 
 def plot_2d_dist(ax, dist):
@@ -62,6 +63,47 @@ def set_axis(ax):
     ax.set_xlim(min_lim, max_lim)
     ax.set_ylim(min_lim, max_lim)
     return ax
+
+
+def transform_cell_to_global(cell):
+    lower_global = utils.transform_to_global(cell.lower_vertex.unsqueeze(0), cell.rot_mat, cell.scales, cell.offset).squeeze(0)
+    upper_global = utils.transform_to_global(cell.upper_vertex.unsqueeze(0), cell.rot_mat, cell.scales, cell.offset).squeeze(0)
+    return lower_global, upper_global
+
+
+def plot_final_discretization_with_shells(ax, gmm, disc_mix, shells, centers):
+    density_samples = gmm.sample((10000,)).detach().numpy()
+    ax.hist2d(density_samples[:, 0], density_samples[:, 1],
+               bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
+
+    locs = disc_mix.locs.detach().numpy()
+    ax.scatter(locs[:, 0], locs[:, 1],
+               c='cyan', s=20, edgecolor='k', alpha=0.8, label='Grid points')
+
+    ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
+               c='red', marker='o', s=100, label='Outer loc (z)')
+
+    for shell, _ in shells:
+        lower_global, upper_global = transform_cell_to_global(shell)
+        width = upper_global[0] - lower_global[0]
+        height = upper_global[1] - lower_global[1]
+        rect = plt.Rectangle(lower_global, width, height,
+                             fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
+        ax.add_patch(rect)
+
+    if centers:
+        centers_tensor = torch.stack(centers).detach().numpy()
+        ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
+                   c='lime', marker='x', s=100, label='Shell centers')
+
+    ax.legend()
+    ax.set_xlim(-10, 10)
+    ax.set_ylim(-10, 10)
+    ax.set_title("Density + Grid Points + Shells + Centers")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    return ax
+
 
 
 if __name__ == "__main__":
@@ -186,15 +228,10 @@ if __name__ == "__main__":
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    density_samples = gmm.sample((10000,)).detach().cpu().numpy()
-    # ax.hist2d(density_samples[:, 0], density_samples[:, 1],
-    #           bins=[50, 50], density=True, cmap='viridis')
-
-    locs = disc_mix.locs.detach().cpu().numpy()
-    ax.scatter(locs[:, 0], locs[:, 1],
-               c='cyan', s=100, edgecolor='k', alpha=0.8, label='Grid points')
-    ax.legend()
-    ax.set_xlim(-10, 10)
-    ax.set_ylim(-10, 10)
-    ax.set_title("Density + Grid Points + Outer Loc")
+    shells_and_centers = [
+        (gs.partition.domain, (gs.partition.domain.lower_vertex + gs.partition.domain.upper_vertex) / 2)
+        for gs in mix_grid.grid_schemes
+    ]
+    plot_final_discretization_with_shells(
+        ax, gmm, disc_mix, shells_and_centers, [c for _, c in shells_and_centers])
     plt.show()

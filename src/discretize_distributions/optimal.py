@@ -254,10 +254,10 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
         grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
 
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=[grid_scheme], outer_loc=z)
-        if plot:
-            fig, ax = plt.subplots(figsize=(6, 6))
-            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
-            plt.show()
+        # if plot:
+        #     fig, ax = plt.subplots(figsize=(6, 6))
+        #     utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
+        #     plt.show()
         return mix_grid_scheme
 
     else:
@@ -303,16 +303,17 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
 
             domain = dd_schemes.Cell(lower_vertex=lower_vertex,
                                      upper_vertex=upper_vertex,
-                                     rot_mat=norm.eigvecs,
-                                     offset=norm.loc,
-                                     scales=norm.eigvals_sqrt)
+                                     # rot_mat=norm.eigvecs,
+                                     # offset=norm.loc,
+                                     # scales=norm.eigvals_sqrt
+                                     )
 
             grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)
-        if plot:
-            fig, ax = plt.subplots(figsize=(6, 6))
-            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, final_shells, [c for _, c in final_shells])
-            plt.show()
+        # if plot:
+        #     fig, ax = plt.subplots(figsize=(6, 6))
+        #     utils.plot_2d_dist_with_shells(ax, gmm, X, labels, final_shells, [c for _, c in final_shells])
+        #     plt.show()
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
 
         return mix_grid_scheme
