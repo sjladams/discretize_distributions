@@ -57,33 +57,33 @@ def get_optimal_grid_scheme(
 
     return dd_schemes.GridScheme(grid_of_locs, partition)
 
-def get_optimal_grid_locs(
-    norm: dd_dists.MultivariateNormal,
-    num_locs: int,
-    domain: Optional[dd_schemes.Cell] = None
-) -> list:
+def get_optimal_grid_locs(norm, num_locs, domain):
     if norm.batch_shape != torch.Size([]):
         raise ValueError('batching not supported yet')
 
     grid_config = get_optimal_grid_config(eigvals=norm.eigvals, num_locs=num_locs)
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
 
-    if domain is not None:
-        if not torch.allclose(norm.inv_mahalanobis_mat, domain.transform_mat, atol=TOL):
-            raise ValueError('The domain transform matrix does not match the inverse mahalanobis matrix of the ' \
-            'distribution.')
-        if not torch.allclose(norm.loc, domain.offset, atol=TOL):
-            raise ValueError('The domain offset does not match the location of the distribution.')
+    meshgrid = torch.meshgrid(*locs_per_dim, indexing='ij')
+    grid_points_canonical = torch.stack([g.reshape(-1) for g in meshgrid], dim=-1)
 
-        locs_per_dim = [
-            c[(c >= l) & (c <= u)] for c, l, u in
-            zip(locs_per_dim, domain.lower_vertex,  domain.upper_vertex)
-        ]
-        for idx, locs in enumerate(locs_per_dim):
-            if len(locs) == 0:
-                raise ValueError(f"No locations found within domain for dimension {idx} ")
+    scales = norm.eigvals_sqrt
+    rot_mat = norm.eigvecs
+    offset = norm.loc
+    grid_points_scaled = grid_points_canonical * scales
+    grid_points_rotated = grid_points_scaled @ rot_mat.T
+    grid_points_global = grid_points_rotated + offset
 
-    return locs_per_dim
+    in_bounds = (grid_points_global >= domain.lower_vertex) & (grid_points_global <= domain.upper_vertex)
+    mask = in_bounds.all(dim=1)
+    grid_points_global_clipped = grid_points_global[mask]
+
+    locs_per_dim_clipped = [
+        torch.sort(torch.unique(grid_points_global_clipped[:, i]))[0]
+        for i in range(grid_points_global_clipped.shape[1])
+    ]
+
+    return locs_per_dim_clipped
 
 
 def get_optimal_grid_config(
@@ -282,10 +282,10 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
         grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
 
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=[grid_scheme], outer_loc=z)
-        # if plot:
-        #     fig, ax = plt.subplots(figsize=(6, 6))
-        #     utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
-        #     plt.show()
+        if plot:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
+            plt.show()
         return mix_grid_scheme
 
     else:
@@ -330,39 +330,46 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
             # do opposite scaling
             lower_vertex = shell.lower_vertex
             upper_vertex = shell.upper_vertex
-            lower_vertex_canonical = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-                                                        norm.loc).squeeze(0)
-            upper_vertex_canonical = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-                                                        norm.loc).squeeze(0)
-
-            domain = dd_schemes.Cell(lower_vertex=lower_vertex_canonical,
-                                     upper_vertex=upper_vertex_canonical,
+            # lower_vertex_canonical = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+            #                                             norm.loc).squeeze(0)
+            # upper_vertex_canonical = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+            #                                             norm.loc).squeeze(0)
+            #
+            # domain = dd_schemes.Cell(lower_vertex=lower_vertex_canonical,
+            #                          upper_vertex=upper_vertex_canonical,
+            #                          rot_mat=norm.eigvecs,
+            #                          offset=norm.loc,
+            #                          scales=norm.eigvals_sqrt
+            #                          )
+            #
+            #
+            #
+            # # rebuild it correctly
+            # grid_locs_per_dim = get_optimal_grid_locs(norm=norm, num_locs=num_locs, domain=domain)
+            # grid_of_locs = dd_schemes.Grid(grid_locs_per_dim,
+            #                                rot_mat=norm.eigvecs,
+            #                                offset=norm.loc,
+            #                                scales=norm.eigvals_sqrt
+            #                                )
+            # # based off grid locs
+            # # domain = grid_of_locs.domain
+            #
+            # original vertices
+            domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                     upper_vertex=upper_vertex,
                                      rot_mat=norm.eigvecs,
                                      offset=norm.loc,
                                      scales=norm.eigvals_sqrt
                                      )
 
-            # grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+            # only get locations and then make grid
+            # locs_per_dim_clipped = get_optimal_grid_locs(norm, num_locs, domain)
+            # grid_of_locs = dd_schemes.Grid(locs_per_dim_clipped)
+            #
+            # partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
+            # grid_scheme = dd_schemes.GridScheme(grid_of_locs, partition)
 
-            # rebuild it correctly
-            grid_locs_per_dim = get_optimal_grid_locs(norm=norm, num_locs=num_locs, domain=domain)
-            grid_of_locs = dd_schemes.Grid(grid_locs_per_dim,
-                                           rot_mat=norm.eigvecs,
-                                           offset=norm.loc,
-                                           scales=norm.eigvals_sqrt
-                                           )
-            lower_vertex_global = utils.transform_to_global(lower_vertex_canonical.unsqueeze(0), norm.eigvecs,
-                                                            norm.eigvals_sqrt, norm.loc).squeeze(0)
-            upper_vertex_global = utils.transform_to_global(upper_vertex_canonical.unsqueeze(0), norm.eigvecs,
-                                                            norm.eigvals_sqrt, norm.loc).squeeze(0)
-            domain_global = dd_schemes.Cell(lower_vertex=lower_vertex_global, upper_vertex=upper_vertex_global,
-                                            rot_mat=norm.eigvecs,
-                                            offset=norm.loc,
-                                            scales=norm.eigvals_sqrt
-                                            )
-            partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
-
-            grid_scheme = dd_schemes.GridScheme(grid_of_locs, partition)
+            grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)
 
         if plot:

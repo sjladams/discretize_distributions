@@ -71,7 +71,7 @@ def transform_cell_to_global(cell):
     return lower_global, upper_global
 
 
-def plot_final_discretization_with_shells(ax, gmm, disc_mix, shells, centers):
+def plot_final_discretization_with_shells(ax, gmm, disc_mix):
     density_samples = gmm.sample((10000,)).detach().numpy()
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
                bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
@@ -83,20 +83,22 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, shells, centers):
     ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
                c='red', marker='o', s=100, label='Outer loc (z)')
 
-    for shell, _ in shells:
-        lower_global, upper_global = transform_cell_to_global(shell)
-        # lower_global = shell.lower_vertex.detach().numpy()
-        # upper_global = shell.upper_vertex.detach().numpy()
+    shells = [gs.partition.domain for gs in mix_grid.grid_schemes]
+
+    for shell in shells:
+        # lower_global, upper_global = transform_cell_to_global(shell)
+        lower_global = shell.lower_vertex.detach().numpy()
+        upper_global = shell.upper_vertex.detach().numpy()
         width = upper_global[0] - lower_global[0]
         height = upper_global[1] - lower_global[1]
         rect = plt.Rectangle(lower_global, width, height,
                              fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
         ax.add_patch(rect)
 
-    if centers:
-        centers_tensor = torch.stack(centers).detach().numpy()
-        ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
-                   c='lime', marker='x', s=100, label='Shell centers')
+    # if centers:
+    #     centers_tensor = torch.stack(centers).detach().numpy()
+    #     ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
+    #                c='lime', marker='x', s=100, label='Shell centers')
 
     ax.legend()
     ax.set_xlim(-10, 10)
@@ -229,10 +231,5 @@ if __name__ == "__main__":
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    shells_and_centers = [
-        (gs.partition.domain, (gs.partition.domain.lower_vertex + gs.partition.domain.upper_vertex) / 2)
-        for gs in mix_grid.grid_schemes
-    ]
-    plot_final_discretization_with_shells(
-        ax, gmm, disc_mix, shells_and_centers, [c for _, c in shells_and_centers])
+    plot_final_discretization_with_shells(ax, gmm, disc_mix)
     plt.show()
