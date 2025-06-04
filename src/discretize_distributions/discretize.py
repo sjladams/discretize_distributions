@@ -119,10 +119,17 @@ def discretize(
             w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_inner_sq).sqrt()
 
             # add outer loc to disc
-            locs_list = [dc.locs_unravelled for dc in disc_components]
-            probs_list = [dc.probs_unravelled for dc in disc_components]
-            locs = torch.cat(locs_list, dim=0)
+            # locs_list = [dc.locs_unravelled for dc in disc_components]
+            # locs = torch.cat(locs_list, dim=0)
+            locs_global_list = [
+                utils.transform_to_global(dc.locs_unravelled, dc.locs.rot_mat, dc.locs.scales, dc.locs.offset)
+                for dc in disc_components
+            ]
 
+            # global
+            locs = torch.cat(locs_global_list, dim=0)
+
+            probs_list = [dc.probs_unravelled for dc in disc_components]
             # rescale - still need it?
             probs = torch.cat(probs_list, dim=0) * total_mass_inside_grids
 

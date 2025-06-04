@@ -8,7 +8,7 @@ import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 
 from sklearn.cluster import DBSCAN
-
+import matplotlib.pyplot as plt
 import numpy as np
 
 GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
@@ -46,7 +46,7 @@ def get_optimal_grid_scheme(
 
     grid_of_locs = dd_schemes.Grid(
         locs_per_dim, 
-        rot_mat=norm.eigvecs, 
+        rot_mat=norm.eigvecs,
         scales=norm.eigvals_sqrt,
         offset=norm.loc
     )
@@ -165,7 +165,7 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
         grids[attribute] = grid
     return grids
 
-def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
+def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
     """
     Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
     including the outer loc as the average of the means of the components in the GMM.
@@ -177,15 +177,25 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
     """
 
     num_components = gmm.component_distribution.batch_shape[0]
-    num_samples = torch.tensor([100*num_components])  # equal to nr of signature locations, ensuring it detects enough
+    num_samples = torch.tensor([10*num_components])  # equal to nr of signature locations, ensuring it detects enough
     # density variations
     samples = gmm.sample((num_samples,))
+
+    # covariances = gmm.component_distribution.covariance_matrix
+    # variances = torch.diagonal(covariances, dim1=-2, dim2=-1)
+    # stds = variances.sqrt()
+    # avg_std = stds.mean()
 
     # parameters
     if min_samples is None:
         min_samples = 20
     if eps is None:  # elbow method for eps
         eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)
+
+    # max_allowed_eps = 2 * avg_std.item()
+    # if eps > max_allowed_eps:
+    #     eps = max_allowed_eps
+
     print(f'Chosen epsilon: {eps}')
     X = samples.detach().numpy()
     clustering = DBSCAN(eps=eps, min_samples=min_samples, algorithm='kd_tree').fit(X)
@@ -194,7 +204,7 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
     shells = []
     centers = []
     unique_labels = set(labels)
-    unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
+    # unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
 
     for label in unique_labels:
         mask = torch.tensor(labels == label)
@@ -202,9 +212,9 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
 
         # must be dense enough to form shell around it, negligible complexity as its around O(nd) while
         # eps estimate already has complexity of O(n^2d)
-        if len(cluster_points) < min_samples:
-            # there can be very small clusters left in dbscan as EVERYTHING is clustered
-            continue
+        # if len(cluster_points) < min_samples:
+        #     # there can be very small clusters left in dbscan as EVERYTHING is clustered
+        #     continue
 
         center = cluster_points.mean(dim=0)
 
@@ -236,14 +246,18 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
 
         domain = dd_schemes.Cell(lower_vertex=lower_vertex,
                                 upper_vertex=upper_vertex,
-                                rot_mat=norm.eigvecs,
-                                offset=norm.loc,
-                                scales=norm.eigvals_sqrt)
+                                # rot_mat=norm.eigvecs,
+                                # offset=norm.loc,
+                                # scales=norm.eigvals_sqrt
+                                 )
 
         grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
 
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=[grid_scheme], outer_loc=z)
-
+        if plot:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
+            plt.show()
         return mix_grid_scheme
 
     else:
@@ -295,6 +309,10 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None):
 
             grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)
-
+        if plot:
+            fig, ax = plt.subplots(figsize=(6, 6))
+            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, final_shells, [c for _, c in final_shells])
+            plt.show()
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+
         return mix_grid_scheme

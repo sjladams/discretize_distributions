@@ -3,8 +3,10 @@ import numpy as np
 import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
-from typing import Union, Optional, Tuple
+from typing import Union, Tuple
 from sklearn.neighbors import NearestNeighbors
+from kneed import KneeLocator
+import matplotlib.pyplot as plt
 
 INV_SQRT_2PI = 1 / math.sqrt(2 * math.pi)
 SQRT_PI = math.sqrt(math.pi)
@@ -115,10 +117,10 @@ def estimate_eps(samples, min_samples=20, plot=False):
     distances, _ = nbrs.kneighbors(samples_np)
     k_distances = distances[:, -1]
     k_distances = np.sort(k_distances)  # sorted in increasing order based on distance
-    # x = np.arange(len(k_distances))
-    # kl = KneeLocator(x, k_distances, curve='convex', direction='increasing')
-    # eps = k_distances[kl.knee]
-    eps = np.percentile(k_distances, 95)
+    x = np.arange(len(k_distances))
+    kl = KneeLocator(x, k_distances, curve='convex', direction='increasing')
+    eps = k_distances[kl.knee]
+    # eps = np.percentile(k_distances, 90)
     if plot:
         import matplotlib.pyplot as plt
         plt.plot(k_distances[::-1])
@@ -202,3 +204,32 @@ def transform_to_local(x_global, rot_mat, scales, offset):
     rotated = centered @ rot_mat
     local = rotated / scales
     return local
+
+
+def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
+    density_samples = dist.sample((10000,)).detach().cpu().numpy()
+    ax.hist2d(density_samples[:, 0], density_samples[:, 1],
+               bins=[50, 50], density=True, cmap='viridis')
+    ax.scatter(samples[:, 0], samples[:, 1],
+               c=labels, cmap='Set1', s=10, alpha=0.3)
+
+    if centers:
+        centers_tensor = torch.stack(centers).detach().cpu().numpy()
+        ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
+                   c='red', marker='x', s=100)
+
+    for shell, _ in shells:
+        lower = shell.lower_vertex.detach().cpu().numpy()
+        upper = shell.upper_vertex.detach().cpu().numpy()
+        width = upper[0] - lower[0]
+        height = upper[1] - lower[1]
+        rect = plt.Rectangle(lower, width, height,
+                             fill=False, edgecolor='cyan', linewidth=2)
+        ax.add_patch(rect)
+
+    ax.set_title("DBSCAN Generated Shells for GMM")
+    ax.set_xlim(-10, 10)
+    ax.set_ylim(-10, 10)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    return ax
