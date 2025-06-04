@@ -85,6 +85,8 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, shells, centers):
 
     for shell, _ in shells:
         lower_global, upper_global = transform_cell_to_global(shell)
+        # lower_global = shell.lower_vertex.detach().numpy()
+        # upper_global = shell.upper_vertex.detach().numpy()
         width = upper_global[0] - lower_global[0]
         height = upper_global[1] - lower_global[1]
         rect = plt.Rectangle(lower_global, width, height,
@@ -103,7 +105,6 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, shells, centers):
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     return ax
-
 
 
 if __name__ == "__main__":
