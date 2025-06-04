@@ -90,6 +90,7 @@ class CategoricalGrid(Distribution):
             self, 
             locs: Grid, 
             probs: Grid,
+            grid_mass=None,
             validate_args=None
     ):
         if probs.shape != locs.shape:
@@ -101,6 +102,7 @@ class CategoricalGrid(Distribution):
 
         self.probs = probs
         self.locs = locs
+        self.grid_mass = grid_mass
 
         # event_shape is the last dimension of locs
         event_shape = torch.Size((probs.ndim,))
@@ -136,6 +138,17 @@ class CategoricalGrid(Distribution):
     def sample(self, sample_shape=torch.Size()):
         raise NotImplementedError
 
+    @property
+    def probs_unravelled(self):
+        if not hasattr(self, '_probs_unravelled'):
+            self._probs_unravelled = self.probs.query(slice(None)).prod(dim=-1)
+        return self._probs_unravelled
+
+    @property
+    def locs_unravelled(self):
+        if not hasattr(self, '_locs_unravelled'):
+            self._locs_unravelled = self.locs.query(slice(None))
+        return self._locs_unravelled
 
 
 ### Utility functions for CategoricalFloat distributions --------------------------- ###

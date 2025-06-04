@@ -27,11 +27,9 @@ def discretize_gmms_the_old_way(
     
     probs, locs, w2_sq = [], [], []
     for idx in range(dist.num_components):
-        disc_component, w2_component, _ = discretize(
-            dist.component_distribution[idx], grid_schemes[idx]
-        )
-        probs.append(disc_component.probs * dist.mixture_distribution.probs[idx])
-        locs.append(disc_component.locs)
+        disc_component, w2_component = discretize(dist.component_distribution[idx], grid_schemes[idx])
+        probs.append(disc_component.probs_unravelled * dist.mixture_distribution.probs[idx])
+        locs.append(disc_component.locs_unravelled)
         w2_sq.append(w2_component.pow(2) * dist.mixture_distribution.probs[idx])
 
     probs = torch.cat(probs, dim=0)
@@ -44,7 +42,7 @@ def discretize_gmms_the_old_way(
 def discretize(
         dist: torch.distributions.Distribution,
         scheme: dd_schemes.Scheme,
-) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor, torch.Tensor]:  # added mass outside
+) -> Tuple[Union[dd_dists.CategoricalGrid, dd_dists.CategoricalFloat], torch.Tensor]:  # added mass outside
     if not dist.batch_shape == torch.Size([]):
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
 
@@ -69,9 +67,9 @@ def discretize(
 
             lower_vertices_per_dim = [torch.full((1,), float('-inf')) for _ in range(num_dim)]
             upper_vertices_per_dim = [torch.full((1,), float('inf')) for _ in range(num_dim)]
-            scales = scheme.grid_schemes[0].locs.scales
-            rot_mat = scheme.grid_schemes[0].locs.rot_mat
-            offset = scheme.grid_schemes[0].locs.offset
+            # scales = scheme.grid_schemes[0].locs.scales
+            # rot_mat = scheme.grid_schemes[0].locs.rot_mat
+            # offset = scheme.grid_schemes[0].locs.offset
             grid_partition_whole_space = dd_schemes.GridPartition.from_vertices_per_dim(lower_vertices_per_dim,
                                                                                         upper_vertices_per_dim,
                                                                                         # rot_mat=rot_mat,
@@ -81,17 +79,17 @@ def discretize(
 
             grid_scheme_whole_space = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition_whole_space)
 
-            _, w2_component_whole_space, mass_whole_space = discretize(dist, grid_scheme_whole_space)
+            _, w2_component_whole_space = discretize(dist, grid_scheme_whole_space)
             print(f'w2 for whole space to z: {w2_component_whole_space}')
 
             for idx in range(len(scheme.grid_schemes)):
 
                 # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
-                disc_component, w2_component, mass_inside_grid = discretize(dist, scheme.grid_schemes[idx])
+                disc_component, w2_component = discretize(dist, scheme.grid_schemes[idx])
                 disc_components.append(disc_component)
                 print(f'w2 for grid {idx}: {w2_component}')
                 w2_component_sq += w2_component.pow(2)
-                total_mass_inside_grids += mass_inside_grid
+                total_mass_inside_grids += disc_component.grid_mass
 
                 # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
                 domain = scheme.grid_schemes[idx].partition.domain  # domain of grid scheme for idx
@@ -108,7 +106,7 @@ def discretize(
                 )
                 # grid = dd_schemes.Grid(points_per_dim, rot_mat, scales, offset)
                 grid_scheme = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition)
-                _, w2_component_inner, mass_inside_grid2 = discretize(dist, grid_scheme)
+                _, w2_component_inner = discretize(dist, grid_scheme)
 
                 print(f'w2 for grid {idx} to z: {w2_component_inner}')
 
@@ -121,10 +119,11 @@ def discretize(
             w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_inner_sq).sqrt()
 
             # add outer loc to disc
-            locs_list = [dc.locs for dc in disc_components]
-            probs_list = [dc.probs for dc in disc_components]
+            locs_list = [dc.locs_unravelled for dc in disc_components]
+            probs_list = [dc.probs_unravelled for dc in disc_components]
             locs = torch.cat(locs_list, dim=0)
-            # rescale as they have been normalized inside CategoricalFloat already
+
+            # rescale - still need it?
             probs = torch.cat(probs_list, dim=0) * total_mass_inside_grids
 
             outer_loc_expanded = scheme.outer_loc.unsqueeze(0)
@@ -133,26 +132,37 @@ def discretize(
 
             disc_total = dd_dists.CategoricalFloat(locs, probs)  # new disc with location z included!
 
-            return disc_total, w2, total_mass_inside_grids  # how to remove this 'mass' part?
+            return disc_total, w2
 
         elif isinstance(scheme, dd_schemes.GridScheme):
             probs, w2_sq, masses = [], [], []
             for idx in range(dist.num_components):
-                disc_component, w2_component, mass_inside_grid = discretize(dist.component_distribution[idx], scheme)
-                probs.append(disc_component.probs * dist.mixture_distribution.probs[idx])
+                disc_component, w2_component = discretize(dist.component_distribution[idx], scheme)
+                probs.append(disc_component.probs_unravelled * dist.mixture_distribution.probs[idx])
                 w2_sq.append(w2_component.pow(2) * dist.mixture_distribution.probs[idx])
-                masses.append(mass_inside_grid * dist.mixture_distribution.probs[idx])  # scaled per component
+                masses.append(disc_component.grid_mass * dist.mixture_distribution.probs[idx])  # scaled per component
 
             probs = torch.stack(probs, dim=-1).sum(-1)
             w2 = torch.stack(w2_sq).sum().sqrt()
             total_mass_inside_grid = torch.stack(masses).sum()
 
-            return dd_dists.CategoricalFloat(scheme.locs.points, probs), w2, total_mass_inside_grid
+            grid_shape = [len(p) for p in scheme.locs.points_per_dim]
+            probs_nd = probs.view(*grid_shape)
+
+            probs_per_dim = []
+            for i in range(len(grid_shape)):
+                dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
+                marginal = probs_nd.sum(dim=dims_to_sum)
+                probs_per_dim.append(marginal)
+
+            probs_grid = dd_schemes.Grid(probs_per_dim)
+
+            return dd_dists.CategoricalGrid(scheme.locs, probs_grid, total_mass_inside_grid), w2
 
 def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
         grid_scheme: dd_schemes.GridScheme,
-) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor, torch.Tensor]:
+) -> Tuple[dd_dists.CategoricalGrid, torch.Tensor]:
     if not utils.have_common_eigenbasis(
         dist.covariance_matrix, 
         torch.einsum('...ij,...jk->...ik', grid_scheme.partition.transform_mat, grid_scheme.partition.transform_mat.T),
@@ -196,8 +206,9 @@ def discretize_multi_norm_using_grid_scheme(
     # mass conservation
     mass_inside_grid = probs.points.prod(-1).sum()
 
-    disc_dist = dd_dists.CategoricalGrid(grid_scheme.locs, probs)
-    disc_dist = disc_dist.to_categorical_float() # TODO allow to output CategoricalGrid
+    disc_dist = dd_dists.CategoricalGrid(grid_scheme.locs, probs, mass_inside_grid)
+    # disc_dist = disc_dist.to_categorical_float() # TODO allow to output CategoricalGrid
+    # add attribute for mass inside grids
 
     # Wasserstein distance error computation:
     trunc_mean_var_per_dim = [
@@ -222,4 +233,4 @@ def discretize_multi_norm_using_grid_scheme(
 
     print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
-    return disc_dist, w2, mass_inside_grid
+    return disc_dist, w2
