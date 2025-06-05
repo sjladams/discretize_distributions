@@ -64,7 +64,7 @@ def generate_feasible_combinations(N: int, n: int, max_element_value: int = None
 
 
 def generate_lookup_grid_config(num_loc_options: List, tag: str):
-    path_to_lookup_opt_grid_uni_norm = f".{os.sep}data{os.sep}lookup_opt_grid_uni_normal"
+    path_to_lookup_opt_grid_uni_norm = f".{os.sep}data{os.sep}lookup_opt_grid_uni_stand_normal"
     path_to_lookup_grid_config = f".{os.sep}data{os.sep}{tag}"
 
     if not os.path.exists(f"{path_to_lookup_opt_grid_uni_norm}.pickle"):
@@ -105,7 +105,7 @@ def generate_lookup_grid_config(num_loc_options: List, tag: str):
 
 
 if __name__ == '__main__':
-    generate_lookup_grid_config(num_loc_options=[1, 10, 100, 200], tag="lookup_grid_config_NEW")
+    generate_lookup_grid_config(num_loc_options=[1, 10, 50, 100, 150, 200, 250], tag="lookup_grid_config_NEW")
 
 
 
