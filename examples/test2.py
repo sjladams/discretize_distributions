@@ -71,7 +71,7 @@ def transform_cell_to_global(cell):
     return lower_global, upper_global
 
 
-def plot_final_discretization_with_shells(ax, gmm, disc_mix):
+def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
     density_samples = gmm.sample((10000,)).detach().numpy()
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
                bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
@@ -85,13 +85,18 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix):
 
     shells = [gs.partition.domain for gs in mix_grid.grid_schemes]
 
-    for shell in shells:
+    for domain in shells:
         # lower_global, upper_global = transform_cell_to_global(shell)
-        lower_global = shell.lower_vertex.detach().numpy()
-        upper_global = shell.upper_vertex.detach().numpy()
-        width = upper_global[0] - lower_global[0]
-        height = upper_global[1] - lower_global[1]
-        rect = plt.Rectangle(lower_global, width, height,
+        lower_vertex = domain.lower_vertex  # now local vertices, not yet transformed
+        upper_vertex = domain.upper_vertex
+
+        # transform by scaling, rot and offset of domain
+        upper_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, upper_vertex) + domain.offset
+        lower_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, lower_vertex) + domain.offset
+
+        width = upper_vertex[0] - lower_vertex[0]
+        height = upper_vertex[1] - lower_vertex[1]
+        rect = plt.Rectangle(lower_vertex, width, height,
                              fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
         ax.add_patch(rect)
 
@@ -133,6 +138,10 @@ if __name__ == "__main__":
             loc=torch.tensor([[-5.0, -5.0], [5.0, 5.0], [5.0, 5.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [1., 3.], [2., 2.]]))
         ),
+        # spread=dict(
+        #     loc=torch.tensor([[-5.0, -5.0]]),
+        #     covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.]]))
+        # ),
         equal=dict(
             loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
@@ -231,5 +240,5 @@ if __name__ == "__main__":
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    plot_final_discretization_with_shells(ax, gmm, disc_mix)
+    plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
     plt.show()

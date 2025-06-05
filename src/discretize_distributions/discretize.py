@@ -99,7 +99,19 @@ def discretize(
                 lower_vertices_per_dim = [domain.lower_vertex[i].unsqueeze(0) for i in
                                           range(domain.lower_vertex.shape[0])]
                 upper_vertices_per_dim = [domain.upper_vertex[i].unsqueeze(0) for i in
-                                          range(domain.upper_vertex.shape[0])]
+                                          range(domain.upper_vertex.shape[0])]  # also need to transform
+
+                # transform by scaling, rot and offset of domain
+                transformed_lower_vertices = [
+                    torch.einsum('ij, ...j->...i', domain.transform_mat, lv) + domain.offset
+                    for lv in lower_vertices_per_dim
+                ]
+
+                transformed_upper_vertices = [
+                    torch.einsum('ij, ...j->...i', domain.transform_mat, uv) + domain.offset
+                    for uv in upper_vertices_per_dim
+                ]
+
                 grid_partition = dd_schemes.GridPartition.from_vertices_per_dim(
                     lower_vertices_per_dim, upper_vertices_per_dim,
                     # rot_mat=rot_mat, scales=scales, offset=offset

@@ -249,6 +249,7 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
         lower_vertex = center - eps
         upper_vertex = center + eps
         # cell structure
+
         shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
 
         centers.append(center)
@@ -264,6 +265,8 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
     # return grids, z
     if len(shells) == 1:
         shell = shells[0]  # only one
+        # need to make it relative to norm !!!
+
         lower_vertex = shell.lower_vertex
         upper_vertex = shell.upper_vertex
 
@@ -271,6 +274,11 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
         cov = torch.diag(torch.diag(cov))  # cheat method - need to find solution !!
 
         norm = dd_dists.MultivariateNormal(mean, cov)
+
+        lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
+        upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
 
         domain = dd_schemes.Cell(lower_vertex=lower_vertex,
                                 upper_vertex=upper_vertex,
@@ -318,6 +326,9 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
                 continue
             shell, center = final_shells[i]  # corresponding shell and center
 
+            lower_vertex = shell.lower_vertex
+            upper_vertex = shell.upper_vertex
+
             group_locs = means[group_indices]
             group_covs = covs[group_indices]
             group_probs = probs[group_indices]
@@ -327,33 +338,10 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
 
             norm = dd_dists.MultivariateNormal(mean, cov)
 
-            # do opposite scaling
-            lower_vertex = shell.lower_vertex
-            upper_vertex = shell.upper_vertex
-            # lower_vertex_canonical = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-            #                                             norm.loc).squeeze(0)
-            # upper_vertex_canonical = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-            #                                             norm.loc).squeeze(0)
-            #
-            # domain = dd_schemes.Cell(lower_vertex=lower_vertex_canonical,
-            #                          upper_vertex=upper_vertex_canonical,
-            #                          rot_mat=norm.eigvecs,
-            #                          offset=norm.loc,
-            #                          scales=norm.eigvals_sqrt
-            #                          )
-            #
-            #
-            #
-            # # rebuild it correctly
-            # grid_locs_per_dim = get_optimal_grid_locs(norm=norm, num_locs=num_locs, domain=domain)
-            # grid_of_locs = dd_schemes.Grid(grid_locs_per_dim,
-            #                                rot_mat=norm.eigvecs,
-            #                                offset=norm.loc,
-            #                                scales=norm.eigvals_sqrt
-            #                                )
-            # # based off grid locs
-            # # domain = grid_of_locs.domain
-            #
+            lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
+            upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
             # original vertices
             domain = dd_schemes.Cell(lower_vertex=lower_vertex,
                                      upper_vertex=upper_vertex,
@@ -362,12 +350,15 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
                                      scales=norm.eigvals_sqrt
                                      )
 
-            # only get locations and then make grid
-            # locs_per_dim_clipped = get_optimal_grid_locs(norm, num_locs, domain)
-            # grid_of_locs = dd_schemes.Grid(locs_per_dim_clipped)
-            #
-            # partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
-            # grid_scheme = dd_schemes.GridScheme(grid_of_locs, partition)
+            # upper_vertex = torch.einsum('ij, j->i', domain.inv_transform_mat, upper_vertex - domain.offset)
+            # lower_vertex = torch.einsum('ij, j->i', domain.inv_transform_mat, lower_vertex - domain.offset)
+            # #
+            # domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+            #                          upper_vertex=upper_vertex,
+            #                          rot_mat=norm.eigvecs,
+            #                          offset=norm.loc,
+            #                          scales=norm.eigvals_sqrt
+            #                          )
 
             grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)
