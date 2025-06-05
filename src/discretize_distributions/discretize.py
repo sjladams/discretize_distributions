@@ -67,9 +67,6 @@ def discretize(
 
             lower_vertices_per_dim = [torch.full((1,), float('-inf')) for _ in range(num_dim)]
             upper_vertices_per_dim = [torch.full((1,), float('inf')) for _ in range(num_dim)]
-            # scales = scheme.grid_schemes[0].locs.scales
-            # rot_mat = scheme.grid_schemes[0].locs.rot_mat
-            # offset = scheme.grid_schemes[0].locs.offset
             grid_partition_whole_space = dd_schemes.GridPartition.from_vertices_per_dim(lower_vertices_per_dim,
                                                                                         upper_vertices_per_dim,
                                                                                         # rot_mat=rot_mat,
@@ -83,7 +80,6 @@ def discretize(
             print(f'w2 for whole space to z: {w2_component_whole_space}')
 
             for idx in range(len(scheme.grid_schemes)):
-
                 # Step 1: perform the discretization for each GridSchems in scheme.grid_schemes:
                 disc_component, w2_component = discretize(dist, scheme.grid_schemes[idx])
                 disc_components.append(disc_component)
@@ -93,30 +89,21 @@ def discretize(
 
                 # Step 2: perform the discretization for the outer_locs of the MultiGridScheme:
                 domain = scheme.grid_schemes[idx].partition.domain  # domain of grid scheme for idx
-                # rot_mat = scheme.grid_schemes[idx].locs.rot_mat  # from Grid class
-                # scales = scheme.grid_schemes[idx].locs.scales
-                # offset = scheme.grid_schemes[idx].locs.offset
+                rot_mat = scheme.grid_schemes[idx].locs.rot_mat  # from Grid class
+                scales = scheme.grid_schemes[idx].locs.scales
+                offset = scheme.grid_schemes[idx].locs.offset
+
+                # transform by scaling, rot and offset of domain
+                domain.lower_vertex = utils.transform_to_global(domain.lower_vertex, rot_mat, scales, offset)
+                domain.upper_vertex = utils.transform_to_global(domain.upper_vertex, rot_mat, scales, offset)
                 lower_vertices_per_dim = [domain.lower_vertex[i].unsqueeze(0) for i in
                                           range(domain.lower_vertex.shape[0])]
                 upper_vertices_per_dim = [domain.upper_vertex[i].unsqueeze(0) for i in
                                           range(domain.upper_vertex.shape[0])]  # also need to transform
 
-                # transform by scaling, rot and offset of domain
-                transformed_lower_vertices = [
-                    torch.einsum('ij, ...j->...i', domain.transform_mat, lv) + domain.offset
-                    for lv in lower_vertices_per_dim
-                ]
-
-                transformed_upper_vertices = [
-                    torch.einsum('ij, ...j->...i', domain.transform_mat, uv) + domain.offset
-                    for uv in upper_vertices_per_dim
-                ]
-
                 grid_partition = dd_schemes.GridPartition.from_vertices_per_dim(
                     lower_vertices_per_dim, upper_vertices_per_dim,
-                    # rot_mat=rot_mat, scales=scales, offset=offset
                 )
-                # grid = dd_schemes.Grid(points_per_dim, rot_mat, scales, offset)
                 grid_scheme = dd_schemes.GridScheme(locs=grid_outer_loc, partition=grid_partition)
                 _, w2_component_inner = discretize(dist, grid_scheme)
 
@@ -133,13 +120,6 @@ def discretize(
             # add outer loc to disc
             locs_list = [dc.locs_unravelled for dc in disc_components]
             locs = torch.cat(locs_list, dim=0)
-
-            # global
-            # locs_global_list = [
-            #     utils.transform_to_global(dc.locs_unravelled, dc.locs.rot_mat, dc.locs.scales, dc.locs.offset)
-            #     for dc in disc_components
-            # ]
-            # locs = torch.cat(locs_global_list, dim=0)
 
             # rescale by grid mass
             probs = torch.cat([dc.probs_unravelled for dc in disc_components], dim=0) * total_mass_inside_grids

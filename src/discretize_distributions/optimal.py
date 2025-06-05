@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
-    __name__, f'data{os.sep}lookup_grid_config.pickle'))
+    __name__, f'data{os.sep}lookup_grid_config_NEW.pickle'))
 OPTIMAL_1D_GRIDS = utils.pickle_load(pkg_resources.resource_filename(
     __name__, f'data{os.sep}lookup_opt_grid_uni_stand_normal.pickle'))
 
@@ -320,7 +320,8 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
 
         grid_schemes = []
         # grouping components by location of mean wrt center of shells (clusters)
-        groups = utils.group_means_by_shells(means, centers, eps)
+        centers = [center for _, center in final_shells]
+        groups = utils.group_means_by_shells(means, centers, eps)  # error when more groups than shells
         for i, group_indices in enumerate(groups):  # groups[i] is list  of GMM means assigined to centers[i]
             if not group_indices:
                 continue
@@ -349,16 +350,6 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
                                      offset=norm.loc,
                                      scales=norm.eigvals_sqrt
                                      )
-
-            # upper_vertex = torch.einsum('ij, j->i', domain.inv_transform_mat, upper_vertex - domain.offset)
-            # lower_vertex = torch.einsum('ij, j->i', domain.inv_transform_mat, lower_vertex - domain.offset)
-            # #
-            # domain = dd_schemes.Cell(lower_vertex=lower_vertex,
-            #                          upper_vertex=upper_vertex,
-            #                          rot_mat=norm.eigvecs,
-            #                          offset=norm.loc,
-            #                          scales=norm.eigvals_sqrt
-            #                          )
 
             grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)

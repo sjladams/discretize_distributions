@@ -12,8 +12,9 @@ import discretize_distributions.utils as utils
 
 def plot_2d_dist(ax, dist):
     samples = dist.sample((10000,))
-    ax.hist2d(samples[:,0], samples[:,1], bins=[50,50], density=True)
+    ax.hist2d(samples[:, 0], samples[:, 1], bins=[50, 50], density=True)
     return ax
+
 
 def plot_2d_cat_float(ax, dist):
     ax.scatter(
@@ -24,6 +25,7 @@ def plot_2d_cat_float(ax, dist):
     )
     return ax
 
+
 def plot_2d_cat_grid(ax, dist):
     ax.scatter(
         dist.locs_unravelled[:, 0],
@@ -32,6 +34,7 @@ def plot_2d_cat_grid(ax, dist):
         c='red',
     )
     return ax
+
 
 def plot_2d_cat(ax, dist):
     if isinstance(dist.probs, dd_schemes.Grid):
@@ -46,6 +49,7 @@ def plot_2d_cat(ax, dist):
     ax.scatter(x, y, s=s, c='red')
     return ax
 
+
 def plot_2d_grid(ax, grid):
     ax.scatter(
         grid.points[:, 0],
@@ -54,6 +58,7 @@ def plot_2d_grid(ax, grid):
         c='red',
     )
     return ax
+
 
 def set_axis(ax):
     xlims = ax.get_xlim()
@@ -66,15 +71,17 @@ def set_axis(ax):
 
 
 def transform_cell_to_global(cell):
-    lower_global = utils.transform_to_global(cell.lower_vertex.unsqueeze(0), cell.rot_mat, cell.scales, cell.offset).squeeze(0)
-    upper_global = utils.transform_to_global(cell.upper_vertex.unsqueeze(0), cell.rot_mat, cell.scales, cell.offset).squeeze(0)
+    lower_global = utils.transform_to_global(cell.lower_vertex.unsqueeze(0), cell.rot_mat, cell.scales,
+                                             cell.offset).squeeze(0)
+    upper_global = utils.transform_to_global(cell.upper_vertex.unsqueeze(0), cell.rot_mat, cell.scales,
+                                             cell.offset).squeeze(0)
     return lower_global, upper_global
 
 
 def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
     density_samples = gmm.sample((10000,)).detach().numpy()
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
-               bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
+              bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
 
     locs = disc_mix.locs.detach().numpy()
     ax.scatter(locs[:, 0], locs[:, 1],
@@ -118,8 +125,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
-    num_mix_elems = 3
-    setting = "spread"
+    num_mix_elems = 2
+    setting = "close"
 
     options = dict(
         overlapping=dict(
@@ -135,13 +142,9 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
         spread=dict(
-            loc=torch.tensor([[-5.0, -5.0], [5.0, 5.0], [5.0, 5.0]]),
-            covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [1., 3.], [2., 2.]]))
+            loc=torch.tensor([[-5.0, -5.0], [6.0, 6.0], [5.0, 5.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [2., 3.], [2., 2.]]))
         ),
-        # spread=dict(
-        #     loc=torch.tensor([[-5.0, -5.0]]),
-        #     covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.]]))
-        # ),
         equal=dict(
             loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
@@ -151,7 +154,7 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5, .5])
+                                                           torch.tensor([.5, .6])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
@@ -182,7 +185,8 @@ if __name__ == "__main__":
 
     # --- Uniform grid over whole space ---
     grid_locs = dd_schemes.Grid(
-        points_per_dim=[torch.linspace(-10, 10.0, 8), torch.linspace(-10., 10., 7)],  # same nr locs as mix grid scheme
+        points_per_dim=[torch.linspace(-10, 10.0, 10), torch.linspace(-10., 10., 19)],
+        # same nr locs as mix grid scheme
         offset=gmm.component_distribution[0].loc,
         rot_mat=gmm.component_distribution[0].eigvecs,
         scales=gmm.component_distribution[0].eigvals_sqrt
@@ -213,8 +217,8 @@ if __name__ == "__main__":
     # ax = set_axis(ax)
     # ax.set_title(f'Mix schemes using optimal locations on R^n: {w2_mix.item():.2f}')
     # plt.show()
-
-    # Test2: using just one location , so then error just dep on R^n
+    #
+    # # Test2: using just one location , so then error just dep on R^n
     # grid_scheme = dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[0], num_locs=1)  # no domain
     # mix_grid = dd_schemes.MultiGridScheme([grid_scheme], outer_loc=torch.tensor([1.0, 1.0]))
     # disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
@@ -241,4 +245,26 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(6, 6))
     plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
+    plt.show()
+
+    ## --------- tests round1 --------
+    # against an optimal grid
+    means = gmm.component_distribution.loc
+    probs = gmm.mixture_distribution.probs
+    covs = gmm.component_distribution.covariance_matrix
+    mean, cov = utils.collapse_into_gaussian(means, covs, probs)
+    cov = torch.diag(torch.diag(cov))
+
+    norm = dd_dists.MultivariateNormal(mean,cov)
+
+    grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=100)
+    mix_grid = dd_schemes.MultiGridScheme([grid_scheme], outer_loc=torch.tensor([1.0, 1.0]))
+    disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
+    print(f'W2 (Optimal grid whole space): {w2_mix.item()}')
+    print(f'nr locs one grid {len(disc_mix.locs)}')
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat(ax, disc_mix)
+    ax = set_axis(ax)
+    ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
     plt.show()

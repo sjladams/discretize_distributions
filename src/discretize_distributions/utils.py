@@ -201,9 +201,16 @@ def check_overlap(cell1, cell2, tol=1e-4):
 #     return local
 
 def transform_to_local(x_global, rot_mat, scales, offset):
+    if torch.isinf(x_global).any():
+        return x_global
     inv_transform_mat = torch.einsum('i,ij->ij', scales.reciprocal(), rot_mat.T)
-    local = torch.einsum('ij, nj->ni', inv_transform_mat, x_global - offset)
-    return local
+    return torch.einsum('ij, nj->ni', inv_transform_mat, x_global - offset)
+
+def transform_to_global(x_local, rot_mat, scales, offset):
+    if torch.isinf(x_local).any():
+        return x_local
+    transform_mat = torch.einsum('ij,j->ij', rot_mat, scales)
+    return torch.einsum('ij, ...j->...i', transform_mat, x_local) + offset
 
 def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
     density_samples = dist.sample((10000,)).detach().numpy()
