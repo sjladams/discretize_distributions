@@ -169,7 +169,11 @@ if __name__ == "__main__":
 
         norm = dd_dists.MultivariateNormal(mean,cov)
 
-        grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=100)  # change based on locs in mix grids
+        # round to nearest 10
+        nr_locs = len(disc_mix.locs)
+        rounded_value = round(nr_locs / 10) * 10
+
+        grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=rounded_value)  # change based on locs in mix grids
         mix_grid = dd_schemes.MultiGridScheme([grid_scheme], outer_loc=torch.tensor([1.0, 1.0]))
         disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
         print(f'W2 (Optimal grid whole space): {w2_mix.item()}')

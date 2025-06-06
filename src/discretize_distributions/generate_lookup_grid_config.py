@@ -105,7 +105,8 @@ def generate_lookup_grid_config(num_loc_options: List, tag: str):
 
 
 if __name__ == '__main__':
-    generate_lookup_grid_config(num_loc_options=[1, 10, 50, 100, 150, 200, 250], tag="lookup_grid_config_NEW")
+    generate_lookup_grid_config(num_loc_options=[1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150,
+                                                 160, 170, 180, 190, 200, 250], tag="lookup_grid_config_NEW")
 
 
 

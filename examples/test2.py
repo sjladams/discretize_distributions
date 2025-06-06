@@ -154,7 +154,7 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .6])
+                                                           torch.tensor([.5, .5])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
@@ -205,7 +205,7 @@ if __name__ == "__main__":
 
     # --- Using dbscan_shells for MultiGridScheme ---
 
-    # Test1: R1=R^n - using whole domain and optimal locs
+    # # Test1: R1=R^n - using whole domain and optimal locs
     # grid_scheme = dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[0], num_locs=100)  # no domain
     # mix_grid = dd_schemes.MultiGridScheme([grid_scheme], outer_loc=torch.tensor([1.0, 1.0]))
     # disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
@@ -239,8 +239,9 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_mix)
-    ax = set_axis(ax)
-    ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
+    # plt.savefig(f'mix_grids_{setting}.svg')
+    # ax = set_axis(ax)
+    # ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -257,7 +258,12 @@ if __name__ == "__main__":
 
     norm = dd_dists.MultivariateNormal(mean,cov)
 
-    grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=100)
+    # round to nearest 10
+    nr_locs = len(disc_mix.locs)
+    rounded_value = round(nr_locs / 10) * 10
+    print(f'rounded nr locs: {rounded_value}')
+
+    grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=rounded_value)
     mix_grid = dd_schemes.MultiGridScheme([grid_scheme], outer_loc=torch.tensor([1.0, 1.0]))
     disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
     print(f'W2 (Optimal grid whole space): {w2_mix.item()}')
@@ -265,6 +271,7 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_mix)
-    ax = set_axis(ax)
-    ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
+    # ax = set_axis(ax)
+    # plt.savefig(f'optimal_grid_whole_space_{setting}.svg')
+    # ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
     plt.show()
