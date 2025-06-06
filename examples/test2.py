@@ -125,8 +125,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
-    num_mix_elems = 2
-    setting = "close"
+    num_mix_elems = 3
+    setting = "spread"
 
     options = dict(
         overlapping=dict(
@@ -142,7 +142,7 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
         spread=dict(
-            loc=torch.tensor([[-5.0, -5.0], [6.0, 6.0], [5.0, 5.0]]),
+            loc=torch.tensor([[-7.0, -7.0], [0.0, 0.0], [7.0, 7.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [2., 3.], [2., 2.]]))
         ),
         equal=dict(
@@ -154,54 +154,54 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5])
+                                                           torch.tensor([.5, .5, .5])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    ## Discretize per component (the old way):
-    grid_schemes = []
-    for i in range(num_mix_elems):
-        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=100))
-
-    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
-    print(f'nr locs old way {len(disc_gmm.locs)}')
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat(ax, disc_gmm)
-    ax = set_axis(ax)
-    ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
-
-    # Discretize the whole GMM at once:
-    disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat(ax, disc_gmm)
-    ax = set_axis(ax)
-    ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
-
-    plt.show()
-
-    # --- Uniform grid over whole space ---
-    grid_locs = dd_schemes.Grid(
-        points_per_dim=[torch.linspace(-10, 10.0, 10), torch.linspace(-10., 10., 19)],
-        # same nr locs as mix grid scheme
-        offset=gmm.component_distribution[0].loc,
-        rot_mat=gmm.component_distribution[0].eigvecs,
-        scales=gmm.component_distribution[0].eigvals_sqrt
-    )
-    grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
-    grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
-    disc_uniform, w2_uniform = dd.discretize(gmm, grid_scheme)
-    print(f'W2 (uniform grid full space): {w2_uniform.item()}')
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat(ax, disc_uniform)
-    ax = set_axis(ax)
-    ax.set_title(f'One uniform grid scheme for whole space: {w2_uniform.item():.2f}')
-    plt.show()
+    # ## Discretize per component (the old way):
+    # grid_schemes = []
+    # for i in range(num_mix_elems):
+    #     grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=100))
+    #
+    # disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+    # print(f'nr locs old way {len(disc_gmm.locs)}')
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat(ax, disc_gmm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
+    #
+    # # Discretize the whole GMM at once:
+    # disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat(ax, disc_gmm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
+    #
+    # plt.show()
+    #
+    # # --- Uniform grid over whole space ---
+    # grid_locs = dd_schemes.Grid(
+    #     points_per_dim=[torch.linspace(-10, 10.0, 10), torch.linspace(-10., 10., 19)],
+    #     # same nr locs as mix grid scheme
+    #     offset=gmm.component_distribution[0].loc,
+    #     rot_mat=gmm.component_distribution[0].eigvecs,
+    #     scales=gmm.component_distribution[0].eigvals_sqrt
+    # )
+    # grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
+    # grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
+    # disc_uniform, w2_uniform = dd.discretize(gmm, grid_scheme)
+    # print(f'W2 (uniform grid full space): {w2_uniform.item()}')
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat(ax, disc_uniform)
+    # ax = set_axis(ax)
+    # ax.set_title(f'One uniform grid scheme for whole space: {w2_uniform.item():.2f}')
+    # plt.show()
 
     # --- Using dbscan_shells for MultiGridScheme ---
 
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     ax = plot_2d_cat(ax, disc_mix)
     # plt.savefig(f'mix_grids_{setting}.svg')
     # ax = set_axis(ax)
-    # ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
+    ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -273,5 +273,5 @@ if __name__ == "__main__":
     ax = plot_2d_cat(ax, disc_mix)
     # ax = set_axis(ax)
     # plt.savefig(f'optimal_grid_whole_space_{setting}.svg')
-    # ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
+    ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
     plt.show()

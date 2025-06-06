@@ -193,7 +193,7 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
         grids[attribute] = grid
     return grids
 
-def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
+def dbscan_shells(gmm, num_locs=100, min_samples = None, eps=None, plot=False):
     """
     Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
     including the outer loc as the average of the means of the components in the GMM.
@@ -205,24 +205,22 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
     """
 
     num_components = gmm.component_distribution.batch_shape[0]
-    num_samples = torch.tensor([10*num_components])  # equal to nr of signature locations, ensuring it detects enough
-    # density variations
+    means = gmm.component_distribution.loc.detach().numpy()  # numpy for easier distance calc
+    num_dims = means[0].shape[0]
+    num_samples = torch.tensor([10 * num_components])
     samples = gmm.sample((num_samples,))
 
-    # covariances = gmm.component_distribution.covariance_matrix
-    # variances = torch.diagonal(covariances, dim1=-2, dim2=-1)
-    # stds = variances.sqrt()
-    # avg_std = stds.mean()
+    dists = []
+    for i in range(len(means)):
+        for j in range(i + 1, len(means)):
+            distance = np.linalg.norm(means[i] - means[j])
+            dists.append(distance)
 
-    # parameters
-    if min_samples is None:
-        min_samples = 20
-    if eps is None:  # elbow method for eps
+    if min_samples is None:  # heuristic for min_samples
+        min_samples = max(5, 2*num_components*num_dims - 2*round(np.mean(dists)))  # min value set at 5
+    print(f'min_samples:{min_samples}')
+    if eps is None:  # knee method for eps
         eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)
-
-    # max_allowed_eps = 2 * avg_std.item()
-    # if eps > max_allowed_eps:
-    #     eps = max_allowed_eps
 
     print(f'Chosen epsilon: {eps}')
     X = samples.detach().numpy()
@@ -232,7 +230,7 @@ def dbscan_shells(gmm, num_locs=100, eps=None, min_samples=None, plot=False):
     shells = []
     centers = []
     unique_labels = set(labels)
-    # unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
+    unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
 
     for label in unique_labels:
         mask = torch.tensor(labels == label)
