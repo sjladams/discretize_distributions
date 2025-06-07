@@ -193,6 +193,19 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
         grids[attribute] = grid
     return grids
 
+
+def compute_density_metrics(data, epsilon):
+    n = data.shape[0]
+    rho = np.zeros(n)
+    for i in range(n):
+        count = 0
+        for j in range(n):
+            if np.linalg.norm(data[i] - data[j]) <= epsilon:
+                count += 1
+        rho[i] = count
+    return rho
+
+
 def dbscan_shells(gmm, num_locs=100, min_samples = None, eps=None, plot=False):
     """
     Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
@@ -210,15 +223,36 @@ def dbscan_shells(gmm, num_locs=100, min_samples = None, eps=None, plot=False):
     num_samples = torch.tensor([10 * num_components])
     samples = gmm.sample((num_samples,))
 
+    # dists = []
+    # for i in range(len(means)):
+    #     for j in range(i + 1, len(means)):
+    #         distance = np.linalg.norm(means[i] - means[j])
+    #         dists.append(distance)
+    #
+    # if min_samples is None:  # heuristic for min_samples
+    #     min_samples = max(5, 2*num_components*num_dims - 2*round(np.mean(dists)))  # min value set at 5
+
+    samples_np = samples.detach().numpy().reshape(-1, num_dims)
     dists = []
-    for i in range(len(means)):
-        for j in range(i + 1, len(means)):
-            distance = np.linalg.norm(means[i] - means[j])
+    for i in range(len(samples_np)):
+        for j in range(i + 1, len(samples_np)):
+            distance = np.linalg.norm(samples_np[i] - samples_np[j])
             dists.append(distance)
 
-    if min_samples is None:  # heuristic for min_samples
-        min_samples = max(5, 2*num_components*num_dims - 2*round(np.mean(dists)))  # min value set at 5
-    print(f'min_samples:{min_samples}')
+    epsilon = np.mean(dists)  # to compute density metrics
+    rho = compute_density_metrics(samples_np, epsilon)
+    rho_mean = np.mean(rho)
+    rho_std = np.std(rho)
+    lower_bound = max(2, int(np.floor(rho_mean - rho_std)))
+    upper_bound = int(np.floor(rho_mean + rho_std))
+
+    # heuristic for min_samples
+    if min_samples is None:
+        min_samples = lower_bound  # lower or upper bound?
+
+    print(f"min_samples range: [{lower_bound}, {upper_bound}]")
+    print(f"Selected min_samples: {min_samples}")
+
     if eps is None:  # knee method for eps
         eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)
 
