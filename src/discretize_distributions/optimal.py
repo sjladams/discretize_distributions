@@ -10,9 +10,7 @@ import discretize_distributions.distributions as dd_dists
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import numpy as np
-import time
-from sklearn.metrics import silhouette_score
-from sklearn.manifold import TSNE
+
 
 
 GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
@@ -198,65 +196,6 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
     return grids
 
 
-def compute_density_metrics(data, epsilon):
-    n = data.shape[0]
-    rho = np.zeros(n)
-    for i in range(n):
-        count = 0
-        for j in range(n):
-            if np.linalg.norm(data[i] - data[j]) <= epsilon:
-                count += 1
-        rho[i] = count
-    return rho
-
-def find_optimal_min_samples(data_array, eps, start_min_samples, end_min_samples):
-    """
-    Finds the optimal min_samples parameter for DBSCAN, Algorithm 1 from
-    Monko, G., & Kimura, M. Enhanced SS-DBSCAN Clustering Algorithm for High-Dimensional Data.
-    """
-    best_silhouette_score = -np.inf
-    best_min_samples = start_min_samples
-    decrease_counter = 0
-    last_silhouette_score = -np.inf
-
-    start_time = time.time()
-    dim = data_array.shape[1]
-
-    if dim == 2:
-        features_array_tsne = data_array
-    else:  # to reduce to 2D data
-        tsne = TSNE(n_components=2, random_state=42)
-        features_array_tsne = tsne.fit_transform(data_array)
-
-    for i in range(start_min_samples, end_min_samples + 1):
-        # clustering
-        db = DBSCAN(eps=eps, min_samples=i)
-        labels = db.fit_predict(features_array_tsne)
-
-        if len(set(labels)) > 1:
-            current_silhouette_score = silhouette_score(features_array_tsne, labels)
-            print(
-                f"For min_samples={i}, Total no. of clusters={len(set(labels))}, "
-                f"Silhouette Score={current_silhouette_score:.4f}"
-            )
-
-            if current_silhouette_score > best_silhouette_score:
-                best_silhouette_score = current_silhouette_score
-                best_min_samples = i
-                decrease_counter = 0
-            else:
-                decrease_counter += 1
-                if decrease_counter >= 5:
-                    break
-        else:
-            print(f"Insufficient clusters for min_samples={i}")
-
-    time_elapsed = time.time() - start_time
-    print(f"Time taken: {time_elapsed//60:.0f}m : {time_elapsed%60:.0f}s")
-
-    return best_min_samples
-
-
 def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
     """
     Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
@@ -274,25 +213,30 @@ def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
     num_samples = torch.tensor([10 * num_components])
     samples = gmm.sample((num_samples,))
 
+    dists = []
     if min_samples is None:
-
         # step 1: check how far means are, if they are close, just set min_samples to max value for best w2 value
         for i in range(len(means)):
             for j in range(i + 1, len(means)):
                 distance = np.linalg.norm(means[i] - means[j])
-                if distance <= 2:
+                dists.append(distance)
+                if np.mean(dists) <= 2:  # average distance less than 2 , significant overlap so use max value
+                    # for min_samples
                     min_samples = 20
-                else:  # otherwise determine best min_samples value
-                    samples_np = samples.detach().numpy().reshape(-1, num_dims)
-                    dists = []
-                    for i in range(len(samples_np)):
-                        for j in range(i + 1, len(samples_np)):
-                            distance = np.linalg.norm(samples_np[i] - samples_np[j])
-                            dists.append(distance)
+                else:
+                    min_samples = None  # otherwise determine best min_samples value
 
-                    epsilon = np.mean(dists)  # as estimate to find min_samples parameter
-                    min_samples = find_optimal_min_samples(samples, epsilon, 5, 20)
-                    print(f"Selected min_samples: {min_samples}")
+    if min_samples is None:
+        samples_np = samples.detach().numpy().reshape(-1, num_dims)
+        dists = []
+        for i in range(len(samples_np)):
+            for j in range(i + 1, len(samples_np)):
+                distance = np.linalg.norm(samples_np[i] - samples_np[j])
+                dists.append(distance)
+
+        epsilon = np.mean(dists)  # as estimate to find min_samples parameter
+        min_samples = utils.find_optimal_min_samples(samples, epsilon, 5, 20)
+    print(f"Selected min_samples: {min_samples}")
 
     if eps is None:  # knee method for eps
         eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)

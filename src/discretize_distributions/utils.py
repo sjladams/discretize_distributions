@@ -7,6 +7,10 @@ from typing import Union, Tuple
 from sklearn.neighbors import NearestNeighbors
 from kneed import KneeLocator
 import matplotlib.pyplot as plt
+import time
+from sklearn.metrics import silhouette_score
+from sklearn.manifold import TSNE
+from sklearn.cluster import DBSCAN
 
 INV_SQRT_2PI = 1 / math.sqrt(2 * math.pi)
 SQRT_PI = math.sqrt(math.pi)
@@ -133,6 +137,55 @@ def estimate_eps(samples, min_samples=20, plot=False):
         plt.show()
 
     return eps
+
+
+def find_optimal_min_samples(data_array, eps, start_min_samples, end_min_samples):
+    """
+    Finds the optimal min_samples parameter for DBSCAN, Algorithm 1 from
+    Monko, G., & Kimura, M. Enhanced SS-DBSCAN Clustering Algorithm for High-Dimensional Data.
+    """
+    best_silhouette_score = -np.inf
+    best_min_samples = start_min_samples
+    decrease_counter = 0
+    last_silhouette_score = -np.inf
+
+    start_time = time.time()
+    dim = data_array.shape[1]
+
+    if dim == 2:
+        features_array_tsne = data_array
+    else:  # to reduce to 2D data
+        tsne = TSNE(n_components=2, random_state=42)
+        features_array_tsne = tsne.fit_transform(data_array)
+
+    for i in range(start_min_samples, end_min_samples + 1):
+        # clustering
+        db = DBSCAN(eps=eps, min_samples=i)
+        labels = db.fit_predict(features_array_tsne)
+
+        if len(set(labels)) > 1:
+            current_silhouette_score = silhouette_score(features_array_tsne, labels)
+            print(
+                f"For min_samples={i}, Total no. of clusters={len(set(labels))}, "
+                f"Silhouette Score={current_silhouette_score:.4f}"
+            )
+
+            if current_silhouette_score > best_silhouette_score:
+                best_silhouette_score = current_silhouette_score
+                best_min_samples = i
+                decrease_counter = 0
+            else:
+                decrease_counter += 1
+                if decrease_counter >= 5:
+                    break
+        else:
+            print(f"Insufficient clusters for min_samples={i}")
+
+    time_elapsed = time.time() - start_time
+    print(f"Time taken: {time_elapsed//60:.0f}m : {time_elapsed%60:.0f}s")
+
+    return best_min_samples
+
 
 
 def collapse_into_gaussian(locs, covs, probs):
