@@ -287,7 +287,7 @@ def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
         ax.add_patch(rect)
 
     ax.legend()
-    # ax.set_title("DBSCAN Generated Shells for GMM")
+    ax.set_title("DBSCAN Generated Shells for GMM")
     ax.set_xlim(-10, 10)
     ax.set_ylim(-10, 10)
     ax.set_xlabel("x")

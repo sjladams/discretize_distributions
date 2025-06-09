@@ -374,7 +374,6 @@ def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
         if plot:
             fig, ax = plt.subplots(figsize=(6, 6))
             utils.plot_2d_dist_with_shells(ax, gmm, X, labels, final_shells, [c for _, c in final_shells])
-            plt.savefig(f'dbscan_shells.svg')
             plt.show()
 
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)

@@ -152,12 +152,13 @@ if __name__ == "__main__":
         ax = plot_2d_dist(ax, gmm)
         ax = plot_2d_cat(ax, disc_mix)
         ax = set_axis(ax)
-        ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
+        # ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
+        plt.savefig(f'test3/mix_grids_iter_{s}.svg')
         plt.show()
 
-        fig, ax = plt.subplots(figsize=(6, 6))
-        plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
-        plt.show()
+        # fig, ax = plt.subplots(figsize=(6, 6))
+        # plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
+        # plt.show()
 
         ## --------- tests round1 --------
         # against an optimal grid
@@ -182,6 +183,7 @@ if __name__ == "__main__":
         ax = plot_2d_dist(ax, gmm)
         ax = plot_2d_cat(ax, disc_mix)
         ax = set_axis(ax)
-        ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
+        plt.savefig(f'test3/one_grid_iter_{s}.svg')
+        # ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_mix.item():.2f}')
         plt.show()
 
