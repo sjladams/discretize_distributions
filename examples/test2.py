@@ -125,8 +125,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
-    num_mix_elems = 3
-    setting = "spread"
+    num_mix_elems = 2
+    setting = "close"
 
     options = dict(
         overlapping=dict(
@@ -138,7 +138,7 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
         ),
         close=dict(
-            loc=torch.tensor([[0.1, 0.1], [0.2, 0.2]]),
+            loc=torch.tensor([[0.1, 0.1], [3.2, 3.2]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
         spread=dict(
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5, .5])
+                                                           torch.tensor([.5, .5])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
