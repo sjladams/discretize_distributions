@@ -128,7 +128,7 @@ if __name__ == "__main__":
 
     base_loc = torch.tensor([0.0, 0.0])
     directions = torch.tensor([[1.0, 1.0], [-1.0, -1.0], [-0.8,-0.8]])
-    spread_values = [0.1, 1, 5, 10, 15]
+    spread_values = [0.1, 1, 5, 10, 15, 20]
 
     for s in spread_values:
         locs = base_loc + s * directions

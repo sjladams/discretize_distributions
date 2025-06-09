@@ -270,12 +270,12 @@ def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
                bins=[50, 50], density=True, cmap='viridis')
     ax.scatter(samples[:, 0], samples[:, 1],
-               c=labels, cmap='Set1', s=10, alpha=0.3)
+               c=labels, cmap='Set1', label='Samples', s=10, alpha=0.3)
 
     if centers:
         centers_tensor = torch.stack(centers).detach().numpy()
         ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
-                   c='red', marker='x', s=100)
+                   c='red', marker='x', label='Cluster centers', s=100)
 
     for shell, _ in shells:
         lower = shell.lower_vertex.detach().numpy()
@@ -286,7 +286,8 @@ def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
                              fill=False, edgecolor='cyan', linewidth=2)
         ax.add_patch(rect)
 
-    ax.set_title("DBSCAN Generated Shells for GMM")
+    ax.legend()
+    # ax.set_title("DBSCAN Generated Shells for GMM")
     ax.set_xlim(-10, 10)
     ax.set_ylim(-10, 10)
     ax.set_xlabel("x")
