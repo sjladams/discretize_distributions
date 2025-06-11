@@ -196,7 +196,7 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
     return grids
 
 
-def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=None, plot=False):
+def dbscan_shells(gmm, num_samples=None, min_samples=None, eps=None):
     """
     Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
     including the outer loc as the average of the means of the components in the GMM.
@@ -216,29 +216,8 @@ def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=N
 
     samples = gmm.sample((num_samples,))
 
-    dists = []
     if min_samples is None:
-        # step 1: check how far means are, if they are close, just set min_samples to max value for best w2 value
-        for i in range(len(means)):
-            for j in range(i + 1, len(means)):
-                distance = np.linalg.norm(means[i] - means[j])
-                dists.append(distance)
-                if np.mean(dists) <= 2:  # average distance less than 2 , significant overlap so use max value
-                    # for min_samples
-                    min_samples = 20
-                else:
-                    min_samples = None  # otherwise determine best min_samples value
-
-    if min_samples is None:
-        samples_np = samples.detach().numpy().reshape(-1, num_dims)
-        dists = []
-        for i in range(len(samples_np)):
-            for j in range(i + 1, len(samples_np)):
-                distance = np.linalg.norm(samples_np[i] - samples_np[j])
-                dists.append(distance)
-
-        epsilon = np.mean(dists)  # as estimate to find min_samples parameter
-        min_samples = utils.find_optimal_min_samples(samples, epsilon, 5, 20)
+        min_samples = utils.estimate_min_samples(samples, means, num_dims)
     print(f"Selected min_samples: {min_samples}")
 
     if eps is None:  # knee method for eps
@@ -268,7 +247,7 @@ def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=N
         lower_vertex = center - eps
         upper_vertex = center + eps
 
-        # Compute min and max in each dimension
+        # # Compute min and max in each dimension
         # lower_vertex = cluster_points.min(dim=0).values
         # upper_vertex = cluster_points.max(dim=0).values
         #
@@ -279,6 +258,11 @@ def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=N
 
         centers.append(center)
         shells.append(shell)
+
+    return shells, centers, eps
+
+
+def create_grid_from_shells(gmm, shells, centers, eps, num_locs=100, plot=False):
 
     # gmm stats for z location
     means = gmm.component_distribution.loc
@@ -315,10 +299,10 @@ def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=N
         grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
 
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=[grid_scheme], outer_loc=z)
-        if plot:
-            fig, ax = plt.subplots(figsize=(6, 6))
-            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
-            plt.show()
+        # if plot:
+        #     fig, ax = plt.subplots(figsize=(6, 6))
+        #     utils.plot_2d_dist_with_shells(ax, gmm, X, labels, [(shells[0], centers[0])], centers)
+        #     plt.show()
         return mix_grid_scheme
 
     else:
@@ -383,10 +367,10 @@ def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=N
             grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)
 
-        if plot:
-            fig, ax = plt.subplots(figsize=(6, 6))
-            utils.plot_2d_dist_with_shells(ax, gmm, X, labels, final_shells, [c for _, c in final_shells])
-            plt.show()
+        # if plot:
+        #     fig, ax = plt.subplots(figsize=(6, 6))
+        #     utils.plot_2d_dist_with_shells(ax, gmm, X, labels, final_shells, [c for _, c in final_shells])
+        #     plt.show()
 
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
 

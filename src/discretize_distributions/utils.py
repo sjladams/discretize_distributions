@@ -138,6 +138,34 @@ def estimate_eps(samples, min_samples=20, plot=False):
 
     return eps
 
+def estimate_min_samples(samples, means, num_dims, min_samples=None):
+    """
+
+    """
+    if min_samples is None:
+        dists = []
+        for i in range(len(means)):
+            for j in range(i + 1, len(means)):
+                distance = np.linalg.norm(means[i] - means[j])
+                dists.append(distance)
+
+        avg_distance = np.mean(dists) if dists else 0
+
+        if avg_distance <= 2:
+            min_samples = 20
+        else:
+
+            samples_np = samples.detach().numpy().reshape(-1, num_dims)
+            dists = []
+            for i in range(len(samples_np)):
+                for j in range(i + 1, len(samples_np)):
+                    distance = np.linalg.norm(samples_np[i] - samples_np[j])
+                    dists.append(distance)
+
+            epsilon = np.mean(dists)
+            min_samples = find_optimal_min_samples(samples_np, epsilon, 5, 20)
+
+    return min_samples
 
 def find_optimal_min_samples(data_array, eps, start_min_samples, end_min_samples):
     """
