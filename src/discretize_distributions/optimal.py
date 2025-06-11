@@ -196,7 +196,7 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
     return grids
 
 
-def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
+def dbscan_shells(gmm, num_locs=100, num_samples = None, min_samples=None, eps=None, plot=False):
     """
     Generates number of grids, location & size (domain) of each grid for a given GMM. The output is a MixGridScheme,
     including the outer loc as the average of the means of the components in the GMM.
@@ -210,7 +210,10 @@ def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
     num_components = gmm.component_distribution.batch_shape[0]
     means = gmm.component_distribution.loc.detach().numpy()  # numpy for easier distance calc
     num_dims = means[0].shape[0]
-    num_samples = torch.tensor([10 * num_components])
+
+    if num_samples is None:
+        num_samples = torch.tensor([100 * num_components])
+
     samples = gmm.sample((num_samples,))
 
     dists = []
@@ -262,10 +265,15 @@ def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
         #     continue
 
         center = cluster_points.mean(dim=0)
-
         lower_vertex = center - eps
         upper_vertex = center + eps
-        # cell structure
+
+        # Compute min and max in each dimension
+        # lower_vertex = cluster_points.min(dim=0).values
+        # upper_vertex = cluster_points.max(dim=0).values
+        #
+        # # center
+        # center = (lower_vertex + upper_vertex) / 2
 
         shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
 
@@ -320,11 +328,15 @@ def dbscan_shells(gmm, num_locs=100, min_samples=None, eps=None, plot=False):
             merged = False
             for i, (existing_shell, existing_center) in enumerate(final_shells):
                 if utils.check_overlap(shell, existing_shell):
-                    # merge based on centers
-                    new_center = (center + existing_center) / 2
-                    lower_vertex = new_center - eps
-                    upper_vertex = new_center + eps
-                    new_shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
+
+                    new_lower = torch.min(shell.lower_vertex, existing_shell.lower_vertex)
+                    new_upper = torch.max(shell.upper_vertex, existing_shell.upper_vertex)
+
+                    # new midpoint
+                    new_center = (new_lower + new_upper) / 2
+
+                    new_shell = dd_schemes.Cell(lower_vertex=new_lower, upper_vertex=new_upper)
+
                     final_shells[i] = (new_shell, new_center)
                     print("Shells overlap! Merged into one.")
                     merged = True
