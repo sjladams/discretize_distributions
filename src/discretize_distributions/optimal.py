@@ -217,7 +217,8 @@ def dbscan_shells(gmm, num_samples=None, min_samples=None, eps=None):
     samples = gmm.sample((num_samples,))
 
     if min_samples is None:
-        min_samples = utils.estimate_min_samples(samples, means, num_dims)
+        # min_samples = utils.estimate_min_samples(samples, means, num_dims)
+        min_samples = int(num_samples*0.1) # use 10%
     print(f"Selected min_samples: {min_samples}")
 
     if eps is None:  # knee method for eps

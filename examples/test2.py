@@ -10,6 +10,7 @@ from copy import deepcopy
 import discretize_distributions.utils as utils
 import numpy as np
 import math
+import matplotlib.cm as cm
 
 def plot_2d_dist(ax, dist):
     samples = dist.sample((10000,))
@@ -50,13 +51,28 @@ def plot_2d_cat(ax, dist):
     ax.scatter(x, y, s=s, c='red')
     return ax
 
+def plot_2d_dist_per_component(ax, gmm, colors):
+    for i, comp in enumerate(gmm.component_distribution):
+        samples = comp.sample((3000,))  # Fewer samples per component
+        ax.hist2d(
+            samples[:, 0], samples[:, 1],
+            bins=[50, 50],
+            density=True,
+            cmap=None,  # Prevent default cmap
+            cmin=0.001,  # Suppress low densities
+            alpha=0.3,   # Transparency so overlaps are visible
+        )
+        ax.scatter(samples[:, 0], samples[:, 1], s=1, alpha=0.1, color=colors(i))  # Optional: show component dots
+    return ax
 
-def plot_2d_grid(ax, grid):
+
+def plot_2d_grid(ax, grid, color, label):
     ax.scatter(
         grid.points[:, 0],
         grid.points[:, 1],
-        s=10,  # size of the points
-        c='red',
+        s=10,
+        c=color,
+        label=label,
     )
     return ax
 
@@ -126,8 +142,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
     num_dims = 2
-    num_mix_elems = 2
-    setting = "close"
+    num_mix_elems = 3
+    setting = "spread"
 
     options = dict(
         overlapping=dict(
@@ -155,7 +171,7 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5])
+                                                           torch.tensor([.5, .5, .5])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
@@ -168,7 +184,7 @@ if __name__ == "__main__":
     # fig, ax = plt.subplots(figsize=(8, 8))
     # ax = plot_2d_dist(ax, gmm)
     # ax = plot_2d_cat(ax, disc_mix)
-    # # plt.savefig(f'test2/mix_grids_{setting}_dbscan.svg')
+    # # plt.savefig(f'test_proof_of_concept/mix_grids_{setting}_dbscan.svg')
     # # ax = set_axis(ax)
     # ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
     # plt.show()
@@ -186,8 +202,7 @@ if __name__ == "__main__":
     # print(f'rounded nr locs: {rounded_value}')
 
     # grid search for eps
-    eps_values = np.linspace(1, 10.0, 10)
-    # *(num_dims)**(1/2) later for high dim scaling
+    eps_values = np.linspace(1, 10.0, 10) *(num_dims)**(1/2)  # for high dim scaling
 
     best_w2 = float('inf')
     best_eps = None
@@ -223,7 +238,7 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_mix)
-    # plt.savefig(f'test2/mix_grids_{setting}.svg')
+    # plt.savefig(f'test_proof_of_concept/mix_grids_{setting}.svg')
     ax.set_title(f'Mix schemes using DBSCAN shells: {w2_mix.item():.2f}')
     plt.show()
 
@@ -231,6 +246,13 @@ if __name__ == "__main__":
     plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
     plt.show()
 
+    # against an optimal grid
+    # round to nearest 10
+    nr_locs = len(disc_mix.locs)
+
+    rounded_value = round(nr_locs / 10) * 10
+    print(f'rounded nr locs: {rounded_value}')
+    x = int((rounded_value**(1/num_dims)))
 
     all_points = []
     for component in gmm.component_distribution:
@@ -244,13 +266,6 @@ if __name__ == "__main__":
         torch.sort(torch.unique(all_points_cat[:, dim]))[0]
         for dim in range(num_dims)
     ]
-
-    # against an optimal grid
-    # round to nearest 10
-    nr_locs = len(disc_mix.locs)
-
-    rounded_value = round(nr_locs / 10) * 10
-    print(f'rounded nr locs: {rounded_value}')
 
     # locs per dim, rounded down
     nr_locs_per_dim = math.floor(rounded_value ** (1 / num_dims))
@@ -275,6 +290,30 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc)
     # ax = set_axis(ax)
-    # plt.savefig(f'test2/optimal_grid_whole_space_{setting}.svg')
+    # plt.savefig(f'test_proof_of_concept/optimal_grid_whole_space_{setting}.svg')
     ax.set_title(f'Optimal grid whole space for average Gaussian: {w2.item():.2f}')
+    plt.show()
+
+    grid_schemes = []
+    x = int(rounded_value / num_mix_elems)
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
+
+    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+    print(f'Old way w2: {w2}')
+    print(f'nr locs one grid {len(disc_gmm.locs)}')
+
+    num_grids = len(grid_schemes)
+    colors = cm.get_cmap('Set1', num_grids)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist_per_component(ax, gmm, colors)
+    ax = plot_2d_dist(ax, gmm)
+
+    for i, grid in enumerate(grid_schemes):
+        ax = plot_2d_grid(ax, grid.locs, color=colors(i), label=f'Component {i}')
+
+    ax.set_title(f'Optimal grid per component w2: {w2.item()}')
+    plt.legend(fontsize=16)
+    # plt.savefig(f'test_proof_of_concept/optimal_old_method_{setting}.svg')
     plt.show()

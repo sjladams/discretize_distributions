@@ -10,6 +10,8 @@ from copy import deepcopy
 import discretize_distributions.utils as utils
 import numpy as np
 import math
+import matplotlib.cm as cm
+
 def plot_2d_dist(ax, dist):
     samples = dist.sample((10000,))
     ax.hist2d(samples[:, 0], samples[:, 1], bins=[50, 50], density=True)
@@ -49,13 +51,28 @@ def plot_2d_cat(ax, dist):
     ax.scatter(x, y, s=s, c='red')
     return ax
 
+def plot_2d_dist_per_component(ax, gmm, colors):
+    for i, comp in enumerate(gmm.component_distribution):
+        samples = comp.sample((3000,))  # Fewer samples per component
+        ax.hist2d(
+            samples[:, 0], samples[:, 1],
+            bins=[50, 50],
+            density=True,
+            cmap=None,  # Prevent default cmap
+            cmin=0.001,  # Suppress low densities
+            alpha=0.3,   # Transparency so overlaps are visible
+        )
+        ax.scatter(samples[:, 0], samples[:, 1], s=1, alpha=0.1, color=colors(i))  # Optional: show component dots
+    return ax
 
-def plot_2d_grid(ax, grid):
+
+def plot_2d_grid(ax, grid, color, label):
     ax.scatter(
         grid.points[:, 0],
         grid.points[:, 1],
-        s=10,  # size of the points
-        c='red',
+        s=10,
+        c=color,
+        label=label,
     )
     return ax
 
@@ -141,7 +158,7 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5])
+                                                           torch.tensor([ .5, .5])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
@@ -210,11 +227,9 @@ if __name__ == "__main__":
     nr_locs = len(disc_mix.locs)
 
     rounded_value = round(nr_locs / 10) * 10
-    print(f'rounded nr locs: {rounded_value}')
 
     # locs per dim, rounded down
     nr_locs_per_dim = math.floor(rounded_value ** (1 / num_dims))
-    print(f'nr locs per dim: {nr_locs_per_dim}')
 
     restricted_points_per_dim = []
     for dim in range(num_dims):
@@ -235,4 +250,28 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc)
     ax.set_title(f'Optimal grid whole space for average Grid: {w2.item():.2f}')
+    plt.show()
+
+    grid_schemes = []
+    x = int(rounded_value/num_mix_elems)
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
+
+    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+    print(f'W2 (Optimal Old Way): {w2}')
+    print(f'nr locs old way {len(disc_gmm.locs)}')
+
+    num_grids = len(grid_schemes)
+    colors = cm.get_cmap('Set1', num_grids)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist_per_component(ax, gmm, colors)
+    ax = plot_2d_dist(ax,gmm)
+
+    for i, grid in enumerate(grid_schemes):
+        ax = plot_2d_grid(ax, grid.locs, color=colors(i), label=f'Component {i}')
+
+    ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
+    plt.legend(fontsize=16)
+    # plt.savefig(f'test_proof_of_concept/optimal_old_method_{setting}.svg')
     plt.show()
