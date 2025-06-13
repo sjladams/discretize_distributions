@@ -36,6 +36,18 @@ def discretize_gmms_the_old_way(
     locs = torch.cat(locs, dim=0)
     w2 = torch.stack(w2_sq).sum().sqrt()
 
+    # locs_per_dim = [
+    #     torch.sort(torch.unique(locs[:, dim]))[0]
+    #     for dim in range(locs.shape[1])
+    # ]
+    # probs_per_dim = [
+    #     torch.sort(torch.unique(probs[:, dim]))[0]
+    #     for dim in range(probs.shape[1])
+    # ]
+    #
+    # locs_grid = dd_schemes.Grid(locs_per_dim)
+    # probs_grid = dd_schemes.Grid(probs_per_dim)
+
     return dd_dists.CategoricalFloat(locs, probs), w2
 
 
@@ -128,7 +140,28 @@ def discretize(
             locs = torch.cat([locs, outer_loc_expanded], dim=0)
             probs = torch.cat([probs, mass_outer_loc], dim=0)
 
+            # locs_per_dim = [
+            #     torch.sort(torch.unique(locs[:, dim]))[0]
+            #     for dim in range(locs.shape[1])
+            # ]
+            #
+            # locs_grid = dd_schemes.Grid(locs_per_dim)
+            #
+            # grid_shape = [len(p) for p in locs_per_dim]
+            # probs_nd = probs.view(*grid_shape)
+            #
+            # probs_per_dim = []
+            # for i in range(len(grid_shape)):
+            #     dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
+            #     marginal = probs_nd.sum(dim=dims_to_sum)
+            #     # if len(grid_shape) == 1 and grid_shape[0] == 1 and marginal.ndim == 0:
+            #     #     marginal = marginal.view(1)
+            #     probs_per_dim.append(marginal)
+            #
+            # probs_grid = dd_schemes.Grid(probs_per_dim)
+
             disc_total = dd_dists.CategoricalFloat(locs, probs)  # new disc with location z included!
+            # disc_total = dd_dists.CategoricalGrid(locs_grid, probs_grid)
 
             return disc_total, w2
 
@@ -151,6 +184,8 @@ def discretize(
             for i in range(len(grid_shape)):
                 dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
                 marginal = probs_nd.sum(dim=dims_to_sum)
+                if marginal.ndim == 0:
+                    marginal = marginal.view(1)
                 probs_per_dim.append(marginal)
 
             probs_grid = dd_schemes.Grid(probs_per_dim)
