@@ -264,6 +264,30 @@ def group_means_by_shells(means, centers, eps):
 
     return shell_groups
 
+def group_means_by_centers(means, centers, eps):
+    visited = set()
+    shell_groups = [[] for _ in centers]
+
+    for j, mean in enumerate(means):
+        if j in visited:
+            continue
+
+        closed_shell_index = None
+        best_distance = float('inf')  # start at max distance
+
+        for i, center in enumerate(centers):
+            if torch.all(torch.abs(mean - center) < 2 * eps):
+                distance = torch.norm(mean - center)
+                if distance < best_distance:
+                    best_distance = distance
+                    closed_shell_index = i
+
+        if closed_shell_index is not None:
+            shell_groups[closed_shell_index].append(j)
+            visited.add(j)
+
+    return shell_groups
+
 
 def check_overlap(cell1, cell2, tol=1e-4):
     for low1, high1, low2, high2 in zip(cell1.lower_vertex, cell1.upper_vertex, cell2.lower_vertex, cell2.upper_vertex):

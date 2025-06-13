@@ -51,7 +51,7 @@ for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
 
     # Whole-space optimal grid
     nr_locs = len(disc_mix.locs)
-    rounded_value = round(nr_locs / 10) * 10
+    rounded_value = round(nr_locs / 10) * 10  # to nearest 10th value
     x = int(rounded_value / num_mix_elems)
 
     all_points = []
