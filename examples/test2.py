@@ -141,9 +141,9 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
 if __name__ == "__main__":
     torch.manual_seed(3)
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
-    num_dims = 2
+    num_dims = 1
     num_mix_elems = 3
-    setting = "spread"
+    setting = "random"
 
     options = dict(
         overlapping=dict(
@@ -170,8 +170,8 @@ if __name__ == "__main__":
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           #    torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5, .5])
+                                                              torch.rand((num_mix_elems,))
+                                                           # torch.tensor([.5, .5, .5])
                                                            )
     # mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([.3, .8, .6, 0.1]))
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)

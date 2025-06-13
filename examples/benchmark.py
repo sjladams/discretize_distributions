@@ -9,12 +9,18 @@ import time
 import pandas as pd
 import math
 from itertools import product
+import random
 
-torch.manual_seed(3)
+torch.manual_seed(0)
 results = []
 run_id = 0
+test_nr = 2
 
-for num_dims, num_mix_elems in product(range(1, 11), range(2, 51)):
+all_pairs = list(product(range(2, 6), range(2, 10)))
+
+selected_pairs = random.sample(all_pairs, 10)
+
+for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
     run_id += 1
     print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
 
@@ -25,7 +31,7 @@ for num_dims, num_mix_elems in product(range(1, 11), range(2, 51)):
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     # grid search best eps
-    eps_values = np.linspace(1, 10.0, 10) * (num_dims)**0.5
+    eps_values = np.linspace(1, 10.0, 10) * (num_dims)**0.5  # scaling with dimension
     best_w2, best_eps, best_mix_grid = float("inf"), None, None
 
     start = time.time()
@@ -44,9 +50,13 @@ for num_dims, num_mix_elems in product(range(1, 11), range(2, 51)):
     mix_time = time.time() - start
 
     # Whole-space optimal grid
+    nr_locs = len(disc_mix.locs)
+    rounded_value = round(nr_locs / 10) * 10
+    x = int(rounded_value / num_mix_elems)
+
     all_points = []
     for component in gmm.component_distribution:
-        grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=100)
+        grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=int(x**(1/num_dims)))
         locs = grid_scheme.locs.points
         all_points.append(locs)
     all_points_cat = torch.cat(all_points, dim=0)
@@ -54,18 +64,17 @@ for num_dims, num_mix_elems in product(range(1, 11), range(2, 51)):
         torch.sort(torch.unique(all_points_cat[:, dim]))[0]
         for dim in range(num_dims)
     ]
-    nr_locs = len(disc_mix.locs)
-    rounded_value = round(nr_locs / 10) * 10
-    nr_locs_per_dim = math.floor(rounded_value ** (1 / num_dims))
 
-    restricted_points_per_dim = []
-    for dim in range(num_dims):
-        indices = torch.linspace(0, unique_locs_per_dim[dim].shape[0] - 1, steps=nr_locs_per_dim).long()
-        restricted = unique_locs_per_dim[dim][indices]
-        restricted_points_per_dim.append(restricted)
+    # nr_locs_per_dim = math.floor(rounded_value ** (1 / num_dims))
+    #
+    # restricted_points_per_dim = []
+    # for dim in range(num_dims):
+    #     indices = torch.linspace(0, unique_locs_per_dim[dim].shape[0] - 1, steps=nr_locs_per_dim).long()
+    #     restricted = unique_locs_per_dim[dim][indices]
+    #     restricted_points_per_dim.append(restricted)
 
     start = time.time()
-    grid = dd_schemes.Grid(restricted_points_per_dim)
+    grid = dd_schemes.Grid(unique_locs_per_dim)
     new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
     grid_scheme = dd_schemes.GridScheme(grid, new_partition)
     disc, w2 = dd.discretize(gmm, grid_scheme)
@@ -73,7 +82,6 @@ for num_dims, num_mix_elems in product(range(1, 11), range(2, 51)):
 
     # Old method
     start = time.time()
-    x = int(rounded_value / num_mix_elems)
     grid_schemes = []
     for i in range(num_mix_elems):
         grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
@@ -98,5 +106,5 @@ for num_dims, num_mix_elems in product(range(1, 11), range(2, 51)):
     })
 
 df = pd.DataFrame(results)
-df.to_csv("gmm_discretization_results.csv", index=False)
-print("Results saved to 'gmm_discretization_results.csv'")
+df.to_csv(f"gmm_discretization_results_test_{test_nr}.csv", index=False)
+print(f"Results saved to 'gmm_discretization_results_test_{test_nr}.csv'")
