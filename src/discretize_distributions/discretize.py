@@ -184,8 +184,8 @@ def discretize(
             for i in range(len(grid_shape)):
                 dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
                 marginal = probs_nd.sum(dim=dims_to_sum)
-                if marginal.ndim == 0:
-                    marginal = marginal.view(1)
+                # if marginal.ndim == 0:
+                #     marginal = marginal.view(1)
                 probs_per_dim.append(marginal)
 
             probs_grid = dd_schemes.Grid(probs_per_dim)
