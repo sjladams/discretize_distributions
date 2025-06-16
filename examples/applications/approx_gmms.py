@@ -1,21 +1,11 @@
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
-from dynamics import DubinsCar
+from examples.applications.dynamics import DubinsCar
 from sklearn.mixture import GaussianMixture
 import torch
-import discretize_distributions as dd
 
-import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.optimal as dd_optimal
 
 from matplotlib import pyplot as plt
-import discretize_distributions.utils as utils
 import numpy as np
-import math
-import matplotlib.cm as cm
 from matplotlib.patches import Ellipse
 
 def plot_gmm_ellipses(gmm, ax=None, color='C0', alpha=0.3):

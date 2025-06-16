@@ -141,8 +141,8 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
 if __name__ == "__main__":
     torch.manual_seed(3)
     num_dims = 2
-    num_mix_elems = 2
-    setting = "close"
+    num_mix_elems = 3
+    setting = "spread"
 
     options = dict(
         close=dict(
@@ -157,8 +157,8 @@ if __name__ == "__main__":
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           torch.tensor([ .5, .5])  # close
-                                                           # torch.tensor([.5, .5, .5])  # spread
+                                                           # torch.tensor([ .5, .5])  # close
+                                                           torch.tensor([.5, .5, .5])  # spread
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 

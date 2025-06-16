@@ -10,7 +10,7 @@ import pandas as pd
 import math
 from itertools import product
 import random
-import examples.hyper_parameter_search as hyper
+import examples.GSM as hyper
 from scipy.optimize import minimize_scalar
 
 torch.manual_seed(0)
