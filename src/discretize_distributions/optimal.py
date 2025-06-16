@@ -528,6 +528,7 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
 
         # checking overlap of ALL shells
         merged = False
+        merged_shells = []
         for i in range(len(shells_built)):
             for j in range(i + 1, len(shells_built)):
                 shell_i = shells_built[i]
@@ -536,6 +537,10 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
                     norm = norms[i]
                     merged_lower = torch.min(shell_i.lower_vertex, shell_j.lower_vertex)
                     merged_upper = torch.max(shell_i.upper_vertex, shell_j.upper_vertex)
+
+                    # merged_shell = dd_schemes.Cell(lower_vertex=merged_lower, upper_vertex=merged_upper)
+                    # merged_shells.append(merged_shell)
+                    # remove shell_i and shell_j from list and add merged_shell and also check it
 
                     lower_vertex = utils.transform_to_local(
                         merged_lower.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
@@ -554,36 +559,33 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
                     grid_schemes.append(grid_scheme)
                     print("Shells overlap! Merged into one.")
                     merged = True
-                    break
-            if merged:
-                break
 
-        if not merged:
-            for j, shell in enumerate(shells_built):
-                norm = norms[j]
-                lower_vertex = shell.lower_vertex
-                upper_vertex = shell.upper_vertex
+            if not merged:
+                for j, shell in enumerate(shells_built):
+                    norm = norms[j]
+                    lower_vertex = shell.lower_vertex
+                    upper_vertex = shell.upper_vertex
 
-                # transform
-                lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-                                                        norm.loc).squeeze(0)
-                upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-                                                        norm.loc).squeeze(0)
+                    # transform
+                    lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                            norm.loc).squeeze(0)
+                    upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                            norm.loc).squeeze(0)
 
-                # original vertices
-                domain = dd_schemes.Cell(lower_vertex=lower_vertex,
-                                         upper_vertex=upper_vertex,
-                                         rot_mat=norm.eigvecs,
-                                         offset=norm.loc,
-                                         scales=norm.eigvals_sqrt
-                                         )
+                    # original vertices
+                    domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                             upper_vertex=upper_vertex,
+                                             rot_mat=norm.eigvecs,
+                                             offset=norm.loc,
+                                             scales=norm.eigvals_sqrt
+                                             )
 
-                grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
-                grid_schemes.append(grid_scheme)
+                    grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+                    grid_schemes.append(grid_scheme)
 
-        mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+            mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
 
-        return mix_grid_scheme
+            return mix_grid_scheme
 
 def create_grid_from_shells(gmm, shells, centers, eps, num_locs=100, plot=False):
     # gmm stats for z location
