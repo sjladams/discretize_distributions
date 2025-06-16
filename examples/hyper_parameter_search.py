@@ -140,6 +140,38 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
     ax.set_ylabel("y")
     return ax
 
+def optimize_std_factor(gmm, centers, gamma=2.0, num_locs=100):
+
+    state = {'best_w2': float('inf'), 'best_grid': None, 'best_std_factor': None}
+    w2_history = []
+
+    def objective(std_factor):
+        try:
+            mix_grid = dd_optimal.create_grid_from_centers(gmm, centers, stddev_factor=std_factor, gamma=gamma, num_locs=num_locs)
+            if mix_grid is None:
+                raise ValueError("Grid was None")
+            disc, w2 = dd.discretize(gmm, mix_grid)
+            w2_val = w2.item()
+            print(f"[std_factor={std_factor:.3f}] -> W2: {w2_val:.6f}")
+
+            w2_history.append(w2_val)
+            if w2_val < state['best_w2']:
+                state['best_w2'] = w2_val
+                state['best_grid'] = mix_grid
+                state['best_std_factor'] = std_factor
+
+            return w2_val
+
+        except Exception as e:
+            print(f"Failed at std_factor={std_factor:.3f}: {e}")
+            return 1e6
+
+    result = minimize_scalar(objective, bounds=(1.0, 5.0), method='bounded', tol=1e-2)
+
+    print(f"Best std_factor: {state['best_std_factor']:.3f}, W2: {state['best_w2']:.6f}")
+    return state['best_std_factor'], state['best_grid']
+
+
 if __name__ == "__main__":
     torch.manual_seed(3)
     num_dims = 2
@@ -171,9 +203,9 @@ if __name__ == "__main__":
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           torch.rand((num_mix_elems,))
-                                                           # torch.tensor([ .5, .5])  # close
-                                                           # torch.tensor([.5, .5, .5])  # spread
+                                                           # torch.rand((num_mix_elems,))
+                                                           # torch.tensor([.5, .5])  # close
+                                                           torch.tensor([.5, .5, .5])  # spread
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
@@ -219,7 +251,8 @@ if __name__ == "__main__":
             print(f"Error at eps={eps:.4f}: {e}")
             return 1e6  # failures
 
-    result = minimize_scalar(objective, bounds=(1, 10.0), method='bounded')
+    # search space
+    result = minimize_scalar(objective, bounds=(1, 10.0), tol=1e-4, method='bounded')
     # results
     best_eps = result.x
     best_w2 = state['best_w2']
@@ -240,6 +273,20 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(6, 6))
     plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
     plt.show()
+
+    # best_std_factor, best_grid = optimize_std_factor(gmm, centers, gamma=2.0)
+    # disc_mix, w2_mix = dd.discretize(gmm, best_grid)
+    # print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix.item()}')
+    # print(f'nr locs mix grid {len(disc_mix.locs)}')
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat(ax, disc_mix)
+    # ax.set_title(f'Mix schemes using optimal shells: {w2_mix.item():.2f}')
+    # plt.show()
+    #
+    # fig, ax = plt.subplots(figsize=(6, 6))
+    # plot_final_discretization_with_shells(ax, gmm, disc_mix, best_grid)
+    # plt.show()
 
     grid_schemes = []
     nr_locs = len(disc_mix.locs)

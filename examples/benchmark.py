@@ -16,15 +16,16 @@ from scipy.optimize import minimize_scalar
 torch.manual_seed(0)
 results = []
 run_id = 0
-test_nr = 4
+test_nr = 5
 
-all_pairs = list(product(range(2,10), [2, 4, 5]))
+all_pairs = list(product(range(2, 10), [2, 4, 5]))
 selected_pairs = random.sample(all_pairs, 10)
 
 for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
     print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
 
-    loc = torch.zeros((num_mix_elems, num_dims))  # overlapping
+    # loc = torch.zeros((num_mix_elems, num_dims))  # overlapping
+    loc = torch.randn((num_mix_elems, num_dims))  # overlapping
     cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
     component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)
     mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
@@ -107,7 +108,7 @@ for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
         "num_dims": num_dims,
         "num_mix_elems": num_mix_elems,
         "w2_mix": best_w2,
-        "w2_old": w2_old,
+        "w2_old": w2_old.item(),
         "time_mix": mix_time,
         "time_old": old_time,
         "best_eps": best_eps,
@@ -115,6 +116,10 @@ for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
         "nr_locs_old": len(disc_old.locs),
     })
 
+# df = pd.DataFrame(results)
+# df.to_csv(f"gmm_discretization_results_test_{test_nr}.csv", index=False)
+# print(f"Results saved")
+
 df = pd.DataFrame(results)
-df.to_csv(f"gmm_discretization_results_test_{test_nr}.csv", index=False)
-print(f"Results saved")
+df.to_excel(f"gmm_discretization_results_test_{test_nr}.xlsx", index=False)
+print("Results saved to Excel.")

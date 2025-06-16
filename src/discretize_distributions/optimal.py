@@ -287,7 +287,8 @@ def kmeans_shells(gmm, n_clusters=None, num_samples=None):
 
     return shells, centers, epsilon
 
-def create_grid_from_centers(gmm, centers, std_factor=3, gamma=2, num_locs=100):
+
+def create_grid_from_centers(gmm, centers, stddev_factor=3, gamma=2, num_locs=100):
     # gmm stats for z location
     means = gmm.component_distribution.loc
     probs = gmm.mixture_distribution.probs
@@ -306,9 +307,9 @@ def create_grid_from_centers(gmm, centers, std_factor=3, gamma=2, num_locs=100):
         # edit shells based on std of norm inside shell
         std = norm.stddev
         # 99.7% rule - so all mass is within mean -/+ 3 std of distribution
-        lower_vertex = mean - std_factor * std
-        upper_vertex = mean + std_factor * std
-        print(f'Shell size (eps): {std_factor * std}')
+        lower_vertex = mean - stddev_factor * std
+        upper_vertex = mean + stddev_factor * std
+        print(f'Shell size (eps): {stddev_factor * std}')
         lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
                                                     norm.loc).squeeze(0)
         upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
@@ -329,7 +330,7 @@ def create_grid_from_centers(gmm, centers, std_factor=3, gamma=2, num_locs=100):
     else:
         grid_schemes, shells_built, norms = [], [], []
         # grouping components by location of mean wrt center of shells (clusters)
-        groups = utils.group_means_by_shells(means, centers, eps=gamma)  # error when more groups than shells
+        groups = utils.group_means_by_centers(means, centers, eps=gamma)  # error when more groups than shells
 
         for i, group_indices in enumerate(groups):  # groups[i] is list  of GMM means assigined to centers[i]
             if not group_indices:
@@ -347,12 +348,310 @@ def create_grid_from_centers(gmm, centers, std_factor=3, gamma=2, num_locs=100):
 
             # edit shells based on std of norm inside shell
             std = norm.stddev
-            print(f'Shell size (eps): {std_factor*std}')
-            lower_vertex = mean - std_factor * std
-            upper_vertex = mean + std_factor * std
+            print(f'Shell size (eps): {stddev_factor * std}')
+            lower_vertex = mean - stddev_factor * std
+            upper_vertex = mean + stddev_factor * std
 
             shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
             shells_built.append(shell)  # create shells for each group
+
+        # checking overlap of shells
+        merged = False
+        for j in range(len(shells_built) - 1):
+            norm = norms[j]
+            shell = shells_built[j]
+            next_shell = shells_built[j + 1]
+            if utils.check_overlap(next_shell, shell):
+                merged_lower = torch.min(next_shell.lower_vertex, shell.lower_vertex)
+                merged_upper = torch.max(next_shell.upper_vertex, shell.upper_vertex)
+                lower_vertex = utils.transform_to_local(merged_lower.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+                upper_vertex = utils.transform_to_local(merged_upper.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+                # original vertices
+                domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                         upper_vertex=upper_vertex,
+                                         rot_mat=norm.eigvecs,
+                                         offset=norm.loc,
+                                         scales=norm.eigvals_sqrt
+                                         )
+
+                grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+                grid_schemes.append(grid_scheme)
+                merged = True
+                print("Shells overlap! Merged into one.")
+                break
+
+        if not merged:
+            for j, shell in enumerate(shells_built):
+                norm = norms[j]
+                lower_vertex = shell.lower_vertex
+                upper_vertex = shell.upper_vertex
+
+                # transform
+                lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+                upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+
+                # original vertices
+                domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                         upper_vertex=upper_vertex,
+                                         rot_mat=norm.eigvecs,
+                                         offset=norm.loc,
+                                         scales=norm.eigvals_sqrt
+                                         )
+
+                grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+                grid_schemes.append(grid_scheme)
+
+        mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+
+        return mix_grid_scheme
+
+
+def create_grid_from_centers2(gmm, centers, stddev_factor=3, gamma=2, num_locs=100):
+    # gmm stats for z location
+    means = gmm.component_distribution.loc
+    probs = gmm.mixture_distribution.probs
+    covs = gmm.component_distribution.covariance_matrix
+
+    z = (probs.unsqueeze(1) * means).sum(dim=0)  # z location stays as average of component means
+
+    # return grids, z
+    if len(centers) == 1:
+
+        mean, cov = utils.collapse_into_gaussian(means, covs, probs)
+        cov = torch.diag(torch.diag(cov))  # cheat method - need to find solution !!
+
+        norm = dd_dists.MultivariateNormal(mean, cov)
+
+        # edit shells based on std of norm inside shell
+        std = norm.stddev
+        # 99.7% rule - so all mass is within mean -/+ 3 std of distribution
+        lower_vertex = mean - stddev_factor
+        upper_vertex = mean + stddev_factor
+        print(f'Shell size (eps): {stddev_factor * std}')
+        lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
+        upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
+
+        domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                upper_vertex=upper_vertex,
+                                rot_mat=norm.eigvecs,
+                                offset=norm.loc,
+                                scales=norm.eigvals_sqrt
+                                )
+
+        grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+
+        mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=[grid_scheme], outer_loc=z)
+        return mix_grid_scheme
+
+    else:
+        grid_schemes, shells_built, norms = [], [], []
+        # grouping components by location of mean wrt center of shells (clusters)
+        groups = utils.group_means_by_centers(means, centers, eps=gamma)  # error when more groups than shells
+
+        for i, group_indices in enumerate(groups):  # groups[i] is list  of GMM means assigined to centers[i]
+            if not group_indices:
+                continue
+
+            group_locs = means[group_indices]
+            group_covs = covs[group_indices]
+            group_probs = probs[group_indices]
+
+            mean, cov = utils.collapse_into_gaussian(group_locs, group_covs, group_probs)
+            cov = torch.diag(torch.diag(cov))
+
+            norm = dd_dists.MultivariateNormal(mean, cov)
+            norms.append(norm)
+
+            # edit shells based on std of norm inside shell
+            std = norm.stddev
+            print(f'Shell size (eps): {stddev_factor * std}')
+            lower_vertex = mean - stddev_factor
+            upper_vertex = mean + stddev_factor
+
+            shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
+            shells_built.append(shell)  # create shells for each group
+
+        # checking overlap of shells
+        merged = False
+        for j in range(len(shells_built) - 1):
+            norm = norms[j]
+            shell = shells_built[j]
+            next_shell = shells_built[j + 1]
+            if utils.check_overlap(next_shell, shell):
+                merged_lower = torch.min(next_shell.lower_vertex, shell.lower_vertex)
+                merged_upper = torch.max(next_shell.upper_vertex, shell.upper_vertex)
+                lower_vertex = utils.transform_to_local(merged_lower.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+                upper_vertex = utils.transform_to_local(merged_upper.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+                # original vertices
+                domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                         upper_vertex=upper_vertex,
+                                         rot_mat=norm.eigvecs,
+                                         offset=norm.loc,
+                                         scales=norm.eigvals_sqrt
+                                         )
+
+                grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+                grid_schemes.append(grid_scheme)
+                merged = True
+                print("Shells overlap! Merged into one.")
+                break
+
+        if not merged:
+            for j, shell in enumerate(shells_built):
+                norm = norms[j]
+                lower_vertex = shell.lower_vertex
+                upper_vertex = shell.upper_vertex
+
+                # transform
+                lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+                upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                        norm.loc).squeeze(0)
+
+                # original vertices
+                domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                         upper_vertex=upper_vertex,
+                                         rot_mat=norm.eigvecs,
+                                         offset=norm.loc,
+                                         scales=norm.eigvals_sqrt
+                                         )
+
+                grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+                grid_schemes.append(grid_scheme)
+
+        mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+
+        return mix_grid_scheme
+
+
+def dbscan_shells2(gmm, num_samples=None, min_samples=None, eps=None):
+
+    num_components = gmm.component_distribution.batch_shape[0]
+
+    if num_samples is None:
+        num_samples = torch.tensor([100 * num_components])
+
+    samples = gmm.sample((num_samples,))
+
+    if min_samples is None:
+        # min_samples = utils.estimate_min_samples(samples, means, num_dims)
+        min_samples = int(num_samples*0.1)  # use 10%
+
+    if eps is None:  # knee method for eps
+        eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)
+
+    X = samples.detach().numpy()
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, algorithm='kd_tree').fit(X)
+    labels = clustering.labels_
+
+    clusters = []
+    centers = []
+    unique_labels = set(labels)
+    unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
+
+    for label in unique_labels:
+        mask = torch.tensor(labels == label)
+        cluster_points = samples[mask]
+
+        center = cluster_points.mean(dim=0)
+        centers.append(center)
+        clusters.append(cluster_points)
+
+    return centers, clusters
+
+def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100):
+    # gmm stats for z location
+    means = gmm.component_distribution.loc
+    probs = gmm.mixture_distribution.probs
+    z = (probs.unsqueeze(1) * means).sum(dim=0)  # z location stays as average of component means
+
+    # return grids, z
+    if len(centers) == 1:
+
+        mean = centers[0]
+        cluster_points = clusters[0]
+
+        centered = cluster_points - mean
+        cov = torch.cov(centered.T)  # cov of cluster
+        cov = torch.diag(torch.diag(cov))
+        norm = dd_dists.MultivariateNormal(mean, cov)
+
+        if border is None:
+            border = 100  # if just one shell you can use the whole space
+        lower_vertex = cluster_points.min(dim=0).values - border
+        upper_vertex = cluster_points.max(dim=0).values + border
+
+        lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
+        upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
+                                                    norm.loc).squeeze(0)
+
+        domain = dd_schemes.Cell(lower_vertex=lower_vertex,
+                                upper_vertex=upper_vertex,
+                                rot_mat=norm.eigvecs,
+                                offset=norm.loc,
+                                scales=norm.eigvals_sqrt
+                                )
+
+        grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+
+        mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=[grid_scheme], outer_loc=z)
+        return mix_grid_scheme
+
+    else:
+        if border is None:
+            # trying to get best border size for shells between clusters
+            cluster_bounds = [
+                (
+                    cluster.min(dim=0).values,  # lower bound
+                    cluster.max(dim=0).values  # upper bound
+                )
+                for cluster in clusters
+            ]
+
+            min_gap = float("inf")
+            for i in range(len(cluster_bounds)):
+                for j in range(i + 1, len(cluster_bounds)):
+                    min_i, max_i = cluster_bounds[i]
+                    min_j, max_j = cluster_bounds[j]
+
+                    # separation between the clusters
+                    gap = torch.max(min_j - max_i, min_i - max_j)  # maximum separation
+                    min_dim_gap = gap.clamp(min=0).min().item()  # take smallest value
+
+                    min_gap = min(min_gap, min_dim_gap)  # take smallest of all gaps
+
+            # final border / 2
+            border = min_gap / 2.0
+
+        grid_schemes, shells_built, norms = [], [], []
+        for center, cluster_points in zip(centers, clusters):
+
+            # if cluster_points.shape[0] < 2:
+            #     continue  # skip if too small
+
+            mean = center
+            centered = cluster_points - mean
+            cov = torch.cov(centered.T)  # cov of cluster
+            cov = torch.diag(torch.diag(cov))
+
+            norm = dd_dists.MultivariateNormal(mean, cov)
+            norms.append(norm)
+
+            lower_vertex = cluster_points.min(dim=0).values - border
+            upper_vertex = cluster_points.max(dim=0).values + border
+
+            shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
+
+            shells_built.append(shell)  # create shells for each cluster
 
         # checking overlap of shells
         merged = False
@@ -476,7 +775,7 @@ def create_grid_from_shells(gmm, shells, centers, eps, num_locs=100, plot=False)
         grid_schemes = []
         # grouping components by location of mean wrt center of shells (clusters)
         centers = [center for _, center in final_shells]
-        groups = utils.group_means_by_shells(means, centers, eps)  # error when more groups than shells
+        groups = utils.group_means_by_centers(means, centers, eps)  # error when more groups than shells
         for i, group_indices in enumerate(groups):  # groups[i] is list  of GMM means assigined to centers[i]
             if not group_indices:
                 continue
@@ -551,7 +850,7 @@ def create_grid_from_epsilon(gmm, centers, eps, num_locs=100):
 
     # group GMMs based off centers
     grouped_centers = [center for _, center in final_shells]
-    groups = utils.group_means_by_shells(means, grouped_centers, eps)
+    groups = utils.group_means_by_centers(means, grouped_centers, eps)
 
     # build schemes per groups
     grid_schemes = []

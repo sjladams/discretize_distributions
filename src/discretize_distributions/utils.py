@@ -240,7 +240,7 @@ def merge_shell(shell1, shell2):
     return new_shell
 
 
-def group_means_by_shells(means, centers, eps):
+def group_means_by_centers(means, centers, eps):
     visited = set()
     shell_groups = [[] for _ in centers]
 
