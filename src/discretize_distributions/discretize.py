@@ -1,3 +1,5 @@
+import math
+
 import torch
 from typing import Union, Optional, Tuple, List
 
@@ -126,8 +128,9 @@ def discretize(
             # mass of outer loc
             mass_outer_loc = 1 - total_mass_inside_grids
 
-            # Step 3: combine the results of the discretization of each component and the outer_locs
+            # combine
             w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_inner_sq).sqrt()
+            assert not math.isnan(w2), 'W2 is not defined, check shells creation!'
 
             # add outer loc to disc
             locs_list = [dc.locs_unravelled for dc in disc_components]
