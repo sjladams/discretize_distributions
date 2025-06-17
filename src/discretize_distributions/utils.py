@@ -288,12 +288,11 @@ def group_means_by_centers(means, centers, eps):
 
     return shell_groups
 
-
 def check_overlap(cell1, cell2, tol=1e-4):
     for low1, high1, low2, high2 in zip(cell1.lower_vertex, cell1.upper_vertex, cell2.lower_vertex, cell2.upper_vertex):
-        if high1 <= low2 + tol or low1 >= high2 - tol:
-            return False
-    return True
+        if not (high1 <= low2 + tol or low1 >= high2 - tol):
+            return True  # returns true for ANY overlap in ANY dimension!
+    return False
 
 
 # def transform_to_local(x_global, rot_mat, scales, offset):
