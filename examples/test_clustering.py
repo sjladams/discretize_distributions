@@ -195,7 +195,8 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_mix_c)
-    ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
+    # ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
+    plt.savefig(f'test2/mix_grid.svg')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -223,8 +224,9 @@ if __name__ == "__main__":
     for i, grid in enumerate(grid_schemes):
         ax = plot_2d_grid(ax, grid.locs, color=colors(i), label=f'Component {i}')
 
-    ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
+    # ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
     plt.legend(fontsize=16)
+    # plt.savefig(f'test1/per_component.svg')
     plt.show()
 
     start = time.time()
@@ -264,7 +266,8 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_)
     # ax = set_axis(ax)
-    ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_.item():.2f}')
+    plt.savefig(f'test2/one_grid.svg')
+    # ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_.item():.2f}')
     plt.show()
 
     print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix_c.item()}')
