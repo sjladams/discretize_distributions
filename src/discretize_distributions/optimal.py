@@ -10,8 +10,8 @@ import discretize_distributions.distributions as dd_dists
 from sklearn.cluster import DBSCAN, KMeans
 import matplotlib.pyplot as plt
 import numpy as np
-
-
+import networkx as nx
+import itertools
 
 GRID_CONFIGS = utils.pickle_load(pkg_resources.resource_filename(
     __name__, f'data{os.sep}lookup_grid_config_NEW.pickle'))
@@ -504,11 +504,8 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
             # final border / 2
             border = min_gap / 2.0
 
-        grid_schemes, shells_built, norms = [], [], []
+        grid_schemes, shells_built, norms, domains = [], [], [], []
         for center, cluster_points in zip(centers, clusters):
-
-            # if cluster_points.shape[0] < 2:
-            #     continue  # skip if too small
 
             mean = center
             centered = cluster_points - mean
@@ -522,70 +519,186 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
             upper_vertex = cluster_points.max(dim=0).values + border
             print(f'eps: {(upper_vertex - lower_vertex)/2}')
 
-            shell = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=upper_vertex)
+            lower_vertex = utils.transform_to_local(
+                lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
+            upper_vertex = utils.transform_to_local(
+                upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
 
-            shells_built.append(shell)  # create shells for each cluster
+            domain = dd_schemes.Cell(
+                lower_vertex=lower_vertex,
+                upper_vertex=upper_vertex,
+                rot_mat=norm.eigvecs,
+                offset=norm.loc,
+                scales=norm.eigvals_sqrt
+            )
 
-        # checking overlap of ALL shells
-        merged = False
-        merged_shells = []
-        for i in range(len(shells_built)):
-            for j in range(i + 1, len(shells_built)):
-                shell_i = shells_built[i]
-                shell_j = shells_built[j]
-                if utils.check_overlap(shell_i, shell_j):
-                    norm = norms[i]
-                    merged_lower = torch.min(shell_i.lower_vertex, shell_j.lower_vertex)
-                    merged_upper = torch.max(shell_i.upper_vertex, shell_j.upper_vertex)
+            domains.append(domain)  # create shells for each cluster
 
-                    # merged_shell = dd_schemes.Cell(lower_vertex=merged_lower, upper_vertex=merged_upper)
-                    # merged_shells.append(merged_shell)
-                    # remove shell_i and shell_j from list and add merged_shell and also check it
+        G = nx.Graph()
+        G.add_nodes_from(range(len(domains)))
 
-                    lower_vertex = utils.transform_to_local(
-                        merged_lower.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
-                    upper_vertex = utils.transform_to_local(
-                        merged_upper.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
+        for i in range(len(domains)):
+            for j in range(i + 1, len(domains)):
+                if utils.check_overlap(domains[i], domains[j]):
+                    G.add_edge(i, j)
+        groups = list(nx.connected_components(G))
 
-                    domain = dd_schemes.Cell(
-                        lower_vertex=lower_vertex,
-                        upper_vertex=upper_vertex,
-                        rot_mat=norm.eigvecs,
-                        offset=norm.loc,
-                        scales=norm.eigvals_sqrt
-                    )
+        merged_domains = []
+        merged_norms = []
 
-                    grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
-                    grid_schemes.append(grid_scheme)
-                    print("Shells overlap! Merged into one.")
-                    merged = True
+        for group in groups:
+            group = list(group)
+            if len(group) == 1:  # no overlap
+                merged_domains.append(domains[group[0]])
+                merged_norms.append(norms[group[0]])
+                continue
 
-            if not merged:
-                for j, shell in enumerate(shells_built):
-                    norm = norms[j]
-                    lower_vertex = shell.lower_vertex
-                    upper_vertex = shell.upper_vertex
+            # transform all coordinates back first
+            global_lowers = []
+            global_uppers = []
 
-                    # transform
-                    lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-                                                            norm.loc).squeeze(0)
-                    upper_vertex = utils.transform_to_local(upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
-                                                            norm.loc).squeeze(0)
+            for i in group:
+                global_lower = utils.transform_to_global(
+                    domains[i].lower_vertex.unsqueeze(0),
+                    norms[i].eigvecs,
+                    norms[i].eigvals_sqrt,
+                    norms[i].loc
+                ).squeeze(0)
+                global_upper = utils.transform_to_global(
+                    domains[i].upper_vertex.unsqueeze(0),
+                    norms[i].eigvecs,
+                    norms[i].eigvals_sqrt,
+                    norms[i].loc
+                ).squeeze(0)
+                global_lowers.append(global_lower)
+                global_uppers.append(global_upper)
 
-                    # original vertices
-                    domain = dd_schemes.Cell(lower_vertex=lower_vertex,
-                                             upper_vertex=upper_vertex,
-                                             rot_mat=norm.eigvecs,
-                                             offset=norm.loc,
-                                             scales=norm.eigvals_sqrt
-                                             )
+            # merge global coordinates
+            merged_lower = torch.stack(global_lowers).min(dim=0).values
+            merged_upper = torch.stack(global_uppers).max(dim=0).values
 
-                    grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
-                    grid_schemes.append(grid_scheme)
+            # new norm
+            locs = torch.stack([norms[i].loc for i in group])
+            covs = torch.stack([norms[i].covariance_matrix for i in group])
+            probs = torch.ones(len(group), device=locs.device)
 
-            mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+            mean, cov = utils.collapse_into_gaussian(locs, covs, probs)
+            norm = dd_dists.MultivariateNormal(mean, cov)
 
-            return mix_grid_scheme
+            # transform back to LOCAL
+            merged_lower_local = utils.transform_to_local(
+                merged_lower.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc
+            ).squeeze(0)
+
+            merged_upper_local = utils.transform_to_local(
+                merged_upper.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc
+            ).squeeze(0)
+
+            lower_vertex = torch.min(merged_lower_local, merged_upper_local)
+            upper_vertex = torch.max(merged_lower_local, merged_upper_local)
+
+            domain = dd_schemes.Cell(
+                lower_vertex=lower_vertex,
+                upper_vertex=upper_vertex,
+                rot_mat=norm.eigvecs,
+                offset=norm.loc,
+                scales=norm.eigvals_sqrt
+            )
+
+            merged_domains.append(domain)
+            merged_norms.append(norm)
+
+        grid_schemes = []
+        for domain, norm in zip(merged_domains, merged_norms):
+            grid_schemes.append(get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain))
+        return dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+
+        # # checking overlap of ALL shells
+        # working_shells = shells_built.copy()
+        # merged = True
+        # while merged:
+        #     merged = False
+        #     new_shells, new_norms = [], []
+        #     skip_indices = set()
+        #
+        #     for i, j in itertools.combinations(range(len(working_shells)), 2):
+        #         if i in skip_indices or j in skip_indices:
+        #             continue
+        #
+        #         shell_i = working_shells[i]
+        #         shell_j = working_shells[j]
+        #
+        #         if utils.check_overlap(shell_i, shell_j):
+        #
+        #             norm_i = norms[i]
+        #             norm_j = norms[j]
+        #             locs = torch.stack([norm_i.loc, norm_j.loc])
+        #             covs = torch.stack([norm_i.covariance_matrix, norm_j.covariance_matrix])
+        #             covs = torch.diag(torch.diag(covs))
+        #             probs = torch.tensor([1.0, 1.0], device=locs.device, dtype=locs.dtype)
+        #             mean, cov = utils.collapse_into_gaussian(locs, covs, probs)  # each shell has a norm
+        #             norm = dd_dists.MultivariateNormal(mean,cov)
+        #
+        #             merged_lower = torch.min(shell_i.lower_vertex, shell_j.lower_vertex)
+        #             merged_upper = torch.max(shell_i.upper_vertex, shell_j.upper_vertex)
+        #
+        #             merged_shell = dd_schemes.Cell(lower_vertex=merged_lower, upper_vertex=merged_upper)
+        #
+        #             print(f"Shells {i} and {j} overlap! Merged into one.")
+        #             new_shells.append(merged_shell)
+        #             new_norms.append(norm)
+        #
+        #             # update shells and norms
+        #             skip_indices.update([i, j])
+        #             working_shells = [s for idx, s in enumerate(working_shells) if idx not in skip_indices]
+        #             norms = [n for idx, n in enumerate(norms) if idx not in skip_indices]
+        #             working_shells.extend(new_shells)
+        #             norms.extend(new_norms)
+        #
+        #             merged = True
+        #             break  # forces a restart to re-check after a merge
+        #
+        #     assert len(working_shells) == len(norms), "Mismatch between shells and norms!"
+        #
+        # for i in range(len(working_shells)):
+        #     for j in range(i + 1, len(working_shells)):
+        #         if utils.check_overlap(working_shells[i], working_shells[j]):
+        #             print(f"WARNING: There is still overlap between shells {i} and {j}")
+        #
+        # grid_schemes = []
+        # for i in range(len(working_shells)):
+        #     shell = working_shells[i]
+        #     norm = norms[i]
+        #
+        #     lower_vertex = utils.transform_to_local(
+        #         shell.lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
+        #     upper_vertex = utils.transform_to_local(
+        #         shell.upper_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt, norm.loc).squeeze(0)
+        #
+        #     domain = dd_schemes.Cell(
+        #         lower_vertex=lower_vertex,
+        #         upper_vertex=upper_vertex,
+        #         rot_mat=norm.eigvecs,
+        #         offset=norm.loc,
+        #         scales=norm.eigvals_sqrt
+        #     )
+        #
+        #     grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
+        #     grid_schemes.append(grid_scheme)
+        # # final check!
+        # for i in range(len(grid_schemes)):
+        #     for j in range(i + 1, len(grid_schemes)):
+        #         domain_i = grid_schemes[i].domain
+        #         domain_j = grid_schemes[j].domain
+        #         if utils.check_overlap(domain_i, domain_j):
+        #             print(f"WARNING: Overlap detected between final domains {i} and {j}")
+        #             intersect_lower = torch.max(domain_i.lower_vertex, domain_j.lower_vertex)
+        #             intersect_upper = torch.min(domain_i.upper_vertex, domain_j.upper_vertex)
+        #             intersection = (intersect_upper - intersect_lower).clamp(min=0)
+        #             print(f"Overlap volume between {i} and {j}: {intersection.prod().item():.6f}")
+        #
+        # mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+        # return mix_grid_scheme
 
 def create_grid_from_shells(gmm, shells, centers, eps, num_locs=100, plot=False):
     # gmm stats for z location
