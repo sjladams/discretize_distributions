@@ -452,7 +452,10 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
 
         centered = cluster_points - mean
         cov = torch.cov(centered.T)  # cov of cluster
-        cov = torch.diag(torch.diag(cov))
+        if cov.ndim == 0:
+            cov = cov.unsqueeze(0).unsqueeze(0)
+        else:
+            cov = torch.diag_embed(torch.diagonal(cov))  # extracts diags and makes diagonal matrix with diags
         norm = dd_dists.MultivariateNormal(mean, cov)
 
         if border is None:
@@ -510,12 +513,15 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
             mean = center
             centered = cluster_points - mean
             cov = torch.cov(centered.T)  # cov of cluster
-            cov = torch.diag(torch.diag(cov))  # should be close to diagonal as the GMM only has diag cov components
-
+            if cov.ndim == 0:  # 1D case
+                cov = cov.unsqueeze(0).unsqueeze(0)
+            else:
+                cov = torch.diag_embed(torch.diagonal(cov))  # extracts diags and makes diagonal matrix with diags
             norm = dd_dists.MultivariateNormal(mean, cov)
 
             lower_vertex = cluster_points.min(dim=0).values - border
             upper_vertex = cluster_points.max(dim=0).values + border
+            print(f'eps: {(upper_vertex - lower_vertex) / 2}')
             print(f'lower_vertex: {lower_vertex}')
             print(f'upper_vertex: {upper_vertex}')
 
@@ -550,7 +556,7 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
                     probs = torch.tensor([1.0, 1.0], device=locs.device, dtype=locs.dtype)
 
                     mean, cov = utils.collapse_into_gaussian(locs, covs, probs)  # each shell has a norm
-                    norm = dd_dists.MultivariateNormal(mean,cov)
+                    norm = dd_dists.MultivariateNormal(mean, cov)
 
                     merged_lower = torch.min(shell_i.lower_vertex, shell_j.lower_vertex)
                     merged_upper = torch.max(shell_i.upper_vertex, shell_j.upper_vertex)
@@ -579,6 +585,7 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
             grid_scheme = get_optimal_grid_scheme(norm=norm, num_locs=num_locs, domain=domain)
             grid_schemes.append(grid_scheme)
         mix_grid_scheme = dd_schemes.MultiGridScheme(grid_schemes=grid_schemes, outer_loc=z)
+
         return mix_grid_scheme
 
 def create_grid_from_shells(gmm, shells, centers, eps, num_locs=100, plot=False):

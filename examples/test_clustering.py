@@ -140,59 +140,46 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
     ax.set_ylabel("y")
     return ax
 
-def spread_gmms(num_dims, num_mix_elems, spacing=1):
-    locs = []
-    for i in range(num_mix_elems):
-        base = torch.zeros(num_dims)
-        base[i % num_dims] = (i // num_dims + 1) * spacing
-        locs.append(base)
-    locs = torch.stack(locs)
-    cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
-    component_distribution = dd_dists.MultivariateNormal(loc=locs, covariance_matrix=cov)
-    mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
-    gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
-    return gmm
-
 if __name__ == "__main__":
 
-    torch.manual_seed(0)  # used 3 for results before
-    # num_dims = 2
-    # num_mix_elems = 3
-    num_dims = 6
-    num_mix_elems = 4
-    d = 2 * (num_dims) ** (1 / 2)
-    gmm = spread_gmms(num_dims, num_mix_elems, spacing=d)
-    # setting = "spread"
-    #
-    # options = dict(
-    #     overlapping=dict(
-    #         loc=torch.zeros((num_mix_elems, num_dims)),
-    #         covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, num_dims)))
-    #     ),
-    #     random=dict(
-    #         loc=torch.randn((num_mix_elems, num_dims)),
-    #         covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
-    #     ),
-    #     close=dict(
-    #         loc=torch.tensor([[0.1, 0.1], [0.2, 0.2]]),
-    #         covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
-    #     ),
-    #     spread=dict(
-    #         loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [7.0, 7.0]]),
-    #         covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [2., 3.], [2., 2.]]))
-    #     ),
-    #     equal=dict(
-    #         loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
-    #         covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
-    #     ),
-    # )
-    # component_distribution = dd_dists.MultivariateNormal(**options[setting])
-    # mixture_distribution = torch.distributions.Categorical(probs=
-    #                                                        # torch.rand((num_mix_elems,))
-    #                                                        # torch.tensor([.5, .5])  # close
-    #                                                        torch.tensor([.5, .5, .5])  # spread
-    #                                                        )
-    # gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    torch.manual_seed(3)  # used 3 for results before
+    num_dims = 2
+    num_mix_elems = 2
+    # num_dims = 6
+    # num_mix_elems = 4
+    # d = 2 * (num_dims) ** (1 / 2)
+    # gmm = spread_gmms(num_dims, num_mix_elems, spacing=d)
+    setting = "random"
+
+    options = dict(
+        overlapping=dict(
+            loc=torch.zeros((num_mix_elems, num_dims)),
+            covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, num_dims)))
+        ),
+        random=dict(
+            loc=torch.randn((num_mix_elems, num_dims)),
+            covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
+        ),
+        close=dict(
+            loc=torch.tensor([[0.1, 0.1], [0.2, 0.2]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
+        ),
+        spread=dict(
+            loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [7.0, 7.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [2., 3.], [2., 2.]]))
+        ),
+        equal=dict(
+            loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
+        ),
+    )
+    component_distribution = dd_dists.MultivariateNormal(**options[setting])
+    mixture_distribution = torch.distributions.Categorical(probs=
+                                                           torch.rand((num_mix_elems,))
+                                                           # torch.tensor([.5, .5])  # close
+                                                           # torch.tensor([.5, .5, .5])  # spread
+                                                           )
+    gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     # clustering by DBSCAN
     centers, clusters = dd_optimal.dbscan_clusters(gmm)

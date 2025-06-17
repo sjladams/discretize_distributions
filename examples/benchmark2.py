@@ -37,35 +37,53 @@ def spread_gmms(num_dims, num_mix_elems, spacing=2):
     return gmm
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
+    torch.manual_seed(3)
     results = []
     run_id = 0
-    test_nr = 5
+    test_nr = 1
 
-    all_pairs = list(product(range(2, 20), range(2, 10)))
-    selected_pairs = random.sample(all_pairs, 10)
+    all_pairs = list(product(range(2, 20), range(2, 30)))
+    selected_pairs = random.sample(all_pairs, 200)
 
     for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
         print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
-        d = 2*(num_dims)**(1/2)
-        gmm = spread_gmms(num_dims, num_mix_elems, spacing=d)
+
+        loc = torch.randn((num_mix_elems, num_dims))
+        cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
+        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)
+        mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
+        gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
         start = time.time()
         centers, clusters = dd_optimal.dbscan_clusters(gmm)
         mix_grid = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-        # try:
-        disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
-        # except Exception as e:
-        #     print(f"Error {e}")
-        #     continue
+        try:
+            disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
+        except Exception as e:
+            print(f"Error {e}")
+            continue
         print(f"W2_mix:{w2_mix.item()}")
         mix_time = time.time() - start
 
         # Old method
         # nr_locs = len(disc_mix.locs)
         # rounded_value = round(nr_locs / 10) * 10
-        x = int(100 / num_mix_elems)
-
+        # x = int(100 / num_mix_elems)
+        # all_points = []
+        # for component in gmm.component_distribution:
+        #     grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=100)
+        #     locs = grid_scheme.locs.points
+        #     all_points.append(locs)
+        # all_points_cat = torch.cat(all_points, dim=0)
+        # unique_locs_per_dim = [
+        #     torch.sort(torch.unique(all_points_cat[:, dim]))[0]
+        #     for dim in range(num_dims)]
+        # grid = dd_schemes.Grid(unique_locs_per_dim)
+        #
+        # new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
+        # grid_scheme = dd_schemes.GridScheme(grid, new_partition)
+        #
+        # disc, w2 = dd.discretize(gmm, grid_scheme)
         start = time.time()
         grid_schemes = []
         for i in range(num_mix_elems):
@@ -73,18 +91,18 @@ if __name__ == "__main__":
         disc_old, w2_old = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
         old_time = time.time() - start
 
-        # if abs(w2_mix.item() - w2_old.item()) <= 0.1:
-        results.append({
-            "run": run_id,
-            "num_dims": num_dims,
-            "num_mix_elems": num_mix_elems,
-            "w2_mix": w2_mix.item(),
-            "w2_old": w2_old.item(),
-            "time_mix": mix_time,
-            "time_old": old_time,
-            "nr_locs_mix": len(disc_mix.locs),
-            "nr_locs_old": len(disc_old.locs),
-        })
+        if abs(w2_mix.item() - w2_old.item()) <= 0.5:
+            results.append({
+                "run": run_id,
+                "num_dims": num_dims,
+                "num_mix_elems": num_mix_elems,
+                "w2_mix": w2_mix.item(),
+                "w2_old": w2_old.item(),
+                "time_mix": mix_time,
+                "time_old": old_time,
+                "nr_locs_mix": len(disc_mix.locs),
+                "nr_locs_old": len(disc_old.locs),
+            })
 
     date_str = datetime.now().strftime("%Y-%m-%d")
     df = pd.DataFrame(results)

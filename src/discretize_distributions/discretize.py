@@ -180,7 +180,7 @@ def discretize(
             grid_shape = [len(p) for p in scheme.locs.points_per_dim]
             probs_nd = probs.view(*grid_shape)
 
-            probs_per_dim = []
+            probs_per_dim = []  # ERROR FOR 1D DISTRIBUTIONS
             for i in range(len(grid_shape)):
                 dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
                 marginal = probs_nd.sum(dim=dims_to_sum)
@@ -216,21 +216,6 @@ def discretize_multi_norm_using_grid_scheme(
     locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.locs.points_per_dim)]
     lower_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.lower_vertices_per_dim)]
     upper_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme.partition.upper_vertices_per_dim)]
-
-    # debugging
-    # probs_per_dim = []
-    # for i, (l, u) in enumerate(zip(lower_vertices_per_dim, upper_vertices_per_dim)):
-    #     cdf_l = utils.cdf(l)
-    #     cdf_u = utils.cdf(u)
-    #     diff = cdf_u - cdf_l
-    #     print(f"Dimension {i}: lower={l}, upper={u}, cdf(lower)={cdf_l}, cdf(upper)={cdf_u}, diff={diff}")
-    #     probs_per_dim.append(diff)
-    #
-    # probs = dd_schemes.Grid(probs_per_dim)
-    # print("Final probs:", probs.points)
-    #
-    # mass_inside_grid = probs.points.prod(-1).sum()
-    # print("Mass inside grid:", mass_inside_grid)
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
