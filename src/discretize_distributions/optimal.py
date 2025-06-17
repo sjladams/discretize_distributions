@@ -517,6 +517,7 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
                 cov = cov.unsqueeze(0).unsqueeze(0)
             else:
                 cov = torch.diag_embed(torch.diagonal(cov))  # extracts diags and makes diagonal matrix with diags
+
             norm = dd_dists.MultivariateNormal(mean, cov)
 
             lower_vertex = cluster_points.min(dim=0).values - border
@@ -552,10 +553,15 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
 
                     locs = torch.stack([norm_i.loc, norm_j.loc])
                     covs = torch.stack([norm_i.covariance_matrix, norm_j.covariance_matrix])
-                    covs = torch.diag(torch.diag(covs))
                     probs = torch.tensor([1.0, 1.0], device=locs.device, dtype=locs.dtype)
 
                     mean, cov = utils.collapse_into_gaussian(locs, covs, probs)  # each shell has a norm
+
+                    if cov.ndim == 0:  # 1D case
+                        cov = cov.unsqueeze(0).unsqueeze(0)
+                    else:
+                        cov = torch.diag_embed(torch.diagonal(cov))
+
                     norm = dd_dists.MultivariateNormal(mean, cov)
 
                     merged_lower = torch.min(shell_i.lower_vertex, shell_j.lower_vertex)
