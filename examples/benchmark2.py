@@ -87,11 +87,11 @@ if __name__ == "__main__":
         start = time.time()
         grid_schemes = []
         for i in range(num_mix_elems):
-            grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=100))
+            grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=int(100/num_mix_elems)))
         disc_old, w2_old = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
         old_time = time.time() - start
 
-        if abs(w2_mix.item() - w2_old.item()) <= 0.5:
+        if abs(w2_mix.item() - w2_old.item()) <= 0.1:
             results.append({
                 "run": run_id,
                 "num_dims": num_dims,
