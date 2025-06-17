@@ -155,10 +155,14 @@ def spread_gmms(num_dims, num_mix_elems, spacing=1):
 
 if __name__ == "__main__":
 
-    torch.manual_seed(0)
+    torch.manual_seed(0)  # used 3 for results before
+    # num_dims = 2
+    # num_mix_elems = 3
     num_dims = 6
     num_mix_elems = 4
-    # setting = "overlapping"
+    d = 2 * (num_dims) ** (1 / 2)
+    gmm = spread_gmms(num_dims, num_mix_elems, spacing=d)
+    # setting = "spread"
     #
     # options = dict(
     #     overlapping=dict(
@@ -184,28 +188,26 @@ if __name__ == "__main__":
     # )
     # component_distribution = dd_dists.MultivariateNormal(**options[setting])
     # mixture_distribution = torch.distributions.Categorical(probs=
-    #                                                        torch.rand((num_mix_elems,))
+    #                                                        # torch.rand((num_mix_elems,))
     #                                                        # torch.tensor([.5, .5])  # close
-    #                                                        # torch.tensor([.5, .5, .5])  # spread
+    #                                                        torch.tensor([.5, .5, .5])  # spread
     #                                                        )
     # gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
-    d = 2 * (num_dims) ** (1 / 2)
-    gmm = spread_gmms(num_dims, num_mix_elems, spacing=d)
 
     # clustering by DBSCAN
     centers, clusters = dd_optimal.dbscan_clusters(gmm)
     mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
     disc_mix_c, w2_mix_c = dd.discretize(gmm, mix_grid_c)
 
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, gmm)
-    # ax = plot_2d_cat(ax, disc_mix_c)
-    # ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
-    # plt.show()
-    #
-    # fig, ax = plt.subplots(figsize=(6, 6))
-    # plot_final_discretization_with_shells(ax, gmm, disc_mix_c, mix_grid_c)
-    # plt.show()
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat(ax, disc_mix_c)
+    ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
+    plt.show()
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    plot_final_discretization_with_shells(ax, gmm, disc_mix_c, mix_grid_c)
+    plt.show()
 
     grid_schemes = []
     nr_locs = len(disc_mix_c.locs)
@@ -219,15 +221,15 @@ if __name__ == "__main__":
     num_grids = len(grid_schemes)
     colors = cm.get_cmap('Set1', num_grids)
 
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax,gmm)
-    #
-    # for i, grid in enumerate(grid_schemes):
-    #     ax = plot_2d_grid(ax, grid.locs, color=colors(i), label=f'Component {i}')
-    #
-    # ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
-    # plt.legend(fontsize=16)
-    # plt.show()
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax,gmm)
+
+    for i, grid in enumerate(grid_schemes):
+        ax = plot_2d_grid(ax, grid.locs, color=colors(i), label=f'Component {i}')
+
+    ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
+    plt.legend(fontsize=16)
+    plt.show()
 
     print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix_c.item()}')
     print(f'nr locs mix grid {len(disc_mix_c.locs)}')
