@@ -54,6 +54,31 @@ def plot_2d_cat(ax, dist):
     ax.scatter(x, y, s=s, c='red')
     return ax
 
+def plot_2d_cat_list(ax, dists):
+    all_x, all_y, all_s = [], [], []
+
+    for dist in dists:
+        if isinstance(dist.probs, dd_schemes.Grid):
+            locs = dist.locs_unravelled
+            probs = dist.probs_unravelled
+        else:
+            locs = dist.locs
+            probs = dist.probs
+
+        x, y = locs[:, 0], locs[:, 1]
+        s = probs * 500
+
+        all_x.append(x)
+        all_y.append(y)
+        all_s.append(s)
+
+    all_x = torch.cat(all_x)
+    all_y = torch.cat(all_y)
+    all_s = torch.cat(all_s)
+
+    ax.scatter(all_x, all_y, s=all_s, c='red')
+    return ax
+
 def plot_2d_dist_per_component(ax, gmm, colors):
     for i, comp in enumerate(gmm.component_distribution):
         samples = comp.sample((3000,))  # Fewer samples per component
@@ -99,11 +124,15 @@ def transform_cell_to_global(cell):
 
 
 def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
+    if isinstance(disc_mix.probs, dd_schemes.Grid):
+        locs, probs = disc_mix.locs_unravelled, disc_mix.locs_unravelled
+    else:
+        locs, probs = disc_mix.locs, disc_mix.locs
+
     density_samples = gmm.sample((10000,)).detach().numpy()
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
               bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
 
-    locs = disc_mix.locs.detach().numpy()
     ax.scatter(locs[:, 0], locs[:, 1],
                c='cyan', s=20, edgecolor='k', alpha=0.8, label='Grid points')
 
@@ -143,9 +172,9 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
 if __name__ == "__main__":
 
     torch.manual_seed(3)  # used 3 for results before
-    num_dims = 2
+    num_dims = 1
     num_mix_elems = 5
-    setting = "test1"
+    setting = "random"
 
     options = dict(
         overlapping=dict(
@@ -194,7 +223,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat(ax, disc_mix_c)
+    ax = plot_2d_cat(ax,disc_mix_c)
     # ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
     # plt.savefig(f'test2/mix_grid.svg')
     plt.show()
@@ -206,7 +235,7 @@ if __name__ == "__main__":
     grid_schemes = []
     nr_locs = len(disc_mix_c.locs)
     rounded_value = round(nr_locs / 10) * 10
-    x = int(rounded_value/num_mix_elems)
+    x = max(int(rounded_value/num_mix_elems), 1)
 
     start = time.time()
     for i in range(num_mix_elems):

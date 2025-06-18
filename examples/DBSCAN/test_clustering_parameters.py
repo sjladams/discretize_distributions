@@ -143,39 +143,6 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
 if __name__ == "__main__":
 
     torch.manual_seed(3)  # used 3 for results before
-    # num_dims = 2
-    # num_mix_elems = 3
-    # loc = torch.randn((num_mix_elems, num_dims))
-    # cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
-    # component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)
-    # mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
-    # gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
-    #
-    # # clustering by DBSCAN
-    # num_samples_list = [10, 100, 1000]
-    # w2_values = []
-    # for num_samples in num_samples_list:
-    #     start = time.time()
-    #
-    #     centers, clusters = dd_optimal.dbscan_clusters(gmm, num_samples*num_mix_elems)
-    #     mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-    #     disc_mix_c, w2_mix_c = dd.discretize(gmm, mix_grid_c)
-    #
-    #     elapsed = time.time() - start
-    #     print(f'num_samples={num_samples}, W2={w2_mix_c.item():.4f}, Time={elapsed:.2f}s')
-    #
-    #     w2_values.append(w2_mix_c.item())
-    #
-    # # Plotting
-    # plt.figure(figsize=(8, 6))
-    # plt.plot(num_samples_list, w2_values, marker='o')
-    # plt.xlabel('Number of Samples')
-    # plt.ylabel('W2 (mix scheme)')
-    # plt.title(f'W2 vs Number of Samples')
-    # plt.grid(True)
-    # plt.tight_layout()
-    # plt.show()
-
     random.seed(3)
 
     num_gmms = 20

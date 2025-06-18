@@ -42,7 +42,7 @@ if __name__ == "__main__":
     run_id = 0
     test_nr = 1
 
-    all_pairs = list(product(range(2, 10), range(2, 100)))
+    all_pairs = list(product(range(1, 10), range(2, 100)))
     selected_pairs = random.sample(all_pairs, 10)
 
     for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
@@ -57,18 +57,21 @@ if __name__ == "__main__":
         start = time.time()
         centers, clusters = dd_optimal.dbscan_clusters(gmm)
         mix_grid = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-        try:
-            disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
-        except Exception as e:
-            print(f"Error {e}")
-            continue
+        # try:
+        disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
+        # except Exception as e:
+        #     print(f"Error {e}")
+        #     continue
         print(f"W2_mix:{w2_mix.item()}")
         mix_time = time.time() - start
 
         start = time.time()
         grid_schemes = []
+        nr_locs = len(disc_mix.locs)
+        rounded_value = round(nr_locs / 10) * 10
+        x = max(int(rounded_value / num_mix_elems), 1)
         for i in range(num_mix_elems):
-            grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=int(100/num_mix_elems)))
+            grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
         disc_old, w2_old = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
         old_time = time.time() - start
 

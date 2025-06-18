@@ -38,20 +38,18 @@ def discretize_gmms_the_old_way(
     locs = torch.cat(locs, dim=0)
     w2 = torch.stack(w2_sq).sum().sqrt()
 
-    # locs_per_dim = [
-    #     torch.sort(torch.unique(locs[:, dim]))[0]
-    #     for dim in range(locs.shape[1])
-    # ]
-    # probs_per_dim = [
-    #     torch.sort(torch.unique(probs[:, dim]))[0]
-    #     for dim in range(probs.shape[1])
-    # ]
-    #
-    # locs_grid = dd_schemes.Grid(locs_per_dim)
-    # probs_grid = dd_schemes.Grid(probs_per_dim)
-
     return dd_dists.CategoricalFloat(locs, probs), w2
 
+    # combined_probs = torch.cat(probs, dim=0)
+    # combined_locs = torch.cat(locs, dim=0)
+    # num_dim = combined_locs.ndim
+    # w2 = torch.stack(w2_sq).sum().sqrt()
+    # locs_grid = dd_schemes.Grid(points_per_dim=[combined_locs[:, i] for i in range(combined_locs.shape[1])])
+    #
+    # marginals = combined_probs.pow(1.0 / num_dim)  # shape: (N,)
+    # probs_grid = dd_schemes.Grid([marginals.clone() for _ in range(num_dim)])
+    #
+    # return dd_dists.CategoricalGrid(locs=locs_grid, probs=probs_grid), w2
 
 def discretize(
         dist: torch.distributions.Distribution,
@@ -74,8 +72,7 @@ def discretize(
             # w2 over the whole space of R^n to location z
             grid_loc = scheme.outer_loc
             points_per_dim = [grid_loc[i].unsqueeze(0) for i in range(grid_loc.shape[0])]
-            grid_outer_loc = dd_schemes.Grid(
-                points_per_dim)  # how about scaling, rotation, offset? - global coordinates vs local coordinates?
+            grid_outer_loc = dd_schemes.Grid(points_per_dim)
 
             num_dim = grid_loc.shape[0]
 
@@ -127,11 +124,35 @@ def discretize(
 
             # mass of outer loc
             mass_outer_loc = 1 - total_mass_inside_grids
+            mass_outer_loc = mass_outer_loc.clamp(min=0)  # for very small neg values
+            # value_per_dim = (mass_outer_loc ** (1.0 / num_dim))  # shape (1,)
+            # points_per_dim = [value_per_dim.clone() for _ in range(num_dim)]
+            # grid_mass_outer_loc = dd_schemes.Grid(points_per_dim)
 
             # combine
             w2 = (w2_component_whole_space.pow(2) + w2_component_sq - w2_component_inner_sq).sqrt()
             assert not math.isnan(w2), 'W2 is not defined, check shells creation!'
 
+            ### CATEGORICAL GRID ###
+            # locs_grids = [c.locs for c in disc_components]
+            # probs_grids = [c.probs for c in disc_components]
+            #
+            # combined_locs = []
+            # for d in range(num_dim):
+            #     dim_points = [g.points_per_dim[d] for g in locs_grids]
+            #     combined_locs.append(torch.cat(dim_points))
+            # grid_locs = dd_schemes.Grid(points_per_dim=combined_locs)
+            #
+            # combined_probs = []
+            # for d in range(num_dim):
+            #     dim_points = [g.points_per_dim[d] for g in probs_grids]
+            #     combined_probs.append(torch.cat(dim_points))
+            # grid_probs = dd_schemes.Grid(points_per_dim=combined_probs)
+            #
+            # disc_total = dd_dists.CategoricalGrid(grid_locs, grid_probs)
+            # disc_outer_loc = dd_dists.CategoricalGrid(grid_outer_loc, grid_mass_outer_loc)
+
+            ## CATEGORICALFLOAT ##
             # add outer loc to disc
             locs_list = [dc.locs_unravelled for dc in disc_components]
             locs = torch.cat(locs_list, dim=0)
@@ -142,30 +163,7 @@ def discretize(
             outer_loc_expanded = scheme.outer_loc.unsqueeze(0)
             locs = torch.cat([locs, outer_loc_expanded], dim=0)
             probs = torch.cat([probs, mass_outer_loc], dim=0)
-
-            # locs_per_dim = [
-            #     torch.sort(torch.unique(locs[:, dim]))[0]
-            #     for dim in range(locs.shape[1])
-            # ]
-            #
-            # locs_grid = dd_schemes.Grid(locs_per_dim)
-            #
-            # grid_shape = [len(p) for p in locs_per_dim]
-            # probs_nd = probs.view(*grid_shape)
-            #
-            # probs_per_dim = []
-            # for i in range(len(grid_shape)):
-            #     dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
-            #     marginal = probs_nd.sum(dim=dims_to_sum)
-            #     # if len(grid_shape) == 1 and grid_shape[0] == 1 and marginal.ndim == 0:
-            #     #     marginal = marginal.view(1)
-            #     probs_per_dim.append(marginal)
-            #
-            # probs_grid = dd_schemes.Grid(probs_per_dim)
-
             disc_total = dd_dists.CategoricalFloat(locs, probs)  # new disc with location z included!
-            # disc_total = dd_dists.CategoricalGrid(locs_grid, probs_grid)
-
             return disc_total, w2
 
         elif isinstance(scheme, dd_schemes.GridScheme):
@@ -183,17 +181,17 @@ def discretize(
             grid_shape = [len(p) for p in scheme.locs.points_per_dim]
             probs_nd = probs.view(*grid_shape)
 
-            probs_per_dim = []  # ERROR FOR 1D DISTRIBUTIONS
+            probs_per_dim = []  # ERROR FOR 1D DISTRIBUTIONS, and also difference between 1d
+            # and len=1 vs 1d and len=N???
             for i in range(len(grid_shape)):
                 dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
                 marginal = probs_nd.sum(dim=dims_to_sum)
-                # if marginal.ndim == 0:
-                #     marginal = marginal.view(1)
+                # if marginal.ndim == 0 and grid_shape == [1]:
+                #     marginal = marginal.unsqueeze(0)
                 probs_per_dim.append(marginal)
-
             probs_grid = dd_schemes.Grid(probs_per_dim)
-
             return dd_dists.CategoricalGrid(scheme.locs, probs_grid, total_mass_inside_grid), w2
+
 
 def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
