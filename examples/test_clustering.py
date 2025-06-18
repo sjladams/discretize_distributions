@@ -144,8 +144,8 @@ if __name__ == "__main__":
 
     torch.manual_seed(3)  # used 3 for results before
     num_dims = 2
-    num_mix_elems = 4
-    setting = "test2"
+    num_mix_elems = 5
+    setting = "test1"
 
     options = dict(
         overlapping=dict(
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_mix_c)
     # ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
-    plt.savefig(f'test2/mix_grid.svg')
+    # plt.savefig(f'test2/mix_grid.svg')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -266,7 +266,7 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_)
     # ax = set_axis(ax)
-    plt.savefig(f'test2/one_grid.svg')
+    # plt.savefig(f'test2/one_grid.svg')
     # ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_.item():.2f}')
     plt.show()
 

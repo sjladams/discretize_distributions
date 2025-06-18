@@ -419,7 +419,8 @@ def dbscan_clusters(gmm, num_samples=None, min_samples=None, eps=None):
         eps = utils.estimate_eps(samples, min_samples=min_samples, plot=False)
 
     X = samples.detach().numpy()
-    clustering = DBSCAN(eps=eps, min_samples=min_samples, algorithm='kd_tree').fit(X)
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, algorithm='auto').fit(X)  # uses KD-tree in low dimensions
+    # and brute-force fo high dimensions
     labels = clustering.labels_
 
     clusters = []

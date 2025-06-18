@@ -117,7 +117,7 @@ def pickle_dump(obj, tag):
 
 def estimate_eps(samples, min_samples=20, plot=False):
     samples_np = samples.detach().numpy()
-    nbrs = NearestNeighbors(n_neighbors=min_samples, algorithm='kd_tree').fit(samples_np)
+    nbrs = NearestNeighbors(n_neighbors=min_samples, algorithm='auto').fit(samples_np)
     distances, _ = nbrs.kneighbors(samples_np)
     k_distances = distances[:, -1]
     k_distances = np.sort(k_distances)  # sorted in increasing order based on distance
