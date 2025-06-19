@@ -104,6 +104,7 @@ def plot_center_with_cov_ellipse(centers_np):
     ax.axis("equal")
     ax.legend()
     ax.grid(True)
+    # plt.savefig(f'clusters_centres_spread.svg')
     plt.show()
 
 
