@@ -111,11 +111,12 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
                c='red', marker='o', s=100, label='Outer loc (z)')
 
     shells = [gs.partition.domain for gs in mix_grid.grid_schemes]
-
+    shell_sizes = []
     for domain in shells:
         # lower_global, upper_global = transform_cell_to_global(shell)
         lower_vertex = domain.lower_vertex  # now local vertices, not yet transformed
         upper_vertex = domain.upper_vertex
+        shell_size = upper_vertex - lower_vertex / 2
 
         # transform by scaling, rot and offset of domain
         upper_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, upper_vertex) + domain.offset
@@ -127,56 +128,27 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
                              fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
         ax.add_patch(rect)
 
-    # if centers:
-    #     centers_tensor = torch.stack(centers).detach().numpy()
-    #     ax.scatter(centers_tensor[:, 0], centers_tensor[:, 1],
-    #                c='lime', marker='x', s=100, label='Shell centers')
+        center = (lower_vertex + upper_vertex) / 2
+        ax.text(center[0], center[1],
+                f"{shell_size.numpy()}", fontsize=8, color='black',
+                ha='center', va='center', bbox=dict(facecolor='white', alpha=0.6, boxstyle='round,pad=0.2'))
 
+        shell_sizes.append(shell_size)
     ax.legend()
     ax.set_xlim(-10, 10)
     ax.set_ylim(-10, 10)
-    ax.set_title("Density + Grid Points + Shells + Centers")
+    # ax.set_title("Density + Grid Points + Shells + Centers")
+    print(f'Shell sizes: {shell_sizes}')
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     return ax
-
-def optimize_std_factor(gmm, centers, gamma=2.0, num_locs=100):
-
-    state = {'best_w2': float('inf'), 'best_grid': None, 'best_std_factor': None}
-    w2_history = []
-
-    def objective(std_factor):
-        try:
-            mix_grid = dd_optimal.create_grid_from_centers(gmm, centers, stddev_factor=std_factor, gamma=gamma, num_locs=num_locs)
-            if mix_grid is None:
-                raise ValueError("Grid was None")
-            disc, w2 = dd.discretize(gmm, mix_grid)
-            w2_val = w2.item()
-            print(f"[std_factor={std_factor:.3f}] -> W2: {w2_val:.6f}")
-
-            w2_history.append(w2_val)
-            if w2_val < state['best_w2']:
-                state['best_w2'] = w2_val
-                state['best_grid'] = mix_grid
-                state['best_std_factor'] = std_factor
-
-            return w2_val
-
-        except Exception as e:
-            print(f"Failed at std_factor={std_factor:.3f}: {e}")
-            return 1e6
-
-    result = minimize_scalar(objective, bounds=(1.0, 5.0), method='bounded', tol=1e-2)
-
-    print(f"Best std_factor: {state['best_std_factor']:.3f}, W2: {state['best_w2']:.6f}")
-    return state['best_std_factor'], state['best_grid']
 
 
 if __name__ == "__main__":
     torch.manual_seed(3)
     num_dims = 2
-    num_mix_elems = 3
-    setting = "spread"
+    num_mix_elems = 5
+    setting = "test1"
 
     options = dict(
         overlapping=dict(
@@ -199,17 +171,25 @@ if __name__ == "__main__":
             loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [1., 3.]]))
         ),
+        test1=dict(
+            loc=torch.tensor([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3], [0.4, 0.4], [0.5, 0.5]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 2.], [2., 4.], [2., 3.]]))
+        ),
+        test2=dict(
+            loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [8.0, 8.0], [-7.0, -7.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 2.], [2., 4.]]))
+        ),
     )
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           # torch.rand((num_mix_elems,))
+                                                           torch.rand((num_mix_elems,))
                                                            # torch.tensor([.5, .5])  # close
-                                                           torch.tensor([.5, .5, .5])  # spread
+                                                           # torch.tensor([.5, .5, .5])  # spread
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    _, centers, _ = dd_optimal.dbscan_shells(gmm=gmm)
+    centers, clusters = dd_optimal.dbscan_clusters(gmm=gmm)
 
     #### GOLDEN-SECTION SEARCH ####
     w2_history = []
@@ -239,11 +219,11 @@ if __name__ == "__main__":
             w2_history.append(w2_value)
 
             # early stopping
-            if len(w2_history) >= early_stop_window:
-                recent = w2_history[-early_stop_window:]
-                if max(recent) - min(recent) < early_stop_tol:
-                    print("Early stopping: w2_mix stabilized.")
-                    raise StopIteration  # stops
+            # if len(w2_history) >= early_stop_window:
+            #     recent = w2_history[-early_stop_window:]
+            #     if max(recent) - min(recent) < early_stop_tol:
+            #         print("Early stopping: w2_mix stabilized.")
+            #         raise StopIteration  # stops
 
             return w2_value
 
@@ -259,11 +239,9 @@ if __name__ == "__main__":
     best_mix_grid = state['best_mix_grid']
     print(f"\nBest eps: {best_eps:.4f}, with w2_mix: {best_w2:.4f}")
 
-    # using mix_grids with domain(s) generated by DBSCAN
+    # using mix_grids with domain(s) generated by grid search
     mix_grid = dd_optimal.create_grid_from_epsilon(gmm, centers, best_eps)
     disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
-    print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix.item()}')
-    print(f'nr locs mix grid {len(disc_mix.locs)}')
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_mix)
@@ -274,40 +252,19 @@ if __name__ == "__main__":
     plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
     plt.show()
 
-    # best_std_factor, best_grid = optimize_std_factor(gmm, centers, gamma=2.0)
-    # disc_mix, w2_mix = dd.discretize(gmm, best_grid)
-    # print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix.item()}')
-    # print(f'nr locs mix grid {len(disc_mix.locs)}')
-    # fig, ax = plt.subplots(figsize=(8, 8))
-    # ax = plot_2d_dist(ax, gmm)
-    # ax = plot_2d_cat(ax, disc_mix)
-    # ax.set_title(f'Mix schemes using optimal shells: {w2_mix.item():.2f}')
-    # plt.show()
-    #
-    # fig, ax = plt.subplots(figsize=(6, 6))
-    # plot_final_discretization_with_shells(ax, gmm, disc_mix, best_grid)
-    # plt.show()
-
-    grid_schemes = []
-    nr_locs = len(disc_mix.locs)
-    rounded_value = round(nr_locs / 10) * 10
-    x = int(rounded_value / num_mix_elems)
-    for i in range(num_mix_elems):
-        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
-
-    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
-    print(f'W2 (Optimal Old Way): {w2}')
-    print(f'nr locs old way {len(disc_gmm.locs)}')
-
-    num_grids = len(grid_schemes)
-    colors = cm.get_cmap('Set1', num_grids)
+    # dbscan shells
+    mix_grid_dbscan = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+    disc_dbscan, w2_dbscan = dd.discretize(gmm, mix_grid_dbscan)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
-
-    for i, grid in enumerate(grid_schemes):
-        ax = plot_2d_grid(ax, grid.locs, color=colors(i), label=f'Component {i}')
-
-    ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
-    plt.legend(fontsize=16)
+    ax = plot_2d_cat(ax, disc_dbscan)
+    ax.set_title(f'Mix schemes using dbscan shells: {w2_dbscan.item()}')
     plt.show()
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    plot_final_discretization_with_shells(ax, gmm, disc_dbscan, mix_grid_dbscan)
+    plt.show()
+
+    print(f'W2 error grid search: {w2_mix.item()}')
+    print(f'W2 error dbscan shells: {w2_dbscan.item()}')

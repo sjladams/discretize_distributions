@@ -264,29 +264,6 @@ def group_means_by_centers(means, centers, eps):
 
     return shell_groups
 
-def group_means_by_centers(means, centers, eps):
-    visited = set()
-    shell_groups = [[] for _ in centers]
-
-    for j, mean in enumerate(means):
-        if j in visited:
-            continue
-
-        closed_shell_index = None
-        best_distance = float('inf')  # start at max distance
-
-        for i, center in enumerate(centers):
-            if torch.all(torch.abs(mean - center) < 2 * eps):
-                distance = torch.norm(mean - center)
-                if distance < best_distance:
-                    best_distance = distance
-                    closed_shell_index = i
-
-        if closed_shell_index is not None:
-            shell_groups[closed_shell_index].append(j)
-            visited.add(j)
-
-    return shell_groups
 
 def check_overlap(cell1, cell2, tol=1e-4):
     for low1, high1, low2, high2 in zip(cell1.lower_vertex, cell1.upper_vertex, cell2.lower_vertex, cell2.upper_vertex):
@@ -294,27 +271,19 @@ def check_overlap(cell1, cell2, tol=1e-4):
             return True  # returns true for ANY overlap in ANY dimension!
     return False
 
-
-# def transform_to_local(x_global, rot_mat, scales, offset):
-#     # out = torch.einsum('i,ij->ij', scales.reciprocal(), rot_mat.T)
-#     # scaled = x_global / out
-#     # local = scaled - offset
-#     centered = x_global - offset
-#     scaled = centered / scales
-#     local = scaled @ rot_mat.T
-#     return local
-
 def transform_to_local(x_global, rot_mat, scales, offset):
     if torch.isinf(x_global).any():
         return x_global
     inv_transform_mat = torch.einsum('i,ij->ij', scales.reciprocal(), rot_mat.T)
     return torch.einsum('ij, nj->ni', inv_transform_mat, x_global - offset)
 
+
 def transform_to_global(x_local, rot_mat, scales, offset):
     if torch.isinf(x_local).any():
         return x_local
     transform_mat = torch.einsum('ij,j->ij', rot_mat, scales)
     return torch.einsum('ij, ...j->...i', transform_mat, x_local) + offset
+
 
 def plot_2d_dist_with_shells(ax, dist, samples, labels, shells, centers):
     density_samples = dist.sample((10000,)).detach().numpy()

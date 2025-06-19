@@ -463,7 +463,6 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
             border = float('inf')  # if just one shell you can use the whole space
         lower_vertex = cluster_points.min(dim=0).values - border
         upper_vertex = cluster_points.max(dim=0).values + border
-        # print(f'eps: {(upper_vertex - lower_vertex) / 2}')
 
         lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
                                                     norm.loc).squeeze(0)
@@ -523,7 +522,6 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
 
             lower_vertex = cluster_points.min(dim=0).values - border
             upper_vertex = cluster_points.max(dim=0).values + border
-            # print(f'eps: {(upper_vertex - lower_vertex) / 2}')
 
             shell = dd_schemes.Cell(lower_vertex, upper_vertex)
 
