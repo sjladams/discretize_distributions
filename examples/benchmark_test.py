@@ -10,7 +10,7 @@ import pandas as pd
 import math
 from itertools import product
 import random
-import examples.GSM as hyper
+import examples.shell_size_comparison as hyper
 from scipy.optimize import minimize_scalar
 from datetime import datetime
 
