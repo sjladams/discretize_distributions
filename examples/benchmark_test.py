@@ -15,12 +15,13 @@ from scipy.optimize import minimize_scalar
 from datetime import datetime
 
 if __name__ == "__main__":
-    torch.manual_seed(3)
+    torch.manual_seed(3)  # only for torch
+    random.seed(3)  # for random functions eg sampling
     results = []
     run_id = 0
-    test_nr = 4
+    test_nr = 2
 
-    all_pairs = list(product(range(2, 10), range(2, 100)))
+    all_pairs = list(product(range(10, 20), range(2, 100)))
     selected_pairs = random.sample(all_pairs, 100)
 
     for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
@@ -33,34 +34,45 @@ if __name__ == "__main__":
         noise = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale  # samples 0-1 then shifted by 0.5, scaled by dim
         loc = base + noise
         cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
-        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov*scale)
+        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov * scale)
         # for higher dimensions
         mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
         gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-        w2_values = []
-        times = []
-        disc_mix = None
-        for i in range(10):  # 10 times
-            start = time.time()
+        # normalize w2 per case by ||\mu||^2 + trac(\Sigma) from finite NNs paper
+        mu_norm_sq = torch.sum(gmm.mean ** 2)  # sum over dimensions
+        trace_sigma = torch.sum(gmm.variance)
+        factor = (mu_norm_sq + trace_sigma).sqrt()
 
-            centers, clusters = dd_optimal.dbscan_clusters(gmm)
-            mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-            disc, w2 = dd.discretize(gmm, mix_grid_c)
+        start = time.time()
+        centers, clusters = dd_optimal.dbscan_clusters(gmm)
+        mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+        disc_mix, w2_mix = dd.discretize(gmm, mix_grid_c)
+        mix_time = time.time() - start
 
-            elapsed = time.time() - start
-            times.append(elapsed)
-            w2_values.append(w2.item())
-
-            if disc_mix is None:
-                disc_mix = disc
-
-            print(f'Run {i + 1}, w2 = {w2}, time = {elapsed:.2f}s')
-
-        average_w2 = np.mean(w2_values)
-        std_w2 = np.std(w2_values)
-        average_time = np.mean(times)
-        std_time = np.std(times)
+        # w2_values = []
+        # times = []
+        # disc_mix = None
+        # for i in range(10):  # 10 times
+        #     start = time.time()
+        #
+        #     centers, clusters = dd_optimal.dbscan_clusters(gmm)
+        #     mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+        #     disc, w2 = dd.discretize(gmm, mix_grid_c)
+        #
+        #     elapsed = time.time() - start
+        #     times.append(elapsed)
+        #     w2_values.append(w2.item())
+        #
+        #     if disc_mix is None:
+        #         disc_mix = disc
+        #
+        #     print(f'Run {i + 1}, w2 = {w2}, time = {elapsed:.2f}s')
+        #
+        # average_w2 = np.mean(w2_values)
+        # std_w2 = np.std(w2_values)
+        # average_time = np.mean(times)
+        # std_time = np.std(times)
 
         start = time.time()
         grid_schemes = []
@@ -76,18 +88,30 @@ if __name__ == "__main__":
             "run": run_id,
             "num_dims": num_dims,
             "num_mix_elems": num_mix_elems,
-            "w2_mix": average_w2,
-            "std_w2_mix": std_w2,
-            "w2_old": w2_old.item(),
-            "time_mix": average_time,
-            "std_time_mix": std_time,
+            "w2_mix": (w2_mix / factor).item(),
+            "w2_old": (w2_old / factor).item(),
+            "time_mix": mix_time,
             "time_old": old_time,
             "nr_locs_mix": len(disc_mix.locs),
             "nr_locs_old": len(disc_old.locs),
         })
 
+        # results.append({
+        #     "run": run_id,
+        #     "num_dims": num_dims,
+        #     "num_mix_elems": num_mix_elems,
+        #     "w2_mix": (average_w2 / factor).item(),
+        #     "std_w2_mix": (std_w2 / factor).item(),
+        #     "w2_old": (w2_old / factor).item(),
+        #     "time_mix": average_time,
+        #     "std_time_mix": std_time,
+        #     "time_old": old_time,
+        #     "nr_locs_mix": len(disc_mix.locs),
+        #     "nr_locs_old": len(disc_old.locs),
+        # })
+
     date_str = datetime.now().strftime("%Y-%m-%d")
     df = pd.DataFrame(results)
 
-    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}.xlsx", index=False)
+    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}_higher_dim.xlsx", index=False)
     print("Results saved to Excel.")
