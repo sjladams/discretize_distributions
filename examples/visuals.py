@@ -19,6 +19,7 @@ import seaborn as sns
 from matplotlib.colors import LogNorm
 from mpl_toolkits.mplot3d import Axes3D
 from itertools import product, combinations
+import gmmot_delon as gmmot
 
 def plot_2d_dist(ax, dist):
     samples = dist.sample((10000,))
@@ -149,6 +150,66 @@ def plot_final_discretization_with_shells_2d(ax, gmm, disc_mix, mix_grid):
     ax.set_ylabel("y")
     return ax
 
+def plot_final_discretization_and_contours_2d(ax, disc_mix, grid_schemes, gmm_params):
+    num_colors = len(grid_schemes)
+    colors = cm.get_cmap('tab10', num_colors)  # or 'tab20', 'Set3', etc.
+
+    for i, g in enumerate(grid_schemes):
+        grid = g.locs
+        locs = grid.points
+        color = colors(i)
+        ax.scatter(locs[:, 0], locs[:, 1], c=[color], s=50, edgecolor='k', label=f'Component {i}')
+
+    K = gmm_params[0]
+    for i in range(K):
+        gmmot.display_gmm([1, np.array([1]), m[i].reshape(1, 2), S[i].reshape(1, 2, 2)],
+                          n=50, ax=-15, bx=15, ay=-15, by=15)
+
+    ax.legend()
+    ax.set_xlim(-15, 15)
+    ax.set_ylim(-15, 15)
+    # ax.set_title("GMM Contours with Quantization and Shells")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    return ax
+
+def plot_final_discretization_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params):
+    locs = disc_mix.locs.detach().numpy()
+    ax.scatter(locs[:, 0], locs[:, 1],
+               c='cyan', s=20, edgecolor='k', alpha=0.8, label='Grid points')
+
+    ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
+               c='red', marker='o', s=100, label='Outer loc (z)')
+
+    shells = [gs.partition.domain for gs in mix_grid.grid_schemes]
+    for domain in shells:
+        # lower_global, upper_global = transform_cell_to_global(shell)
+        lower_vertex = domain.lower_vertex  # now local vertices, not yet transformed
+        upper_vertex = domain.upper_vertex
+
+        # transform by scaling, rot and offset of domain
+        upper_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, upper_vertex) + domain.offset
+        lower_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, lower_vertex) + domain.offset
+
+        width = upper_vertex[0] - lower_vertex[0]
+        height = upper_vertex[1] - lower_vertex[1]
+        rect = plt.Rectangle(lower_vertex, width, height,
+                             fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
+        ax.add_patch(rect)
+
+    K = gmm_params[0]
+    for i in range(K):
+        gmmot.display_gmm([1, np.array([1]), m[i].reshape(1, 2), S[i].reshape(1, 2, 2)],
+                          n=50, ax=-15, bx=15, ay=-15, by=15)
+
+    ax.legend()
+    ax.set_xlim(-15, 15)
+    ax.set_ylim(-15, 15)
+    # ax.set_title("GMM Contours with Quantization and Shells")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    return ax
+
 def plot_density_cloud(ax, gmm, resolution=50, threshold=0.05):
     # Create a full 3D grid
     x = torch.linspace(-15, 15, resolution)
@@ -172,9 +233,9 @@ def plot_density_cloud(ax, gmm, resolution=50, threshold=0.05):
 
 
 def plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid, resolution=40, slice_z_vals=None):
-    samples = gmm.sample((3000,)).detach().numpy()
+    samples = gmm.sample((1000,)).detach().numpy()
     ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
-               alpha=0.01, s=100, c='blue', label='GMM samples')
+               alpha=0.1, s=100, c='blue', label='GMM samples')
 
     # Set up grid
     x = torch.linspace(-15, 15, resolution)
@@ -215,7 +276,7 @@ def plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid, resolu
 
     ax.set_xlim(-15, 15)
     ax.set_ylim(-15, 15)
-    ax.set_title("XY Contour Slices of 3D GMM")
+    # ax.set_title("XY Contour Slices of 3D GMM")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.legend()
@@ -274,9 +335,9 @@ def plot_final_discretization_3d(ax, gmm, grid_schemes, resolution=40, slice_z_v
     # samples = gmm.sample((3000,)).detach().numpy()
     # ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
     #            alpha=0.05, s=100, c='blue', label='GMM samples')
-    samples = gmm.sample((3000,)).detach().numpy()
+    samples = gmm.sample((1000,)).detach().numpy()
     ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
-               alpha=0.01, s=100, c='blue', label='GMM samples')
+               alpha=0.1, s=100, c='blue', label='GMM samples')
 
     # Set up grid
     x = torch.linspace(-15, 15, resolution)
@@ -299,7 +360,7 @@ def plot_final_discretization_3d(ax, gmm, grid_schemes, resolution=40, slice_z_v
                    density[:, :, idx], levels=10, cmap='viridis', linestyles='solid')
 
     num_colors = len(grid_schemes)
-    colors = cm.get_cmap('tab10', num_colors)  # or 'tab20', 'Set3', etc.
+    colors = cm.get_cmap('tab20', num_colors)  # or 'tab20', 'Set3', etc.
 
     for i, g in enumerate(grid_schemes):
         grid = g.locs
@@ -310,11 +371,39 @@ def plot_final_discretization_3d(ax, gmm, grid_schemes, resolution=40, slice_z_v
 
     ax.set_xlim(-15, 15)
     ax.set_ylim(-15, 15)
-    ax.set_title("XY Contour Slices of 3D GMM")
+    # ax.set_title("XY Contour Slices of 3D GMM")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.legend()
     return ax
+
+def plot_samples_gmm_3d(gmm):
+    num_samples = 1000
+    component_ids = gmm.mixture_distribution.sample((num_samples,))
+    samples = gmm.component_distribution.sample((num_samples,))
+    for i in range(num_samples):
+        samples[i] = gmm.component_distribution.sample()[component_ids[i]]
+
+    samples_np = samples.detach().numpy()
+    component_ids_np = component_ids.detach().numpy()
+
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    colors = ['blue', 'red', 'green', 'purple']
+    labels = ['Cluster 1', 'Cluster 2', 'Cluster 3', 'Cluster 4']
+
+    for i in range(num_mix_elems):
+        idx = component_ids_np == i
+        ax.scatter(samples_np[idx, 0], samples_np[idx, 1], samples_np[idx, 2],
+                   c=colors[i], label=labels[i], s=5)
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     torch.manual_seed(3)  # used 3 for results before
@@ -337,15 +426,15 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
         spread=dict(
-            loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [-7.0, -7.0], [8.0, 8.0]]),
-            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 5.], [6., 1.]]))
+            loc=torch.tensor([[-6.0, -6.0],[-7.0, -10.0], [7.0, 4.0], [6.0, 5.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [5., 1.], [1., 6.], [5., 2.]]))
         ),
         spread_3d=dict(
             loc=torch.tensor([
-                [-6.0, -6.0, -6.0],
-                [7.0, 7.0, 7.0],
-                [-7.0, -7.0, -7.0],
-                [8.0, 8.0, 8.0]
+                [-8.0, -6.0, -3.0],
+                [7.0, 7.0, 5.0],
+                [-2.0, -7.0, -7.0],
+                [8.0, 8.0, 15.0]
             ]),
             covariance_matrix=torch.diag_embed(torch.tensor([
                 [1.0, 3.0, 2.0],
@@ -362,21 +451,16 @@ if __name__ == "__main__":
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           torch.rand((num_mix_elems,))
+                                                           # torch.rand((num_mix_elems,))
                                                            # torch.tensor([.5, .5])  # close
-                                                           # torch.tensor([.5, .5, .5, .5])  # spread
+                                                           torch.tensor([.5, .5, .5, .5])  # spread
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     centers, clusters = dd_optimal.dbscan_clusters(gmm=gmm)
     # dbscan shells
-    mix_grid_dbscan = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-    disc_dbscan, w2_dbscan = dd.discretize(gmm, mix_grid_dbscan)
-
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    plot_final_discretization_with_shells_3d(ax, gmm, disc_dbscan, mix_grid_dbscan)
-    plt.show()
+    mix_grid = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+    disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
 
     grid_schemes = []
     for i in range(num_mix_elems):
@@ -384,12 +468,47 @@ if __name__ == "__main__":
 
     disc, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
 
+    #### 2D #####
+    # from delon paper
+    # alpha = gmm.mixture_distribution.probs.detach().numpy()
+    # setting = "spread"
+    # loc = options[setting]["loc"]
+    # covariance_matrix = options[setting]["covariance_matrix"]
+    # m = loc.detach().numpy()
+    # S = covariance_matrix.detach().numpy()
+    # K = len(alpha)
+    # gmm_params = [K, alpha, m, S]
+    #
+    # for i in range(K):
+    #     gmmot.display_gmm([1, np.array([1]), m[i].reshape(1, 2), S[i].reshape(1, 2, 2)],
+    #                       n=50, ax=-15, bx=15, ay=-15, by=15)
+    # plt.show()
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # plot_final_discretization_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params)
+    # plt.savefig(f'visuals/discretization_with_shells_and_contours_2d.svg')
+    # plt.show()
+    #
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # plot_final_discretization_and_contours_2d(ax, disc, grid_schemes, gmm_params)
+    # plt.savefig(f'visuals/discretization_and_contours_2d.svg')
+    # plt.show()
+
+    # ##### 3d #####
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid)
+    plt.savefig(f'visuals/discretization_with_shells_3d.svg')
+    plt.show()
+
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     plot_final_discretization_3d(ax, gmm, grid_schemes)
+    plt.savefig(f'visuals/discretization_3d.svg')
     plt.show()
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     plot_histogram_surface_from_samples(ax, gmm)
     plt.show()
+

@@ -20,8 +20,8 @@ def dubins_car_ode(t, state, v0=0.15, w=0.1):
     return [dxdt, dydt, dthetadt]
 
 # settings
-dt = 0.1
-T = 1
+dt = 1
+T = 10
 v = 1.5
 num_locs = 100
 dubins_car = DubinsCar(v=v, dt=dt)
@@ -43,7 +43,7 @@ theta0 = 0.0
 omega = 0.1
 u = torch.tensor([omega])
 num_particles = x_k.locs.shape[0]
-timesteps = int(T/dubins_car.dt)  # or int(T / dt) if you're using `T` and `dt`
+timesteps = int(T/dubins_car.dt)
 trajectories = []
 
 # emp approx
@@ -58,23 +58,29 @@ for k in range(timesteps):
     # dynamics using signature
     u_batched = u.repeat(len(x_k.locs), 1)
     x_next = dubins_car.rk4_step(x_k.locs, u, dubins_car.dt)  # no noise
+    print(f'Size of disc: {len(x_next)}')
 
     # emp approx dynamics
     u_emp = u.repeat(empirical_state.shape[0], 1)
     empirical_state = dubins_car.rk4_step(empirical_state, u_emp, dubins_car.dt)
+    print(f'Size of emp: {len(empirical_state)}')
 
-    # locs are the propagated locs from previous step, prob mass from previous step, cov stays same due to
-    # additive noise! prove later
-    component_distribution = dd_dists.MultivariateNormal(loc=x_next, covariance_matrix=covariance_matrix)
-    mixture_distribution = torch.distributions.Categorical(probs=x_k.probs)
-    dist = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
-
-    # discretize again
-    centers, clusters = dd_optimal.dbscan_clusters(gmm=dist)
-    mix_grid = dd_optimal.create_grid_from_clusters(dist, centers, clusters, num_locs=num_locs)
-    disc, _ = dd.discretize(dist, mix_grid)
+    # new categorical float
+    disc = dd_dists.CategoricalFloat(locs=x_next, probs=x_k.probs)
     x_k = disc
 
+    #################### WITH NOISE ###########################
+    # locs are the propagated locs from previous step, prob mass from previous step, cov stays same due to
+    # additive noise - write out and prove later
+    # component_distribution = dd_dists.MultivariateNormal(loc=x_next, covariance_matrix=covariance_matrix)
+    # mixture_distribution = torch.distributions.Categorical(probs=x_k.probs)
+    # dist = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+
+    # discretize again - when we have noise
+    # centers, clusters = dd_optimal.dbscan_clusters(gmm=dist)
+    # mix_grid = dd_optimal.create_grid_from_clusters(dist, centers, clusters, num_locs=num_locs)
+    # disc, _ = dd.discretize(dist, mix_grid)
+    # x_k = disc
 
 x0, y0, theta0 = 0.0, 0.0, 0.0
 state0 = [x0, y0, theta0]
@@ -82,28 +88,28 @@ t_eval = np.arange(0, T, dt)
 solution = solve_ivp(dubins_car_ode, [0, T], state0, t_eval=t_eval, args=(v, dt))
 x_traj, y_traj, theta_traj = solution.y
 
-#### 2D plot
-# # ODE reference
-# fig, ax = plt.subplots(figsize=(10, 8))
-# ax.plot(x_traj, y_traj, label="ODE Trajectory", color="blue", linewidth=2)
-#
-# # Discretized
-# for k, locs in enumerate(trajectories):
-#     x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
-#     ax.scatter(x, y, color='red', alpha=0.3, s=10, label="Discretized" if k == 0 else None)
-#
-# # Empirical
-# for k, locs in enumerate(empirical_trajectories):
-#     x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
-#     ax.scatter(x, y, color='green', alpha=0.3, s=10, label="Empirical" if k == 0 else None)
-#
-# ax.set_xlabel("X Position")
-# ax.set_ylabel("Y Position")
-# ax.set_title("Dubins Car: Discretized vs Empirical vs ODE")
-# ax.legend()
-# ax.grid()
-# plt.axis("equal")
-# plt.show()
+### 2D plot
+# ODE reference
+fig, ax = plt.subplots(figsize=(10, 8))
+ax.plot(x_traj, y_traj, label="ODE Trajectory", color="blue", linewidth=2)
+
+# Discretized
+for k, locs in enumerate(trajectories):
+    x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
+    ax.scatter(x, y, color='red', alpha=0.3, s=10, label="Discretized" if k == 0 else None)
+
+# Empirical
+for k, locs in enumerate(empirical_trajectories):
+    x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
+    ax.scatter(x, y, color='green', alpha=0.3, s=10, label="Empirical" if k == 0 else None)
+
+ax.set_xlabel("X Position")
+ax.set_ylabel("Y Position")
+ax.set_title("Dubins Car: Discretized vs Empirical vs ODE")
+ax.legend()
+ax.grid()
+plt.axis("equal")
+plt.show()
 
 
 ##### 3D plot
@@ -113,27 +119,27 @@ ax = fig.add_subplot(111, projection='3d')
 # ODE
 ax.plot(solution.y[0], solution.y[1], solution.y[2], label="ODE Trajectory", color='blue', linewidth=2)
 
-# Plot empirical particles
-# for k, locs in enumerate(empirical_trajectories):
-#     x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
-#     ax.scatter(x, y, theta, color='green', alpha=0.5, s=5, label='Empirical' if k == 0 else None)
+# empirical particles
+for k, locs in enumerate(empirical_trajectories):
+    x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
+    ax.scatter(x, y, theta, color='green', alpha=0.05, s=10, label='Empirical' if k == 0 else None)
 
-# Plot discretized particles
+# discretized particles
 # same color
 for k, locs in enumerate(trajectories):
     x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
-    ax.scatter(x, y, theta, color='red', alpha=0.5, s=10, label='Discretized' if k == 0 else None)
+    ax.scatter(x, y, theta, color='red', alpha=0.3, s=10, label='Discretized' if k == 0 else None)
 
 # each time step diff colors
-cmap = cm.get_cmap('viridis', len(trajectories))
-
-for k, locs in enumerate(trajectories):
-    x = locs[:, 0].numpy()
-    y = locs[:, 1].numpy()
-    theta = locs[:, 2].numpy()
-
-    color = cmap(k / len(trajectories))  # Normalize k to [0,1] for the colormap
-    ax.scatter(x, y, theta, color=color, alpha=0.5, s=10)
+# cmap = cm.get_cmap('viridis', len(trajectories))
+#
+# for k, locs in enumerate(trajectories):
+#     x = locs[:, 0].numpy()
+#     y = locs[:, 1].numpy()
+#     theta = locs[:, 2].numpy()
+#
+#     color = cmap(k / len(trajectories))  # Normalize k to [0,1] for the colormap
+#     ax.scatter(x, y, theta, color=color, alpha=0.5, s=10)
 
 ax.set_xlabel("X Position")
 ax.set_ylabel("Y Position")
