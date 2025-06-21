@@ -7,7 +7,7 @@ import time
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 import discretize_distributions.optimal as dd_optimal
-
+import random
 from matplotlib import pyplot as plt
 from copy import deepcopy
 import discretize_distributions.utils as utils
@@ -143,6 +143,7 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
 if __name__ == "__main__":
 
     torch.manual_seed(3)  # used 3 for results before
+    random.seed(3)
     num_dims = 2
     num_mix_elems = 5
     setting = "test1"
@@ -159,47 +160,55 @@ if __name__ == "__main__":
     )
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           torch.rand((num_mix_elems,))
+                                                           # torch.tensor([.2, .5, .6, .7])
+                                                        torch.tensor([.2, .5, .6, .7, .5])
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    w2_values = []
-    times = []
-    disc_mix_c = None
-    for i in range(10):  # 10 times
-        start = time.time()
 
-        centers, clusters = dd_optimal.dbscan_clusters(gmm)
-        mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-        disc, w2 = dd.discretize(gmm, mix_grid_c)
+    start = time.time()
+    centers, clusters = dd_optimal.dbscan_clusters(gmm)
+    mix_grid = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+    disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
+    time_mix = time.time() - start
 
-        elapsed = time.time() - start
-        times.append(elapsed)
-        w2_values.append(w2.item())
-
-        if disc_mix_c is None:
-            disc_mix_c = disc
-
-        print(f'Run {i + 1}, w2 = {w2}, time = {elapsed:.2f}s')
-
-    average_w2 = np.mean(w2_values)
-    std_w2 = np.std(w2_values)
-    average_time = np.mean(times)
-    std_time = np.std(times)
+    # w2_values = []
+    # times = []
+    # disc_mix_c = None
+    # for i in range(10):  # 10 times
+    #     start = time.time()
+    #
+    #     centers, clusters = dd_optimal.dbscan_clusters(gmm)
+    #     mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+    #     disc, w2 = dd.discretize(gmm, mix_grid_c)
+    #
+    #     elapsed = time.time() - start
+    #     times.append(elapsed)
+    #     w2_values.append(w2.item())
+    #
+    #     if disc_mix_c is None:
+    #         disc_mix_c = disc
+    #
+    #     print(f'Run {i + 1}, w2 = {w2}, time = {elapsed:.2f}s')
+    #
+    # average_w2 = np.mean(w2_values)
+    # std_w2 = np.std(w2_values)
+    # average_time = np.mean(times)
+    # std_time = np.std(times)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat(ax, disc_mix_c)
+    ax = plot_2d_cat(ax, disc_mix)
     # ax.set_title(f'Mix schemes: {w2_mix_c.item():.2f}')
-    plt.savefig(f'test1/mix_grid.svg')
+    # plt.savefig(f'test1/mix_grid.svg')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    plot_final_discretization_with_shells(ax, gmm, disc_mix_c, mix_grid_c)
+    plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid)
     plt.show()
 
     grid_schemes = []
-    nr_locs = len(disc_mix_c.locs)
+    nr_locs = len(disc_mix.locs)
     rounded_value = round(nr_locs / 10) * 10
     x = int(rounded_value/num_mix_elems)
 
@@ -221,7 +230,7 @@ if __name__ == "__main__":
 
     # ax.set_title(f'Optimal grid per component w2 (old method): {w2.item()}')
     plt.legend(fontsize=16)
-    plt.savefig(f'test1/per_component.svg')
+    # plt.savefig(f'test1/per_component.svg')
     plt.show()
 
     start = time.time()
@@ -261,12 +270,12 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat(ax, disc_)
     # ax = set_axis(ax)
-    plt.savefig(f'test1/one_grid.svg')
+    # plt.savefig(f'test1/one_grid.svg')
     # ax.set_title(f'Optimal grid whole space for average Gaussian: {w2_.item():.2f}')
     plt.show()
 
-    print(f'W2 (MultiGridScheme from dbscan_shells): {average_w2}+/-{std_w2}')
-    print(f'nr locs mix grid {len(disc_mix_c.locs)}')
+    print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix.item()}')
+    print(f'nr locs mix grid {len(disc_mix.locs)}')
     print(f'W2 (Optimal Per component): {w2}')
     print(f'nr locs old way {len(disc_gmm.locs)}')
     print(f'W2 (Optimal grid whole space): {w2_.item()}')

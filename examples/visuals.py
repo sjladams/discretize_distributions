@@ -16,6 +16,9 @@ import random
 from itertools import product
 import pandas as pd
 import seaborn as sns
+from matplotlib.colors import LogNorm
+from mpl_toolkits.mplot3d import Axes3D
+from itertools import product, combinations
 
 def plot_2d_dist(ax, dist):
     samples = dist.sample((10000,))
@@ -101,7 +104,7 @@ def transform_cell_to_global(cell):
     return lower_global, upper_global
 
 
-def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
+def plot_final_discretization_with_shells_2d(ax, gmm, disc_mix, mix_grid):
     density_samples = gmm.sample((10000,)).detach().numpy()
     ax.hist2d(density_samples[:, 0], density_samples[:, 1],
               bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
@@ -146,66 +149,179 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
     ax.set_ylabel("y")
     return ax
 
-def plot_gmm_as_kde_style(gmm, grid_range=None, num_points=200, cmap="Reds", ax=None, show_means=True):
-    """
-    Plot a 2D GMM using filled contour lines similar to seaborn's kdeplot with fill=True.
+def plot_density_cloud(ax, gmm, resolution=50, threshold=0.05):
+    # Create a full 3D grid
+    x = torch.linspace(-15, 15, resolution)
+    y = torch.linspace(-15, 15, resolution)
+    z = torch.linspace(-15, 15, resolution)
+    X, Y, Z = torch.meshgrid(x, y, z, indexing='ij')
+    grid = torch.stack([X.reshape(-1), Y.reshape(-1), Z.reshape(-1)], dim=-1)
 
-    Parameters:
-        gmm: MixtureMultivariateNormal (2D)
-        grid_range: ((x_min, x_max), (y_min, y_max)), or None to auto-fit
-        num_points: Resolution of the grid
-        cmap: Matplotlib colormap string (e.g., 'Reds', 'Blues')
-        ax: Optional Matplotlib axis
-        show_means: If True, show component means
-    """
-    assert gmm.event_shape[-1] == 2, "GMM must be 2D"
+    with torch.no_grad():
+        density = gmm.log_prob(grid).exp().numpy()
 
-    # Get component means
-    means = gmm.component_distribution.loc
+    # Normalize
+    density = np.log1p(density)
+    density = (density - density.min()) / (density.max() - density.min())
+    coords = grid.numpy()
 
-    # Automatically define grid range if not given
-    if grid_range is None:
-        margin = 3.0
-        x_min, x_max = means[:, 0].min().item(), means[:, 0].max().item()
-        y_min, y_max = means[:, 1].min().item(), means[:, 1].max().item()
-        grid_range = ((x_min - margin, x_max + margin), (y_min - margin, y_max + margin))
+    # Filter out low-density regions
+    mask = density > threshold
+    ax.scatter(coords[mask, 0], coords[mask, 1], coords[mask, 2],
+               c=density[mask], cmap='viridis', s=8, alpha=0.3)
 
-    # Create meshgrid
-    x = np.linspace(*grid_range[0], num_points)
-    y = np.linspace(*grid_range[1], num_points)
-    xx, yy = np.meshgrid(x, y)
-    grid = torch.tensor(np.stack([xx.ravel(), yy.ravel()], axis=-1), dtype=torch.float32)
+
+def plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid, resolution=40, slice_z_vals=None):
+    samples = gmm.sample((3000,)).detach().numpy()
+    ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
+               alpha=0.01, s=100, c='blue', label='GMM samples')
+
+    # Set up grid
+    x = torch.linspace(-15, 15, resolution)
+    y = torch.linspace(-15, 15, resolution)
+    z = torch.linspace(-15, 15, resolution)
+    X, Y, Z = torch.meshgrid(x, y, z, indexing='ij')
+    grid = torch.stack([X.reshape(-1), Y.reshape(-1), Z.reshape(-1)], dim=-1)
 
     # Evaluate GMM density
     with torch.no_grad():
-        log_probs = gmm.log_prob(grid)
-    probs = torch.exp(log_probs).reshape(xx.shape).numpy()
+        density = gmm.log_prob(grid).exp().reshape(resolution, resolution, resolution).numpy()
 
-    # Plot filled contours
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 6))
+    # Plot 2D contour slices at specified z levels
+    if slice_z_vals is None:
+        slice_z_vals = [-6,-7, 7, 8]
 
-    sns_plot = ax.contourf(xx, yy, probs, levels=15, cmap=cmap)
-    plt.colorbar(sns_plot, ax=ax, label="Density")
+    for zi in slice_z_vals:
+        idx = (torch.abs(z - zi)).argmin().item()
+        ax.contour(X[:, :, idx].numpy(), Y[:, :, idx].numpy(),
+                   density[:, :, idx], levels=10, cmap='viridis', linestyles='solid')
 
-    if show_means:
-        ax.scatter(means[:, 0], means[:, 1], color='black', marker='x', label='Component Means')
-        ax.legend()
+    # Plot 2D box outlines (sliced)
+    for gs in mix_grid.grid_schemes:
+        domain = gs.partition.domain
+        lv = domain.lower_vertex
+        uv = domain.upper_vertex
+        lv = torch.einsum('ij, ...j->...i', domain.transform_mat, lv) + domain.offset
+        uv = torch.einsum('ij, ...j->...i', domain.transform_mat, uv) + domain.offset
+        _plot_3d_box(ax, lv.numpy(), uv.numpy())
 
-    ax.set_title("2D GMM — Filled Contour (KDE Style)")
+    # Scatter grid points
+    locs = disc_mix.locs.detach().numpy()
+    ax.scatter(locs[:, 0], locs[:, 1], locs[:, 2],
+               c='cyan', s=30, edgecolor='k', label='Grid points')
+
+    ax.scatter(locs[-1, 0], locs[-1, 1], locs[-1, 2],
+               c='red', s=100, label='Outer loc (z)')
+
+    ax.set_xlim(-15, 15)
+    ax.set_ylim(-15, 15)
+    ax.set_title("XY Contour Slices of 3D GMM")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-    ax.grid(True)
-    ax.set_aspect('equal')
-
+    ax.legend()
     return ax
 
 
+def plot_histogram_surface_from_samples(ax, gmm, bins=50, scale='linear', alpha=0.8, z_scale=10):
+    samples = gmm.sample((10000,)).detach().numpy()
+    x, y = samples[:, 0], samples[:, 1]
+    hist, xedges, yedges = np.histogram2d(x, y, bins=bins, density=True)
+
+    xcenters = (xedges[:-1] + xedges[1:]) / 2
+    ycenters = (yedges[:-1] + yedges[1:]) / 2
+    X, Y = np.meshgrid(xcenters, ycenters, indexing='ij')
+
+    Z = hist
+
+    if scale == 'log':
+        Z = np.log1p(Z)
+    elif scale == 'linear':
+        Z *= z_scale
+
+    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=alpha)
+
+def plot_gmm_surface_on_xy(ax, gmm, resolution=100, bins=50, scale='log'):
+    # Sample data
+    samples = gmm.sample((10000,)).detach().numpy()
+    x, y = samples[:, 0], samples[:, 1]
+
+    # Compute 2D histogram
+    hist, xedges, yedges = np.histogram2d(x, y, bins=bins, density=True)
+
+    # Bin centers
+    xcenters = (xedges[:-1] + xedges[1:]) / 2
+    ycenters = (yedges[:-1] + yedges[1:]) / 2
+    X, Y = np.meshgrid(xcenters, ycenters, indexing='ij')
+
+    Z = hist
+
+    # Plot surface
+    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=0.8)
+    ax.set_title('GMM Surface (Sampled Density)')
+
+
+def _plot_3d_box(ax, lower, upper, color='cyan', linestyle='--', linewidth=1.5):
+    # 8 corner points of the box
+    points = np.array(list(product(*zip(lower, upper))))
+    # Draw edges between corners that differ in exactly one coordinate
+    for start, end in combinations(points, 2):
+        if np.sum(np.abs(np.array(start) - np.array(end)) > 0) == 1:
+            ax.plot3D(*zip(start, end), color=color, linestyle=linestyle, linewidth=linewidth)
+
+
+def plot_final_discretization_3d(ax, gmm, grid_schemes, resolution=40, slice_z_vals=None):
+    # plot_density_cloud(ax, gmm, resolution=50, density_threshold=0.2)
+    # samples = gmm.sample((3000,)).detach().numpy()
+    # ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
+    #            alpha=0.05, s=100, c='blue', label='GMM samples')
+    samples = gmm.sample((3000,)).detach().numpy()
+    ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
+               alpha=0.01, s=100, c='blue', label='GMM samples')
+
+    # Set up grid
+    x = torch.linspace(-15, 15, resolution)
+    y = torch.linspace(-15, 15, resolution)
+    z = torch.linspace(-15, 15, resolution)
+    X, Y, Z = torch.meshgrid(x, y, z, indexing='ij')
+    grid = torch.stack([X.reshape(-1), Y.reshape(-1), Z.reshape(-1)], dim=-1)
+
+    # Evaluate GMM density
+    with torch.no_grad():
+        density = gmm.log_prob(grid).exp().reshape(resolution, resolution, resolution).numpy()
+
+    # Plot 2D contour slices at specified z levels
+    if slice_z_vals is None:
+        slice_z_vals = [-6,-7, 7, 8]
+
+    for zi in slice_z_vals:
+        idx = (torch.abs(z - zi)).argmin().item()
+        ax.contour(X[:, :, idx].numpy(), Y[:, :, idx].numpy(),
+                   density[:, :, idx], levels=10, cmap='viridis', linestyles='solid')
+
+    num_colors = len(grid_schemes)
+    colors = cm.get_cmap('tab10', num_colors)  # or 'tab20', 'Set3', etc.
+
+    for i, g in enumerate(grid_schemes):
+        grid = g.locs
+        locs = grid.points
+        color = colors(i)
+        ax.scatter(locs[:, 0], locs[:, 1], locs[:, 2],
+                   c=[color], s=50, edgecolor='k', label=f'Component {i}')
+
+    ax.set_xlim(-15, 15)
+    ax.set_ylim(-15, 15)
+    ax.set_title("XY Contour Slices of 3D GMM")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.legend()
+    return ax
+
 if __name__ == "__main__":
-    torch.manual_seed(3)
-    num_dims = 2
+    torch.manual_seed(3)  # used 3 for results before
+    random.seed(3)
+    num_dims = 3
     num_mix_elems = 4
-    setting = "spread"
+    setting = "spread_3d"
 
     options = dict(
         overlapping=dict(
@@ -221,8 +337,22 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
         ),
         spread=dict(
-            loc=torch.tensor([[-7.0, -3.0], [-8, 2.0], [8.0, 7.0], [9, 4.0]]),
-            covariance_matrix=torch.diag_embed(torch.tensor([[4., 0.5], [0.5, 3], [3., 1.], [0.5,4]]))
+            loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [-7.0, -7.0], [8.0, 8.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 5.], [6., 1.]]))
+        ),
+        spread_3d=dict(
+            loc=torch.tensor([
+                [-6.0, -6.0, -6.0],
+                [7.0, 7.0, 7.0],
+                [-7.0, -7.0, -7.0],
+                [8.0, 8.0, 8.0]
+            ]),
+            covariance_matrix=torch.diag_embed(torch.tensor([
+                [1.0, 3.0, 2.0],
+                [3.0, 1.0, 2.0],
+                [2.0, 5.0, 1.0],
+                [6.0, 1.0, 4.0]
+            ]))
         ),
         equal=dict(
             loc=torch.tensor([[1.0, 1.0], [1.0, 1.0]]),
@@ -232,33 +362,34 @@ if __name__ == "__main__":
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           # torch.rand((num_mix_elems,))
+                                                           torch.rand((num_mix_elems,))
                                                            # torch.tensor([.5, .5])  # close
-                                                           torch.tensor([.5, .5, .5, .5])  # spread
+                                                           # torch.tensor([.5, .5, .5, .5])  # spread
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    centers, clusters = dd_optimal.dbscan_clusters(gmm=gmm, eps=0.5, min_samples=5)
-    # centers, clusters = dd_optimal.kmeans_clusters(gmm=gmm, n_clusters=2)
+    centers, clusters = dd_optimal.dbscan_clusters(gmm=gmm)
     # dbscan shells
     mix_grid_dbscan = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
     disc_dbscan, w2_dbscan = dd.discretize(gmm, mix_grid_dbscan)
 
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat(ax, disc_dbscan)
-    ax.set_title(f'Mix schemes using dbscan shells: {w2_dbscan.item()}')
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    plot_final_discretization_with_shells_3d(ax, gmm, disc_dbscan, mix_grid_dbscan)
     plt.show()
 
-    fig, ax = plt.subplots(figsize=(6, 6))
-    plot_final_discretization_with_shells(ax, gmm, disc_dbscan, mix_grid_dbscan)
+    grid_schemes = []
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=100))
+
+    disc, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    plot_final_discretization_3d(ax, gmm, grid_schemes)
     plt.show()
 
-    plt.figure()
-    plot_gmm_as_kde_style(gmm)
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    plot_histogram_surface_from_samples(ax, gmm)
     plt.show()
-
-    # df = sns.load_dataset('iris')
-    # sns.set_style("white")
-    # sns.kdeplot(x=df.sepal_width, y=df.sepal_length, cmap="Reds", fill=True)
-    # plt.show()
