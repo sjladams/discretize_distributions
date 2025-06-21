@@ -66,8 +66,8 @@ class DubinsCar:
         x_next = x + dt / 6.0 * (k1 + 2 * k2 + 2 * k3 + k4)
 
         # Gaussian noise
-        noise = torch.randn_like(x_next) * noise_std
-        x_next += noise
+        # noise = torch.randn_like(x_next) * noise_std
+        # x_next += noise
 
         return x_next
 

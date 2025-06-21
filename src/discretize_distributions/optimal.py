@@ -197,8 +197,10 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
 
 
 def dbscan_clusters(gmm, num_samples=None, min_samples=None, eps=None):
-
-    num_components = gmm.component_distribution.batch_shape[0]
+    if isinstance(gmm, dd_dists.MultivariateNormal):
+        num_components = 1
+    elif isinstance(gmm, dd_dists.MixtureMultivariateNormal):
+        num_components = gmm.component_distribution.batch_shape[0]
 
     if num_samples is None:
         num_samples = torch.tensor([100 * num_components])
@@ -265,9 +267,14 @@ def kmeans_clusters(gmm, num_samples=None, n_clusters=None):
 
 
 def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100):
+    if isinstance(gmm, dd_dists.MultivariateNormal):
+        means = gmm.loc
+        probs = torch.tensor([1,])
+    elif isinstance(gmm, dd_dists.MixtureMultivariateNormal):
+        means = gmm.component_distribution.loc
+        probs = gmm.mixture_distribution.probs
+
     # gmm stats for z location
-    means = gmm.component_distribution.loc
-    probs = gmm.mixture_distribution.probs
     z = (probs.unsqueeze(1) * means).sum(dim=0)  # z location stays as average of component means
 
     # return grids, z
