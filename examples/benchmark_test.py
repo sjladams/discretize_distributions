@@ -21,20 +21,21 @@ if __name__ == "__main__":
     run_id = 0
     test_nr = 1
 
-    all_pairs = list(product(range(10, 64), range(2, 100)))
-    selected_pairs = random.sample(all_pairs, 10)
+    all_pairs = list(product(range(2, 60), range(2, 100)))
+    selected_pairs = random.sample(all_pairs, 100)
 
     for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
         print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
 
         # loc = torch.randn((num_mix_elems, num_dims))
         #### overlapping components ####
-        scale = 0.5 / np.sqrt(num_dims)
+        scale = 1 / np.sqrt(num_dims)
         base = torch.rand((1, num_dims))  # values 0-1
         noise = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale  # samples 0-1 then shifted by 0.5, scaled by dim
+        # only scale noise as this controls spread, so relative spread stays same in higher and lower dims
         loc = base + noise
 
-        min_var = 0.5
+        min_var = 0.1  # minimum value to ensure no negligible var in some dims
         raw_vars = torch.rand((num_mix_elems, num_dims))
         clamped_vars = torch.clamp(raw_vars, min=min_var)
         cov = torch.diag_embed(clamped_vars)
@@ -94,5 +95,5 @@ if __name__ == "__main__":
     date_str = datetime.now().strftime("%Y-%m-%d")
     df = pd.DataFrame(results)
 
-    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}_higher_dim.xlsx", index=False)
+    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}.xlsx", index=False)
     print("Results saved to Excel.")
