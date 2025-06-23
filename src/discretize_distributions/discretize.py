@@ -72,6 +72,9 @@ def discretize(
             w2 = torch.stack(w2_sq).sum().sqrt()
 
             return dd_dists.CategoricalFloat(scheme.locs, probs), w2
+    else:
+        raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}" 
+                                  f"with scheme {type(scheme).__name__} is not implemented.")
 
 
 def discretize_multi_norm_using_grid_scheme(
