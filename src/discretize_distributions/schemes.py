@@ -166,7 +166,7 @@ class Grid(Axes):
         return torch.Size(tuple(len(p) for p in self.points_per_dim))
     
     def __len__(self):
-        return torch.prod(torch.as_tensor(self.shape)).item()
+        return int(torch.prod(torch.as_tensor(self.shape)).item())
     
     @property
     def points(self):
@@ -204,7 +204,7 @@ class Grid(Axes):
 
         return torch.einsum('ij, ...j->...i', self.transform_mat, points) + self.offset
     
-    def _select_axes(self, idx: Tuple[slice]):
+    def _select_axes(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
         indexed_points = [self.points_per_dim[d][i] for d, i in enumerate(idx)]
@@ -342,7 +342,7 @@ class GridPartition(Axes):
 
     @property
     def domain_spanning_Rn(self) -> bool:
-        return self.domain.lower_vertex.eq(-torch.inf).all() and self.domain.upper_vertex.eq(torch.inf).all()
+        return bool(self.domain.lower_vertex.eq(-torch.inf).all().item() and self.domain.upper_vertex.eq(torch.inf).all().item())
     
     def __getitem__(self, idx):
         return GridPartition(
@@ -351,7 +351,11 @@ class GridPartition(Axes):
         )
 
 
-class GridScheme:
+class Scheme:
+    pass 
+
+
+class GridScheme(Scheme):
     def __init__(
             self, 
             grid_of_locs: Grid,
@@ -391,7 +395,7 @@ class GridScheme:
     
     @property
     def upper_vertices_per_dim(self):
-        return self.partition.grid_of_upper_vertices_per_dim
+        return self.partition.upper_vertices_per_dim
     
     def __getitem__(self, idx):
         return GridScheme(
@@ -403,7 +407,7 @@ class GridScheme:
         return len(self.grid_of_locs)
 
 
-class MultiGridScheme:
+class MultiGridScheme(Scheme):
     def __init__(
             self,
             grid_schemes: Sequence[GridScheme],
@@ -416,11 +420,6 @@ class MultiGridScheme:
 
         if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
             raise ValueError("All grid schemes must have the same number of dimensions.")
-        
-
-
-class Scheme:
-    pass 
 
 
 ### --- Utility Functions --- ###
