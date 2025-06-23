@@ -32,7 +32,7 @@ def get_optimal_grid_scheme(
     num_locs: int, 
     domain: Optional[dd_schemes.Cell] = None
 ) -> dd_schemes.GridScheme:
-    if norm.batch_shape != torch.Size([]):
+    if not norm.batch_shape == torch.Size([]):
         raise ValueError('batching not supported yet')
 
     grid_config = get_optimal_grid_config(eigvals=norm.eigvals, num_locs=num_locs)
