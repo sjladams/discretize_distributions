@@ -65,6 +65,10 @@ class Cell(Axes):
         if (upper_vertex < lower_vertex).any():
             raise ValueError("Upper vertices must be greater than or equal to lower vertices.")
         
+        self.batch_shape = lower_vertex.shape[:-1]
+        if len(self.batch_shape) > 1:
+            raise ValueError("Only 1-dimensional batch-sizes are supported.")
+
         self.lower_vertex = lower_vertex
         self.upper_vertex = upper_vertex
 
@@ -74,10 +78,6 @@ class Cell(Axes):
             scales=scales,
             offset=offset
         )
-    
-    @property
-    def transform_mat(self):
-        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
 
     def __len__(self):
         return 1 if self.lower_vertex.ndim == 1 else self.lower_vertex.shape[0]
