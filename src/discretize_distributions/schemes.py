@@ -91,6 +91,41 @@ class Cell(Axes):
             offset=self.offset
         )
 
+    @property
+    def vertices(self):
+        """
+        Returns the vertices of the cell in the transformed space.
+        Supports both batched and non-batched inputs.
+        Output shape: [B, 2**d, d] or [2**d, d] if unbatched
+        """
+        lower = self.lower_vertex
+        upper = self.upper_vertex
+        batched = lower.ndim == 2
+
+        if not batched:
+            lower = lower.unsqueeze(0)  # [1, d]
+            upper = upper.unsqueeze(0)  # [1, d]
+
+        B, d = lower.shape
+        n_vertices = 2 ** d
+
+        # Generate all binary vertex combinations [2**d, d]
+        bits = torch.arange(n_vertices)
+        bitmask = 1 << torch.arange(d - 1, -1, -1)
+        vertex_mask = ((bits.unsqueeze(1) & bitmask) > 0).long()  # [2**d, d]
+
+        # Interpolate: vertex = lower + mask * (upper - lower)
+        lower = lower.unsqueeze(1)  # [B, 1, d]
+        upper = upper.unsqueeze(1)  # [B, 1, d]
+        mask = vertex_mask.unsqueeze(0).to(lower.device)  # [1, 2**d, d]
+
+        vertices = lower + mask * (upper - lower)  # [B, 2**d, d]
+        if not batched:
+            vertices = vertices.squeeze(0)
+
+        # Transform to the output space
+        vertices_trans = torch.einsum('ij,...vj->...vi', self.transform_mat, vertices) + self.offset
+        return vertices_trans
 
 class Grid(Axes):
     def __init__(
