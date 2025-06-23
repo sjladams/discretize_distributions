@@ -12,11 +12,39 @@ from scipy.integrate import solve_ivp
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.cm as cm
 
-def dubins_car_ode(t, state, v0=0.15, w=0.1):
+# def dubins_car_ode(t, state, v0=0.15, w=0.1):
+#     x, y, theta = state
+#     dxdt = v0 * np.cos(theta)
+#     dydt = v0 * np.sin(theta)
+#     dthetadt = w
+#     return [dxdt, dydt, dthetadt]
+
+
+def omega_func(t):
+    A = 0.3
+    f = 0.1
+    bias = -0.3
+    phase = 0.0
+    return A * np.sin(2 * np.pi * f * t + phase) + bias
+
+def omega_func_torch(t):
+    A = 0.3
+    f = 0.1
+    bias = -0.3
+    phase = 0.0
+    return A * torch.sin(5 * torch.pi * f * t + phase) + bias
+
+def dubins_car_ode(t, state, v0=0.15, omega_func=0.1):
     x, y, theta = state
+
+    if omega_func == 0.1: ## constant
+        omega = omega_func
+    else:
+        omega = omega_func(t)
+
     dxdt = v0 * np.cos(theta)
     dydt = v0 * np.sin(theta)
-    dthetadt = w
+    dthetadt = omega
     return [dxdt, dydt, dthetadt]
 
 # settings
@@ -41,7 +69,10 @@ x_k = disc0
 
 theta0 = 0.0
 omega = 0.1
-u = torch.tensor([omega])
+A = torch.tensor(0.2)             # Amplitude of sinusoid
+f = torch.tensor(1.0)             # Frequency in Hz
+phase = torch.tensor(0.0)          # Phase shift (optional)
+bias = torch.tensor(0.3)  # to shift inputs
 num_particles = x_k.locs.shape[0]
 timesteps = int(T/dubins_car.dt)
 trajectories = []
@@ -53,10 +84,15 @@ empirical_trajectories = []
 empirical_state = empirical_samples  # (M, 3)
 
 for k in range(timesteps):
+    # input
+    t_k = k * dubins_car.dt
+    omega_k = omega_func_torch(torch.tensor(t_k))
+    u = torch.tensor([omega_k])
+
     trajectories.append(x_k.locs.detach().clone())
     empirical_trajectories.append(empirical_state.detach().clone())
+
     # dynamics using signature
-    u_batched = u.repeat(len(x_k.locs), 1)
     x_next = dubins_car.rk4_step(x_k.locs, u, dubins_car.dt)  # no noise
     print(f'Size of disc: {len(x_next)}')
 
@@ -85,7 +121,14 @@ for k in range(timesteps):
 x0, y0, theta0 = 0.0, 0.0, 0.0
 state0 = [x0, y0, theta0]
 t_eval = np.arange(0, T, dt)
-solution = solve_ivp(dubins_car_ode, [0, T], state0, t_eval=t_eval, args=(v, dt))
+
+solution = solve_ivp(
+    dubins_car_ode,
+    [0, T],
+    state0,
+    t_eval=t_eval,
+    args=(v, omega_func)
+)
 x_traj, y_traj, theta_traj = solution.y
 
 ### 2D plot
@@ -93,15 +136,16 @@ x_traj, y_traj, theta_traj = solution.y
 fig, ax = plt.subplots(figsize=(10, 8))
 ax.plot(x_traj, y_traj, label="ODE Trajectory", color="blue", linewidth=2)
 
-# Discretized
-for k, locs in enumerate(trajectories):
-    x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
-    ax.scatter(x, y, color='red', alpha=0.3, s=10, label="Discretized" if k == 0 else None)
-
 # Empirical
 for k, locs in enumerate(empirical_trajectories):
     x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
     ax.scatter(x, y, color='green', alpha=0.3, s=10, label="Empirical" if k == 0 else None)
+
+# Discretized
+for k, locs in enumerate(trajectories):
+    x, y = locs[:, 0].numpy(), locs[:, 1].numpy()
+    ax.scatter(x, y, color='red', alpha=0.5, s=10, label="Discretized" if k == 0 else None)
+
 
 ax.set_xlabel("X Position")
 ax.set_ylabel("Y Position")
@@ -113,22 +157,22 @@ plt.show()
 
 
 ##### 3D plot
-fig = plt.figure(figsize=(10, 8))
-ax = fig.add_subplot(111, projection='3d')
-
-# ODE
-ax.plot(solution.y[0], solution.y[1], solution.y[2], label="ODE Trajectory", color='blue', linewidth=2)
-
-# empirical particles
-for k, locs in enumerate(empirical_trajectories):
-    x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
-    ax.scatter(x, y, theta, color='green', alpha=0.05, s=10, label='Empirical' if k == 0 else None)
-
-# discretized particles
-# same color
-for k, locs in enumerate(trajectories):
-    x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
-    ax.scatter(x, y, theta, color='red', alpha=0.3, s=10, label='Discretized' if k == 0 else None)
+# fig = plt.figure(figsize=(10, 8))
+# ax = fig.add_subplot(111, projection='3d')
+#
+# # ODE
+# ax.plot(solution.y[0], solution.y[1], solution.y[2], label="ODE Trajectory", color='blue', linewidth=2)
+#
+# # empirical particles
+# for k, locs in enumerate(empirical_trajectories):
+#     x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
+#     ax.scatter(x, y, theta, color='green', alpha=0.05, s=10, label='Empirical' if k == 0 else None)
+#
+# # discretized particles
+# # same color
+# for k, locs in enumerate(trajectories):
+#     x, y, theta = locs[:, 0].numpy(), locs[:, 1].numpy(), locs[:, 2].numpy()
+#     ax.scatter(x, y, theta, color='red', alpha=0.3, s=10, label='Discretized' if k == 0 else None)
 
 # each time step diff colors
 # cmap = cm.get_cmap('viridis', len(trajectories))
@@ -140,11 +184,10 @@ for k, locs in enumerate(trajectories):
 #
 #     color = cmap(k / len(trajectories))  # Normalize k to [0,1] for the colormap
 #     ax.scatter(x, y, theta, color=color, alpha=0.5, s=10)
-
-ax.set_xlabel("X Position")
-ax.set_ylabel("Y Position")
-ax.set_zlabel("Theta (rad)")
-ax.set_title("Dubins Car Trajectories in (x, y, θ) Space")
-ax.legend()
-plt.tight_layout()
-plt.show()
+# ax.set_xlabel("X Position")
+# ax.set_ylabel("Y Position")
+# ax.set_zlabel("Theta (rad)")
+# ax.set_title("Dubins Car Trajectories in (x, y, θ) Space")
+# ax.legend()
+# plt.tight_layout()
+# plt.show()

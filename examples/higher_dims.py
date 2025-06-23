@@ -19,28 +19,19 @@ if __name__ == "__main__":
     random.seed(3)  # for random functions eg sampling
     results = []
     run_id = 0
-    test_nr = 1
+    test_nr = 5
+    max_dim = 60
+    num_mix_elems = 2
+    dim_range = range(2, max_dim)
+    selected_dims = list(dim_range)
 
-    all_pairs = list(product(range(10, 64), range(2, 100)))
-    selected_pairs = random.sample(all_pairs, 10)
-
-    for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
+    for run_id, num_dims in enumerate(selected_dims, 1):
         print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
 
-        # loc = torch.randn((num_mix_elems, num_dims))
-        #### overlapping components ####
-        scale = 0.5 / np.sqrt(num_dims)
-        base = torch.rand((1, num_dims))  # values 0-1
-        noise = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale  # samples 0-1 then shifted by 0.5, scaled by dim
-        loc = base + noise
+        loc = torch.zeros((num_mix_elems, num_dims))
+        cov = torch.eye(num_dims).repeat(num_mix_elems, 1, 1)  # Shape: (K, D, D)
 
-        min_var = 0.5
-        raw_vars = torch.rand((num_mix_elems, num_dims))
-        clamped_vars = torch.clamp(raw_vars, min=min_var)
-        cov = torch.diag_embed(clamped_vars)
-
-        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov * scale)
-        # for higher dimensions
+        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)
         mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
         gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
@@ -66,6 +57,8 @@ if __name__ == "__main__":
         old_time = time.time() - start
 
         results.append({
+            "loc": loc,
+            "cov": cov,
             "run": run_id,
             "num_dims": num_dims,
             "num_mix_elems": num_mix_elems,
@@ -94,5 +87,62 @@ if __name__ == "__main__":
     date_str = datetime.now().strftime("%Y-%m-%d")
     df = pd.DataFrame(results)
 
-    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}_higher_dim.xlsx", index=False)
+    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}_higher_dim.xlsx",
+                index=False)
     print("Results saved to Excel.")
+
+    # torch.manual_seed(3)  # used 3 for results before
+    # random.seed(3)
+    # num_dims = 10
+    # num_mix_elems = 3
+    #
+    # # scale = 1 / np.sqrt(num_dims)
+    # # loc = torch.randn((num_mix_elems, num_dims))
+    # # cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
+    # # component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov * scale)
+    # # mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
+    # # gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    #
+    # scale = 1 / np.sqrt(num_dims)
+    # original_means = torch.tensor([
+    #     [0.5] * num_dims,
+    #     [-0.5] * num_dims,
+    #     [0.0] * num_dims
+    # ])
+    # original_variances = torch.tensor([
+    #     [0.2] * num_dims,
+    #     [0.4] * num_dims,
+    #     [0.6] * num_dims
+    # ])
+    # cov = torch.diag_embed(original_variances)
+    # component_distribution = dd_dists.MultivariateNormal(
+    #     loc=original_means,
+    #     covariance_matrix=cov * scale
+    # )
+    # mixture_probs = torch.tensor([.5, .5, .5])
+    # mixture_distribution = torch.distributions.Categorical(probs=mixture_probs / mixture_probs.sum())
+    # gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    #
+    # start = time.time()
+    # centers, clusters = dd_optimal.dbscan_clusters(gmm)
+    # mix_grid = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+    # disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
+    # time_mix = time.time() - start
+    #
+    # grid_schemes = []
+    # nr_locs = len(disc_mix.locs)
+    # rounded_value = round(nr_locs / 10) * 10
+    # x = int(rounded_value/num_mix_elems)
+    #
+    # start = time.time()
+    # for i in range(num_mix_elems):
+    #     grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
+    #
+    # disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+    # print(f"Time for old way: {time.time() - start}")
+    #
+    # print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix.item()}')
+    # print(f'nr locs mix grid {len(disc_mix.locs)}')
+    # print(f'W2 (Optimal Per component): {w2}')
+    # print(f'nr locs old way {len(disc_gmm.locs)}')
+
