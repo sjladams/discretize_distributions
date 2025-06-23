@@ -31,18 +31,60 @@ def plot_2d_grid(ax, grid):
     )
     return ax
 
-def set_axis(ax):
-    xlims = ax.get_xlim()
-    ylims = ax.get_ylim()
+def plot_2d_cell(ax, cell: dd_schemes.Cell):
+    # If cell.vertices is not ordered, sort them counterclockwise for plotting:
+    verts = cell.vertices
+    centroid = verts.mean(dim=0)
+    angles = torch.atan2(verts[:,1] - centroid[1], verts[:,0] - centroid[0])
+    sorted_idx = torch.argsort(angles)
+    verts = verts[sorted_idx]
+
+    # Close the box by repeating the first vertex at the end
+    verts = torch.cat([verts, verts[:1]], dim=0)
+    ax.plot(verts[:, 0], verts[:, 1], 'b-', linewidth=2)
+    return ax
+
+def set_axis(ax, xlims=None, ylims=None):
+    xlims = ax.get_xlim() if xlims is None else xlims
+    ylims = ax.get_ylim() if ylims is None else ylims
     min_lim = min(xlims[0], ylims[0])
     max_lim = max(xlims[1], ylims[1])
     ax.set_xlim(min_lim, max_lim)
     ax.set_ylim(min_lim, max_lim)
     return ax
 
+
 if __name__ == "__main__":
     torch.manual_seed(3)
     print(dd.info)
+
+    ## Test Optimal 1d grid MultivariateNormal distribution
+    mean = torch.tensor([-5., -5.])
+    cov_mat = torch.diag(torch.tensor([3.,1.]))
+    norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
+    domain = dd_schemes.Cell(
+        lower_vertex=torch.tensor([-1.0, -1.0]),
+        upper_vertex=torch.tensor([1.0, 1.0]),
+        offset=norm.loc,
+        rot_mat=norm.eigvecs,
+        scales=norm.eigvals_sqrt
+    )
+
+    optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(
+        norm,
+        num_locs=100, 
+        domain=domain
+    )
+
+    optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, optimal_disc_norm)
+    ax = plot_2d_cell(ax, domain)
+    ax = set_axis(ax, xlims=(-10, 1), ylims=(-10, 1))
+    ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
+    plt.show()
 
     ### --- test discretization of multivariate normal distribution ------------------------------------------------ ###
     mean = torch.tensor([0., 0.])
