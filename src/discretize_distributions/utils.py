@@ -94,7 +94,7 @@ def have_common_eigenbasis(Sigma1, Sigma2, atol=1e-6):
     comm = torch.einsum('...ij,...jk->...ik', Sigma1, Sigma2) - torch.einsum('...ij,...jk->...ik', Sigma2, Sigma1)
     return torch.allclose(comm, torch.zeros_like(comm), atol=atol)
 
-def cdf(x: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
+def cdf(x: Union[torch.Tensor, float], mu: Union[torch.Tensor, float] = 0., scale: Union[torch.Tensor, float] = 1.):
     """
     cdf normal distribution
     :param x: input point
@@ -102,9 +102,9 @@ def cdf(x: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
     :param scale: standard deviation
     :return:
     """
-    return 0.5 * (1 + torch.erf((x - mu) / (SQRT_2 * scale)))
+    return 0.5 * (1 + torch.erf((torch.as_tensor(x) - mu) / (SQRT_2 * scale)))
 
-def inv_cdf(p: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
+def inv_cdf(p: Union[torch.Tensor, float], mu: Union[torch.Tensor, float] = 0., scale: Union[torch.Tensor, float] = 1.):
     """
     Inverse CDF (Quantile function) for the normal distribution
     :param p: probability
@@ -112,9 +112,9 @@ def inv_cdf(p: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
     :param scale: standard deviation
     :return: corresponding value of the normal distribution
     """
-    return mu + scale * torch.erfinv(2 * p - 1) * SQRT_2
+    return mu + scale * torch.erfinv(2 *  torch.as_tensor(p) - 1) * SQRT_2
 
-def pdf(x: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
+def pdf(x: Union[torch.Tensor, float], mu: Union[torch.Tensor, float] = 0., scale: Union[torch.Tensor, float] = 1.):
     """
     pdf normal distribution
     :param x:
@@ -122,7 +122,7 @@ def pdf(x: torch.Tensor, mu: torch.Tensor = 0., scale: torch.Tensor = 1.):
     :param scale: standard deviation
     :return:
     """
-    return INV_SQRT_2PI * (1 / scale) * torch.exp(-0.5 * ((x-mu) / scale).pow(2))
+    return INV_SQRT_2PI * (1 / scale) * torch.exp(-0.5 * ((torch.as_tensor(x)-mu) / scale).pow(2))
 
 def compute_mean_var_trunc_norm(
         l: torch.Tensor, 
