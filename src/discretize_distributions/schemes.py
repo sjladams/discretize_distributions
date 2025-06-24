@@ -20,12 +20,14 @@ class Axes:
         scales: Optional[torch.Tensor] = None,
         offset: Optional[torch.Tensor] = None
     ):
-        self.ndim_support = ndim_support
-        scales = torch.ones(self.ndim_support) if scales is None else scales
-        rot_mat = torch.eye(self.ndim_support) if rot_mat is None else rot_mat
-        self.ndim = rot_mat.shape[-2]
-        offset = torch.zeros(self.ndim) if offset is None else offset
+        scales = torch.ones(ndim_support) if scales is None else scales
+        rot_mat = torch.eye(ndim_support) if rot_mat is None else rot_mat
+        ndim = rot_mat.shape[-2]
+        offset = torch.zeros(ndim) if offset is None else offset
 
+        if not ndim_support <= ndim:
+            raise ValueError("rot_mat must be injective.")
+    
         if rot_mat.shape[-2] != offset.shape[-1]:
             raise ValueError("Rotation matrix should have the same number of output dimensions as the offset.")
         if rot_mat.shape[-1] != ndim_support:
@@ -39,6 +41,11 @@ class Axes:
         if not batch_shape == torch.Size([]):
             raise ValueError("Batching is not supported for Axes yet.")
 
+        if not torch.allclose(rot_mat.swapaxes(-2, -1) @ rot_mat, torch.eye(ndim_support), atol=TOL):
+            raise ValueError("Rotation matrix must be orthogonal.")
+
+        self.ndim_support = ndim_support
+        self.ndim = ndim
         self.rot_mat = rot_mat
         self.scales = scales
         self.offset = offset
@@ -140,7 +147,7 @@ class Cell(Axes):
 class Grid(Axes):
     def __init__(
             self, 
-            points_per_dim: Sequence[torch.Tensor], 
+            points_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
             rot_mat: Optional[torch.Tensor] = None, 
             scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
@@ -256,8 +263,8 @@ class GridPartition(Axes):
     
     @staticmethod
     def from_vertices_per_dim(
-            lower_vertices_per_dim: Sequence[torch.Tensor], 
-            upper_vertices_per_dim: Sequence[torch.Tensor], 
+            lower_vertices_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
+            upper_vertices_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
             rot_mat: Optional[torch.Tensor] = None, 
             scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
