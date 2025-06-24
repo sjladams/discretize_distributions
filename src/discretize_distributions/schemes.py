@@ -50,6 +50,12 @@ class Axes:
     @property
     def inv_transform_mat(self):
         return torch.einsum('i,ij->ij', self.scales.reciprocal(),  self.rot_mat.T)
+    
+    def to_global(self, points: torch.Tensor):
+        return torch.einsum('ij,...j->...i', self.transform_mat, points) + self.offset
+    
+    def to_local(self, points: torch.Tensor):
+        return torch.einsum('ij,...j->...i', self.inv_transform_mat, points - self.offset)
 
 
 class Cell(Axes):
@@ -129,9 +135,7 @@ class Cell(Axes):
         if not batched:
             vertices = vertices.squeeze(0)
 
-        # Transform to the output space
-        vertices_trans = torch.einsum('ij,...vj->...vi', self.transform_mat, vertices) + self.offset
-        return vertices_trans
+        return self.to_global(vertices)
 
 class Grid(Axes):
     def __init__(
@@ -157,7 +161,7 @@ class Grid(Axes):
     def from_shape(
         shape: torch.Size, 
         domain: Cell
-    ):
+    ): # TODO if shape = 1 place in the middle of the domain
         if len(shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
 
@@ -208,7 +212,7 @@ class Grid(Axes):
             points = [self.points_per_dim[d][unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
-        return torch.einsum('ij, ...j->...i', self.transform_mat, points) + self.offset
+        return self.to_global(points)
     
     def _select_axes(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
