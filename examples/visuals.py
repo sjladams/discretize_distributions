@@ -152,7 +152,7 @@ def plot_final_discretization_with_shells_2d(ax, gmm, disc_mix, mix_grid):
 
 def plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, bounds = (-15, 15, -15, 15)):
     num_colors = len(grid_schemes)
-    colors = cm.get_cmap('tab10', num_colors)
+    colors = cm.get_cmap('Set1', num_colors)
 
     K, pi, mu, Sigma = gmm_params
     n = 200
@@ -172,7 +172,7 @@ def plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, boun
         locs = grid.points
         probs = disc.probs[np.arange(len(locs))]
         color = colors(i)
-        ax.scatter(locs[:, 0], locs[:, 1], c=[color], s=probs*1000, label=f'Component {i}')
+        ax.scatter(locs[:, 0], locs[:, 1], c=[color], s=probs*2000, label=f'Component {i}')
 
     ax.legend()
     ax.set_xlim(ax_x, bx)
@@ -459,8 +459,8 @@ if __name__ == "__main__":
     torch.manual_seed(3)  # used 3 for results before
     random.seed(3)
     num_dims = 2
-    num_mix_elems = 2
-    setting = "equal"
+    num_mix_elems = 5
+    setting = "overlapping2"
 
     options = dict(
         overlapping=dict(
@@ -497,6 +497,14 @@ if __name__ == "__main__":
             loc=torch.zeros((num_mix_elems, num_dims)),
             covariance_matrix= torch.eye(num_dims).repeat(num_mix_elems, 1, 1)  # Shape: (K, D, D)
         ),
+        overlapping2=dict(
+            loc=torch.tensor([[0.1, 0.1], [1.0, 1.0], [0.8, 0.8], [0.4, 0.4], [-3.0, 0.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 2.], [2., 4.], [5., 3.]]))
+        ),
+        spread2=dict(
+            loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [8.0, 8.0], [-7.0, -7.0]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 2.], [2., 4.]]))
+        ),
     )
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
@@ -514,7 +522,7 @@ if __name__ == "__main__":
 
     grid_schemes = []
     for i in range(num_mix_elems):
-        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=int(100/num_mix_elems)))
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=100))
 
     disc, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
 
@@ -533,13 +541,6 @@ if __name__ == "__main__":
     K = len(alpha)
     gmm_params = [K, alpha, m, S]
     bounds = (-5, 5, -5, 5)
-    # for i in range(K):
-    #     gmmot.display_gmm([1, np.array([1]), m[i].reshape(1, 2), S[i].reshape(1, 2, 2)],
-    #                       n=50, ax=-15, bx=15, ay=-15, by=15)
-    # plt.show()
-
-    # display_unified_gmm_contours(gmm_params, bounds=(-20, 20, -15, 15), levels=15, cmap='plasma')
-    # plt.show()
 
     fig, ax = plt.subplots(figsize=(8, 8))
     plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bounds=bounds, shell=False)
@@ -548,7 +549,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(8, 8))
     plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, bounds=bounds)
-    # plt.savefig(f'visuals/discretization_per_component_contours_2d.svg')
+    plt.savefig(f'visuals/2d_gmm_per_component.svg')
     plt.show()
 
     # ##### 3d #####

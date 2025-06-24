@@ -283,6 +283,11 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
         mean = centers[0]
         cluster_points = clusters[0]
 
+        if border is None:
+            border = float('inf')  # if just one shell you can use the whole space
+        lower_vertex = cluster_points.min(dim=0).values - border
+        upper_vertex = cluster_points.max(dim=0).values + border
+
         centered = cluster_points - mean
         cov = torch.cov(centered.T)  # cov of cluster
         if cov.ndim == 0:
@@ -290,11 +295,6 @@ def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100)
         else:
             cov = torch.diag_embed(torch.diagonal(cov))  # extracts diags and makes diagonal matrix with diags
         norm = dd_dists.MultivariateNormal(mean, cov)
-
-        if border is None:
-            border = float('inf')  # if just one shell you can use the whole space
-        lower_vertex = cluster_points.min(dim=0).values - border
-        upper_vertex = cluster_points.max(dim=0).values + border
 
         lower_vertex = utils.transform_to_local(lower_vertex.unsqueeze(0), norm.eigvecs, norm.eigvals_sqrt,
                                                     norm.loc).squeeze(0)
