@@ -3,7 +3,7 @@ import discretize_distributions as dd
 
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.optimal as dd_optimal
+import discretize_distributions.generate_scheme as dd_optimal
 
 from matplotlib import pyplot as plt
 

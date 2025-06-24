@@ -1,9 +1,9 @@
 from .discretize import discretize, discretize_gmms_the_old_way
-from .optimal import info
+from .generate_scheme import info
 
 from . import distributions
 from . import schemes
-from . import optimal
+from . import generate_scheme
 
 __all__ = [
     'discretize'
