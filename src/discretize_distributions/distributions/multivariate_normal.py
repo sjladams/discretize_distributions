@@ -74,7 +74,7 @@ class MultivariateNormal(torch.distributions.Distribution):
         return torch.einsum(
             '...i,...ik->...ik', 
             self.eigvals_sqrt.reciprocal(), 
-            self.eigvecs.T
+            self.eigvecs.swapdims(-1, -2)
             )
 
     @property
@@ -103,12 +103,10 @@ class MultivariateNormal(torch.distributions.Distribution):
             raise NotImplementedError(
                 "Log probability is not implemented for the degenerate case."
             )
-        diff = value - self.loc
-        M = _batch_mahalanobis(self.inv_mahalanobis_mat, diff)
-        half_log_det = (
-            self.inv_mahalanobis_mat.diagonal(dim1=-2, dim2=-1).log().sum(-1)
-        )
-        return -0.5 * (self._event_shape[0] * math.log(2 * math.pi) + M) - half_log_det
+        proj = _batch_mv(self.mahalanobis_mat, value - self.loc)
+        M = (proj ** 2).sum(-1)
+        half_log_det = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
+        return -0.5 * (self.event_shape[0] * math.log(2 * math.pi) + M) - half_log_det
 
     def __getitem__(self, idx):
         return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eigvals[idx], self.eigvecs[idx])
