@@ -6,52 +6,7 @@ import discretize_distributions.distributions as dd_dists
 import discretize_distributions.generate_scheme as dd_optimal
 
 from matplotlib import pyplot as plt
-
-
-def plot_2d_dist(ax, dist):
-    samples = dist.sample((10000,))
-    ax.hist2d(samples[:,0], samples[:,1], bins=[50,50], density=True)
-    return ax
-
-def plot_2d_cat_float(ax, dist):
-    ax.scatter(
-        dist.locs[:, 0],
-        dist.locs[:, 1],
-        s=dist.probs * 500,  # scale for visibility
-        c='red',
-    )
-    return ax
-
-def plot_2d_grid(ax, grid):
-    ax.scatter(
-        grid.points[:, 0],
-        grid.points[:, 1],
-        s=10,  # size of the points
-        c='red',
-    )
-    return ax
-
-def plot_2d_cell(ax, cell: dd_schemes.Cell):
-    # If cell.vertices is not ordered, sort them counterclockwise for plotting:
-    verts = cell.vertices
-    centroid = verts.mean(dim=0)
-    angles = torch.atan2(verts[:,1] - centroid[1], verts[:,0] - centroid[0])
-    sorted_idx = torch.argsort(angles)
-    verts = verts[sorted_idx]
-
-    # Close the box by repeating the first vertex at the end
-    verts = torch.cat([verts, verts[:1]], dim=0)
-    ax.plot(verts[:, 0], verts[:, 1], 'b-', linewidth=2)
-    return ax
-
-def set_axis(ax, xlims=None, ylims=None):
-    xlims = ax.get_xlim() if xlims is None else xlims
-    ylims = ax.get_ylim() if ylims is None else ylims
-    min_lim = min(xlims[0], ylims[0])
-    max_lim = max(xlims[1], ylims[1])
-    ax.set_xlim(min_lim, max_lim)
-    ax.set_ylim(min_lim, max_lim)
-    return ax
+from plot import *
 
 
 if __name__ == "__main__":
