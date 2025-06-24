@@ -140,13 +140,20 @@ def plot_final_discretization_with_shells(ax, gmm, disc_mix, mix_grid):
     ax.set_ylabel("y")
     return ax
 
+def seed_everything(seed=3):
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 if __name__ == "__main__":
 
-    torch.manual_seed(3)  # used 3 for results before
-    random.seed(3)
+    seed_everything(3)
     num_dims = 2
-    num_mix_elems = 5
-    setting = "test1"
+    num_mix_elems = 4
+    setting = "equal"
 
     options = dict(
         test1=dict(
@@ -157,11 +164,15 @@ if __name__ == "__main__":
             loc=torch.tensor([[-6.0, -6.0], [7.0, 7.0], [8.0, 8.0], [-7.0, -7.0]]),
             covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.], [2., 2.], [2., 4.]]))
         ),
+        equal=dict(
+            loc=torch.zeros((num_mix_elems, num_dims)),
+            covariance_matrix=torch.eye(num_dims).repeat(num_mix_elems, 1, 1)  # Shape: (K, D, D)
+        ),
     )
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           # torch.tensor([.2, .5, .6, .7])
-                                                        torch.tensor([.2, .5, .6, .7, .5])
+                                                           torch.tensor([.2, .5, .6, .7])  # test 2
+                                                        # torch.tensor([.2, .5, .6, .7, .5])  # test 1
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
