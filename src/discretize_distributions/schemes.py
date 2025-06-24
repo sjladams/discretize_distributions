@@ -34,6 +34,10 @@ class Axes:
             raise ValueError("Scales must have the same number of dimensions as the points per dimension.")
         if not (scales > 0).all():
             raise ValueError("Scales must be positive.")
+        
+        batch_shape = torch.broadcast_shapes(rot_mat.shape[:-2], scales.shape[:-1], offset.shape[:-1])
+        if not batch_shape == torch.Size([]):
+            raise ValueError("Batching is not supported for Axes yet.")
 
         self.rot_mat = rot_mat
         self.scales = scales
