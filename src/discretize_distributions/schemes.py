@@ -510,8 +510,8 @@ def merge_cells(cells: Sequence[Cell]) -> Cell:
     if not equal_rot_mats(cells):
         raise ValueError("All cells must have the same rotation matrix (rot_mat).")
     
-    scaled_lowers_vertices = torch.stack([cell.scale(cell.lower_vertex) + cell.local_offset for cell in cells])
-    scaled_uppers_vertices = torch.stack([cell.scale(cell.upper_vertex) + cell.local_offset for cell in cells])
+    scaled_lowers_vertices = torch.stack([cell.scale(cell.lower_vertex + cell.local_offset) for cell in cells])
+    scaled_uppers_vertices = torch.stack([cell.scale(cell.upper_vertex + cell.local_offset) for cell in cells])
 
     scales = torch.stack([cell.scales for cell in cells]).mean(0)
 
@@ -524,8 +524,8 @@ def merge_cells(cells: Sequence[Cell]) -> Cell:
         scaled_local_offset = torch.stack((scaled_lower_vertex, scaled_upper_vertex), dim=0).mean(0)
 
     return Cell(
-        lower_vertex=scaled_lower_vertex * scales.reciprocal(),
-        upper_vertex=scaled_upper_vertex * scales.reciprocal(),
+        lower_vertex=(scaled_lower_vertex - scaled_local_offset) * scales.reciprocal(),
+        upper_vertex=(scaled_upper_vertex - scaled_local_offset) * scales.reciprocal(),
         rot_mat=cells[0].rot_mat, 
         scales=scales,
         offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
