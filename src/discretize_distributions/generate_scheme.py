@@ -66,7 +66,7 @@ def get_optimal_grid_scheme_for_multivariate_normal(
             raise ValueError('The domain offset does not match the location of the distribution.')
         
         locs_per_dim = [
-            c[(c >= l) & (c <= u)] for c, l, u in 
+            torch.unique(torch.clip(c, min=l, max=u)) for c, l, u in 
             zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
         ]
 
