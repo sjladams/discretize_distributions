@@ -266,16 +266,9 @@ def kmeans_clusters(gmm, num_samples=None, n_clusters=None):
     return centers, clusters
 
 
-def create_grid_from_clusters(gmm, centers, clusters, border=None, num_locs=100):
-    if isinstance(gmm, dd_dists.MultivariateNormal):
-        means = gmm.loc
-        probs = torch.tensor([1,])
-    elif isinstance(gmm, dd_dists.MixtureMultivariateNormal):
-        means = gmm.component_distribution.loc
-        probs = gmm.mixture_distribution.probs
-
-    # gmm stats for z location
-    z = (probs.unsqueeze(1) * means).sum(dim=0)  # z location stays as average of component means
+def create_grid_from_clusters(centers, clusters, border=None, num_locs=100):
+    all_cluster_points = torch.cat(clusters, dim=0)
+    z = all_cluster_points.mean(dim=0)
 
     # return grids, z
     if len(centers) == 1:

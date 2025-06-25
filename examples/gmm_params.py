@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
         start = time.time()
         centers, clusters = dd_optimal.dbscan_clusters(gmm)
-        mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+        mix_grid_c = dd_optimal.create_grid_from_clusters(centers, clusters)
         disc_mix, w2_mix = dd.discretize(gmm, mix_grid_c)
         mix_time = time.time() - start
 

@@ -170,7 +170,7 @@ if __name__ == "__main__":
         for num_samples in num_samples_list:
             try:
                 centers, clusters = dd_optimal.dbscan_clusters(gmm, num_samples * num_mix_elems)
-                mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+                mix_grid_c = dd_optimal.create_grid_from_clusters(centers, clusters)
                 disc_mix_c, w2_mix_c = dd.discretize(gmm, mix_grid_c)
 
                 w2_values.append(w2_mix_c.item())

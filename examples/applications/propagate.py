@@ -62,7 +62,7 @@ mixture_distribution = torch.distributions.Categorical(probs=torch.tensor([1,]))
 x_0 = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
 centers, clusters = dd_optimal.dbscan_clusters(gmm=x_0)
-mix_grid0 = dd_optimal.create_grid_from_clusters(x_0, centers, clusters, num_locs=num_locs)
+mix_grid0 = dd_optimal.create_grid_from_clusters(centers, clusters, num_locs=num_locs)
 disc0, _ = dd.discretize(x_0, mix_grid0)
 
 x_k = disc0

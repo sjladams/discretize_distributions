@@ -321,7 +321,7 @@ if __name__ == "__main__":
         disc_mix, w2_mix = dd.discretize(gmm, best_mix_grid)
 
         # DBSCAN method
-        mix_grid_dbscan = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+        mix_grid_dbscan = dd_optimal.create_grid_from_clusters(centers, clusters)
         disc_dbscan, w2_dbscan = dd.discretize(gmm, mix_grid_dbscan)
 
         # Store results

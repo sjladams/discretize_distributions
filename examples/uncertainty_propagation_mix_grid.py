@@ -62,7 +62,7 @@ def single_step(
         # sign_q, w2_q__disc_q = dd.discretize_gmms_the_old_way(q, grid_schemes)
 
         centers, clusters = dd_optimal.dbscan_clusters(gmm=q)
-        mix_grid = dd_optimal.create_grid_from_clusters(q, centers, clusters, num_locs=num_locs)
+        mix_grid = dd_optimal.create_grid_from_clusters(centers, clusters, num_locs=num_locs)
         sign_q, w2_q__disc_q = dd.discretize(q, mix_grid)
         w2_q__disc_q = w2_q__disc_q.squeeze()  # formatting
 

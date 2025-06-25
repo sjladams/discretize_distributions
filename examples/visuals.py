@@ -542,7 +542,7 @@ if __name__ == "__main__":
 
     centers, clusters = dd_optimal.dbscan_clusters(gmm=gmm)
     # dbscan shells
-    mix_grid = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
+    mix_grid = dd_optimal.create_grid_from_clusters(centers, clusters)
     disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
 
     grid_schemes = []
