@@ -10,33 +10,6 @@ TOL = 1e-8
 __all__ = ['discretize', 'discretize_gmms_the_old_way']
 
 
-def discretize_gmms_the_old_way(
-    dist: dd_dists.MixtureMultivariateNormal,
-    grid_schemes: List[dd_schemes.GridScheme],
-): 
-    if not dist.num_components == len(grid_schemes):
-        raise ValueError(
-            f'Number of components {dist.num_components} does not match number of grid schemes {len(grid_schemes)}.'
-        )
-    assert all([elem.partition.domain_spanning_Rn for elem in grid_schemes]), \
-        'All grid schemes must span the full R^n domain.'
-    
-    probs, locs, w2_sq = [], [], []
-    for idx in range(dist.num_components):
-        disc_component, w2_component = discretize(
-            dist.component_distribution[idx], grid_schemes[idx]
-        )
-        probs.append(disc_component.probs * dist.mixture_distribution.probs[idx])
-        locs.append(disc_component.locs)
-        w2_sq.append(w2_component.pow(2) * dist.mixture_distribution.probs[idx])
-
-    probs = torch.cat(probs, dim=0)
-    locs = torch.cat(locs, dim=0)
-    w2 = torch.stack(w2_sq).sum().sqrt()
-
-    return dd_dists.CategoricalFloat(locs, probs), w2
-
-
 # TODO for input GridScheme or MultiGridScheme output dd_dists.CategoricalGrid or mixture dd_dists.CategoricalGrid
 def discretize(
         dist: torch.distributions.Distribution,
@@ -83,6 +56,29 @@ def _discretize(
         probs = torch.stack(probs, dim=-1).sum(-1)
 
         return scheme.locs, probs, w2_sq.sqrt()
+    elif (isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, list) and 
+          len(scheme) > 0 and isinstance(scheme[0], dd_schemes.GridScheme)):
+
+        if not dist.num_components == len(scheme):
+            raise ValueError(
+                f'Number of components {dist.num_components} does not match number of grid schemes {len(scheme)}.'
+            )
+        assert all([elem.partition.domain_spanning_Rn for elem in scheme]), \
+            'All grid schemes must span the full R^n domain.'
+        
+        probs, locs, w2_sq = [], [], torch.tensor(0.)
+        for i in range(dist.num_components):
+            disc_component, w2_component = discretize(
+                dist.component_distribution[i], scheme[i]
+            )
+            probs.append(disc_component.probs * dist.mixture_distribution.probs[i])
+            locs.append(disc_component.locs)
+            w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
+
+        probs = torch.cat(probs, dim=0)
+        locs = torch.cat(locs, dim=0)
+
+        return locs, probs, w2_sq.sqrt()
     else:
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
                                   f"and scheme {type(scheme).__name__} is not implemented yet.")
