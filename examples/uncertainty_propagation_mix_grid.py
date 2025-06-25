@@ -330,7 +330,7 @@ if __name__== '__main__':
     mat = rot_mat(theta=-math.pi / 8., rho=0.8, delta=0.)
     dynamics = LinearDynamics(global_lipschitz=torch.linalg.norm(mat, ord=2), mat=mat)
 
-    # 1D
+    # 2D
     w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store = multi_step(
         dynamics=dynamics,
         noise_dist=dd_dists.MultivariateNormal(

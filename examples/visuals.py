@@ -475,7 +475,7 @@ if __name__ == "__main__":
     seed_everything(3)
     num_dims = 2
     num_mix_elems = 5
-    setting = "test1"
+    setting = "overlapping2"
 
     options = dict(
         overlapping=dict(
@@ -579,8 +579,15 @@ if __name__ == "__main__":
         restricted_points_per_dim.append(restricted)
 
     grid = dd_schemes.Grid(restricted_points_per_dim)
-    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
-    grid_scheme = dd_schemes.GridScheme(grid, new_partition)
+
+    domain = dd_schemes.Cell(
+        lower_vertex=torch.tensor([-5, -5]),
+        upper_vertex=torch.tensor([5, 5])
+    )
+    shape = torch.Size([10, 10])
+    grid_uniform = dd_schemes.Grid.from_shape(shape,domain)
+    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid_uniform)
+    grid_scheme = dd_schemes.GridScheme(grid_uniform, new_partition)
 
     disc_, w2_ = dd.discretize(gmm, grid_scheme)
 
@@ -609,13 +616,13 @@ if __name__ == "__main__":
     plt.show()
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params)
-    # plt.savefig(f'{setting}/discretization_contours_2d_component.svg')
+    plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, bounds=bounds)
+    # plt.savefig(f'visuals/2d_gmm_per_component.svg')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(8, 8))
     plot_disc_grid_contours_2d(ax, disc_, gmm_params, bounds=bounds)
-    plt.savefig(f'{setting}/discretization_contours_2d_one_grid.svg')
+    # plt.savefig(f'visuals/2d_gmm_one_grid.svg')
     plt.show()
 
     # ##### 3d #####
