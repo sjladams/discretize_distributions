@@ -63,6 +63,12 @@ class Axes:
     
     def to_local(self, points: torch.Tensor):
         return torch.einsum('ij,...j->...i', self.inv_transform_mat, points - self.offset)
+    
+    def scale(self, points: torch.Tensor):
+        return torch.einsum('i,...i->...i', self.scales, points)
+    
+    def descale(self, points: torch.Tensor):
+        return torch.einsum('i,...i->...i', self.scales.reciprocal(), points)
 
 
 class Cell(Axes):
@@ -431,12 +437,16 @@ class MultiGridScheme(Scheme):
             outer_loc: torch.Tensor,
             domain: Optional[Cell] = None 
     ):
+        if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
+            raise ValueError("All grid schemes must have the same number of dimensions.")
+
+        # domains = [gq.domain for gq in grid_schemes]
+        # if any_cells_overlap(domains):
+        #     raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
+
         self.grid_schemes = grid_schemes
         self.outer_loc = outer_loc
         self.domain = domain if domain is not None else create_cell_spanning_Rn(grid_schemes[0].ndim)
-
-        if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
-            raise ValueError("All grid schemes must have the same number of dimensions.")
 
 
 ### --- Utility Functions --- ###
@@ -466,3 +476,57 @@ def check_grid_in_domain(
         ):
             return False
     return True
+
+def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor: 
+    """
+    Returns an [N, N] boolean tensor where entry (i, j) is True if cells i and j overlap.
+    Only supports non-batched Cells with the same rotation matrix
+    """
+    if not equal_rot_mats(cells):
+        raise ValueError("All cells must have the same rotation matrix (rot_mat).")
+
+    scaled_lowers = torch.stack([cell.scale(cell.lower_vertex) - cell.local_offset for cell in cells])
+    scaled_uppers = torch.stack([cell.scale(cell.upper_vertex) - cell.local_offset for cell in cells])
+
+    # [N, 1, d] vs [1, N, d] for broadcasting
+    separated = (scaled_uppers.unsqueeze(1) < scaled_lowers.unsqueeze(0)).any(-1) | \
+                (scaled_uppers.unsqueeze(0) < scaled_lowers.unsqueeze(1)).any(-1)
+    overlap = ~separated
+    return overlap
+
+def any_cells_overlap(cells: Sequence[Cell]) -> bool:
+    """
+    Returns True if any pair of cells overlap.
+    """
+    overlap = cells_overlap(cells)
+    overlap.fill_diagonal_(False)  # ignore self-overlap
+    return overlap.any().item()
+
+def merge_cells(cells: Sequence[Cell]) -> Cell:
+    if not equal_rot_mats(cells):
+        raise ValueError("All cells must have the same rotation matrix (rot_mat).")
+    
+    scaled_lowers_vertices = torch.stack([cell.scale(cell.lower_vertex) + cell.local_offset for cell in cells])
+    scaled_uppers_vertices = torch.stack([cell.scale(cell.upper_vertex) + cell.local_offset for cell in cells])
+
+    scales = torch.stack([cell.scales for cell in cells]).mean(0)
+
+    scaled_lower_vertex = scaled_lowers_vertices.min(dim=0).values
+    scaled_upper_vertex = scaled_uppers_vertices.max(dim=0).values
+
+    if scaled_lower_vertex.isinf().any() or scaled_upper_vertex.isinf().any():
+        scaled_local_offset = torch.stack([cell.scale(cell.local_offset) for cell in cells]).mean(0)
+    else:
+        scaled_local_offset = torch.stack((scaled_lower_vertex, scaled_upper_vertex), dim=0).mean(0)
+
+    return Cell(
+        lower_vertex=scaled_lower_vertex * scales.reciprocal(),
+        upper_vertex=scaled_upper_vertex * scales.reciprocal(),
+        rot_mat=cells[0].rot_mat, 
+        scales=scales,
+        offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
+    )
+
+def equal_rot_mats(cells: Sequence[Cell]) -> bool:
+    rot_mats = torch.stack([cell.rot_mat for cell in cells])
+    return torch.allclose(rot_mats, rot_mats[0].expand_as(rot_mats), atol=TOL)
