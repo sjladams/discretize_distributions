@@ -29,13 +29,13 @@ def _discretize(
         return discretize_multi_norm_using_grid_scheme(dist, scheme)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
-        for idx in range(len(scheme.grid_schemes)):
-            locs_component, probs_component, w2_component = _discretize(dist, scheme.grid_schemes[idx])
+        for i in range(len(scheme.grid_schemes)):
+            locs_component, probs_component, w2_component = _discretize(dist, scheme.grid_schemes[i])
             locs.append(locs_component)
             probs.append(probs_component)
             w2_sq += w2_component.pow(2)
 
-            w2_sq_outer -= wasserstein_at_point(dist, scheme.outer_loc, scheme.grid_schemes[idx].domain).pow(2)
+            w2_sq_outer -= wasserstein_at_point(dist, scheme.outer_loc, scheme.grid_schemes[i].domain).pow(2)
 
         locs = torch.cat(locs, dim=0)
         probs = torch.cat(probs, dim=0)
@@ -48,10 +48,10 @@ def _discretize(
         return locs, probs, w2
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         probs, w2_sq = [], torch.tensor(0.)
-        for idx in range(dist.num_components):
-            _, probs_component, w2_component = _discretize(dist.component_distribution[idx], scheme)
-            probs.append(probs_component * dist.mixture_distribution.probs[idx])
-            w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[idx]
+        for i in range(dist.num_components):
+            _, probs_component, w2_component = _discretize(dist.component_distribution[i], scheme)
+            probs.append(probs_component * dist.mixture_distribution.probs[i])
+            w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
 
         probs = torch.stack(probs, dim=-1).sum(-1)
 

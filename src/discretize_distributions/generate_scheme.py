@@ -131,7 +131,7 @@ def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch
     else:
         # Process all batches by recursively calling the function for each sub-tensor
         batch_results = [batch_handler_get_nd_dim_grids_from_optimal_1d_grid(
-            discr_grid_config[idx], attributes, **kwargs) for idx in range(discr_grid_config.shape[0])]
+            discr_grid_config[i], attributes, **kwargs) for i in range(discr_grid_config.shape[0])]
         # Aggregate results for each attribute across batches
         combined_results = {attr: torch.stack([batch[attr] for batch in batch_results]) for attr in attributes}
         return combined_results
