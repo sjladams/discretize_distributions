@@ -57,6 +57,10 @@ class Axes:
     @property
     def inv_transform_mat(self):
         return torch.einsum('i,ij->ij', self.scales.reciprocal(),  self.rot_mat.T)
+
+    @property
+    def local_offset(self):
+        return torch.einsum('ij,j->i', self.inv_transform_mat, self.offset)
     
     def to_global(self, points: torch.Tensor):
         return torch.einsum('ij,...j->...i', self.transform_mat, points) + self.offset
