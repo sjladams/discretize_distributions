@@ -9,7 +9,7 @@ from matplotlib.patches import Circle
 
 import discretize_distributions as dd
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.generate_scheme as dd_optimal
+import discretize_distributions.generate_scheme as dd_gen
 
 COLORS = ['Blues', 'BuPu', 'PuRd', 'Greens', 'Oranges', 'Reds', 'Greys', 'Purples',
                       'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
@@ -51,13 +51,13 @@ def single_step(
 ):
     # Approximate the state distribution
     if isinstance(q, dd_dists.MultivariateNormal):
-        grid_scheme = dd_optimal.get_optimal_grid_scheme(q, num_locs=num_locs)
+        grid_scheme = dd_gen.get_optimal_grid_scheme(q, num_locs=num_locs)
         sign_q, w2_q__disc_q = dd.discretize(q, grid_scheme)
     else:
         # Discretize per component (the old way):
         grid_schemes = []
         for i in range(q.num_components):
-            grid_schemes.append(dd_optimal.get_optimal_grid_scheme(q.component_distribution[i], num_locs=10))
+            grid_schemes.append(dd_gen.get_optimal_grid_scheme(q.component_distribution[i], num_locs=10))
 
         sign_q, w2_q__disc_q = dd.discretize_gmms_the_old_way(q, grid_schemes)
 

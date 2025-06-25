@@ -3,7 +3,7 @@ import discretize_distributions as dd
 
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.generate_scheme as dd_optimal
+import discretize_distributions.generate_scheme as dd_gen
 
 from matplotlib import pyplot as plt
 from plot import *
@@ -25,7 +25,7 @@ if __name__ == "__main__":
         scales=norm.eigvals_sqrt
     )
 
-    optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(
+    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(
         norm,
         num_locs=100, 
         domain=domain
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     ax.set_title(f'Self constructed grid (2-Wasserstein distance: {w2:.2f})')
 
     ## via grid scheme with optimal grid configuration
-    optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=10)
+    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(norm, num_locs=10)
 
     optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
 
@@ -106,9 +106,9 @@ if __name__ == "__main__":
     ## Discretize per component (the old way):
     grid_schemes = []
     for i in range(num_mix_elems):
-        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+        grid_schemes.append(dd_gen.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
 
-    disc_gmm, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
+    disc_gmm, w2 = dd.discretize(gmm, grid_schemes)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     cov_mat = torch.ones((2,2))
     norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
 
-    optimal_grid_scheme = dd_optimal.get_optimal_grid_scheme(norm, num_locs=10)
+    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(norm, num_locs=10)
 
     optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
 
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     #     rot_mat= gmm.component_distribution[i].eigvecs,
     #     scales=gmm.component_distribution[i].eigvals_sqrt
     # )
-    # grid_scheme = dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10, domain=domain)
+    # grid_scheme = dd_gen.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10, domain=domain)
 
     # # Given a GMM with all elements having the same eigenbasis for the covariance matrix (start with diagonal covariance matrices):
     # # Step 1: Generate a MultiGridScheme for the GMM:
