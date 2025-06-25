@@ -187,9 +187,16 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     for mask in overlap:
         overlapping_local_domains = [local_domains[i] for i, b in enumerate(mask & ~covered) if b]
 
-        if len(overlapping_local_domains):
+        if not overlapping_local_domains:
+            pass
+        elif len(overlapping_local_domains) == 1:
+            merged_local_domains.append(overlapping_local_domains[0])
+        else:
             merged_local_domains.append(dd_schemes.merge_cells(overlapping_local_domains))
-            covered[mask] = True
+            
+        covered[mask] = True
+
+    assert not dd_schemes.any_cells_overlap(merged_local_domains), "Local domains overlap after merging."
 
     for local_domain in merged_local_domains:
         eigvals, eigvecs = local_domain.scales.pow(2), local_domain.rot_mat
