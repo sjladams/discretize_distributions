@@ -154,7 +154,7 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
 
-    percentile = utils.inv_cdf(1 - (1 - local_domain_prob) / 2)
+    percentile = utils.inv_cdf(1 - (1 - local_domain_prob ** (1 / gmm.event_shape[0])) / 2)
 
     local_domains = list()
     grid_schemes = list()
