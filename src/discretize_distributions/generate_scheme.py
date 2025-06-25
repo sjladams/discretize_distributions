@@ -135,7 +135,9 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     domain: Optional[dd_schemes.Cell] = None,
     num_locs: int = 10, 
     prune_factor: float = 0.5, 
-    local_domain_prob : float = 0.99
+    local_domain_prob : float = 0.99,
+    n_iter: int = 500,
+    lr: float = 0.01
 ) -> dd_schemes.MultiGridScheme:
     if not utils.have_common_eigenbasis(
         gmm.component_distribution.covariance_matrix, 
@@ -152,6 +154,8 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     modes = find_modes_gradient_ascent(
         gmm, 
         init_points=torch.randn(min(gmm.num_components, 20), gmm.event_shape[0]), 
+        n_iter=n_iter,
+        lr=lr,
     )
 
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
@@ -247,8 +251,8 @@ def prune_modes_weighted_averaging(modes: torch.Tensor, scores: torch.Tensor, to
 def find_modes_gradient_ascent(
     gmm: dd_dists.MixtureMultivariateNormal,
     init_points: torch.Tensor,
-    n_iter: int = 1000,
-    lr: float = 0.005,
+    n_iter: int = 100,
+    lr: float = 0.01,
     verbose: bool = False,
 ) -> torch.Tensor:
     """
