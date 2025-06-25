@@ -7,20 +7,20 @@ import discretize_distributions.schemes as dd_schemes
 
 TOL = 1e-8
 
-__all__ = ['discretize', 'discretize_gmms_the_old_way']
+__all__ = ['discretize']
 
 
 # TODO for input GridScheme or MultiGridScheme output dd_dists.CategoricalGrid or mixture dd_dists.CategoricalGrid
 def discretize(
         dist: torch.distributions.Distribution,
-        scheme: dd_schemes.Scheme
+        scheme: Union[dd_schemes.Scheme,  List[dd_schemes.GridScheme]]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     locs, probs, w2 = _discretize(dist, scheme)
     return dd_dists.CategoricalFloat(locs, probs), w2
 
 def _discretize(
         dist: torch.distributions.Distribution,
-        scheme: dd_schemes.Scheme
+        scheme: Union[dd_schemes.Scheme,  List[dd_schemes.GridScheme]]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if not dist.batch_shape == torch.Size([]):
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
