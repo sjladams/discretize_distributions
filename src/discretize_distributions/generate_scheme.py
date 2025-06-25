@@ -144,6 +144,9 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     ):
         raise ValueError('The components of the GMM do not share a common eigenbasis.')
 
+    if domain is not None:
+        raise NotImplementedError('Domain-aware discretization for GMMs is not implemented yet.')
+
     eigenbasis = gmm.component_distribution[0].eigvecs
 
     modes = find_modes_gradient_ascent(
