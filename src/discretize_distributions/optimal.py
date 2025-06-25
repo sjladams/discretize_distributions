@@ -235,37 +235,6 @@ def dbscan_clusters(gmm, num_samples=None, min_samples=None, eps=None):
     return centers, clusters
 
 
-def kmeans_clusters(gmm, num_samples=None, n_clusters=None):
-
-    num_components = gmm.component_distribution.batch_shape[0]
-
-    if num_samples is None:
-        num_samples = torch.tensor([100 * num_components])
-
-    if n_clusters is None:
-        n_clusters = num_components
-    samples = gmm.sample((num_samples,))
-
-    X = samples.detach().numpy()
-    clustering = KMeans(n_clusters).fit(X)
-    labels = clustering.labels_
-
-    clusters = []
-    centers = []
-    unique_labels = set(labels)
-    unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
-
-    for label in unique_labels:
-        mask = torch.tensor(labels == label)
-        cluster_points = samples[mask]
-
-        center = cluster_points.mean(dim=0)
-        centers.append(center)
-        clusters.append(cluster_points)
-
-    return centers, clusters
-
-
 def create_grid_from_clusters(centers, clusters, border=None, num_locs=100):
     all_cluster_points = torch.cat(clusters, dim=0)
     z = all_cluster_points.mean(dim=0)
@@ -526,6 +495,37 @@ def build_domains_from_shells_and_norms(shells, norms):
 
 
 ## archive
+
+# def kmeans_clusters(gmm, num_samples=None, n_clusters=None):
+#
+#     num_components = gmm.component_distribution.batch_shape[0]
+#
+#     if num_samples is None:
+#         num_samples = torch.tensor([100 * num_components])
+#
+#     if n_clusters is None:
+#         n_clusters = num_components
+#     samples = gmm.sample((num_samples,))
+#
+#     X = samples.detach().numpy()
+#     clustering = KMeans(n_clusters).fit(X)
+#     labels = clustering.labels_
+#
+#     clusters = []
+#     centers = []
+#     unique_labels = set(labels)
+#     unique_labels.discard(-1)  # dbscan identifies noise, so we can discard it here
+#
+#     for label in unique_labels:
+#         mask = torch.tensor(labels == label)
+#         cluster_points = samples[mask]
+#
+#         center = cluster_points.mean(dim=0)
+#         centers.append(center)
+#         clusters.append(cluster_points)
+#
+#     return centers, clusters
+
 
 # def dbscan_shells(gmm, num_samples=None, min_samples=None, eps=None):
 #     """
