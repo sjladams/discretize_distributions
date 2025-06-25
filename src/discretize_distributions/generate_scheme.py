@@ -6,6 +6,8 @@ import pickle
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 
+import discretize_distributions.utils as utils
+
 with files('discretize_distributions.data').joinpath('grid_configs.pickle').open('rb') as f:
     GRID_CONFIGS = pickle.load(f)
 with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').open('rb') as f:
@@ -27,14 +29,32 @@ class Info:
     
 info = Info(GRID_CONFIGS, OPTIMAL_1D_GRIDS)
 
+
 def get_optimal_grid_scheme(
-    norm: dd_dists.MultivariateNormal,
-    num_locs: int, 
-    domain: Optional[dd_schemes.Cell] = None
-) -> dd_schemes.GridScheme:
-    if not norm.batch_shape == torch.Size([]):
+    dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
+    domain: Optional[dd_schemes.Cell] = None,
+    **kwargs
+) -> Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme]:
+    if not dist.batch_shape == torch.Size([]):
         raise ValueError('batching not supported yet')
 
+    if isinstance(dist, dd_dists.MultivariateNormal):
+        return get_optimal_grid_scheme_for_multivariate_normal(dist, domain, **kwargs)
+    elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
+        return get_optimal_grid_scheme_for_multivariate_normal_mixture(dist, domain, **kwargs)
+    else:
+        raise NotImplementedError(
+            f'Discretization of {dist.__class__.__name__} is not implemented yet. '
+            'Please implement a custom discretization function.'
+        )
+
+
+### --- Multivariate Gaussians ------------------------------------------------------------------------------------- ###
+def get_optimal_grid_scheme_for_multivariate_normal(
+    norm: dd_dists.MultivariateNormal,
+    domain: Optional[dd_schemes.Cell] = None,
+    num_locs: int = 10
+) -> dd_schemes.GridScheme:
     grid_config = get_optimal_grid_config(eigvals=norm.eigvals, num_locs=num_locs)
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
 
@@ -107,6 +127,184 @@ def get_optimal_grid_config(
     # append grid of size 1 to dimensions that are not yet included in the optimal grid.
     opt_config = torch.cat((opt_config, torch.ones(batch_shape + (neigh - opt_config.shape[-1],)).to(opt_config.dtype)), dim=-1)
     return opt_config[sort_idxs]
+
+
+### --- Mixtures of Multivariate Gaussians ------------------------------------------------------------------------- ###
+def get_optimal_grid_scheme_for_multivariate_normal_mixture(
+    gmm: dd_dists.MixtureMultivariateNormal,
+    domain: Optional[dd_schemes.Cell] = None,
+    num_locs: int = 10, 
+    prune_factor: float = 0.5, 
+    local_domain_prob : float = 0.99
+) -> dd_schemes.MultiGridScheme:
+    if not utils.have_common_eigenbasis(
+        gmm.component_distribution.covariance_matrix, 
+        gmm.component_distribution[0].covariance_matrix.unsqueeze(0).repeat(gmm.num_components, 1, 1),
+        atol=TOL
+    ):
+        raise ValueError('The components of the GMM do not share a common eigenbasis.')
+
+    eigenbasis = gmm.component_distribution[0].eigvecs
+
+    modes = find_modes_gradient_ascent(
+        gmm, 
+        init_points=torch.randn(min(gmm.num_components, 20), gmm.event_shape[0]), 
+    )
+
+    prune_tol = default_prune_tol(gmm, factor=prune_factor)
+    modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
+
+    percentile = utils.inv_cdf(1 - (1 - local_domain_prob) / 2)
+
+    local_domains = list()
+    grid_schemes = list()
+    for mode in modes:
+        cov = local_gaussian_covariance(gmm, mode)
+
+        # project to the eigenbasis (to compute the W2 w.r.t the gmm, all local_domains should have: rot_mat = eigenbasis):
+        eigvals = torch.diagonal(torch.einsum('ij,jk,kl->il', eigenbasis.swapaxes(-1, -2), cov, eigenbasis))
+        cov = torch.einsum('ij,j,jk->ik', eigenbasis, eigvals, eigenbasis.swapaxes(-1, -2))
+        
+        local_domains.append(dd_schemes.Cell(
+            lower_vertex=-torch.ones(gmm.event_shape) * percentile,   
+            upper_vertex=torch.ones(gmm.event_shape) * percentile,
+            rot_mat=eigenbasis,
+            scales=eigvals.sqrt(),
+            offset=mode
+        ))
+
+    overlap = dd_schemes.cells_overlap(local_domains)
+
+    merged_local_domains = list()
+    covered = torch.full((len(local_domains),), False)
+    for mask in overlap:
+        overlapping_local_domains = [local_domains[i] for i, b in enumerate(mask & ~covered) if b]
+
+        if len(overlapping_local_domains):
+            merged_local_domains.append(dd_schemes.merge_cells(overlapping_local_domains))
+            covered[mask] = True
+
+    for local_domain in merged_local_domains:
+        eigvals, eigvecs = local_domain.scales.pow(2), local_domain.rot_mat
+        assert torch.allclose(eigvecs, eigenbasis), 'rotation matrix of local domains should equal eigenbasis'
+
+        cov = torch.einsum('ij,j,jk->ik', eigvecs, eigvals, eigvecs.swapaxes(-1, -2))
+        local_norm = dd_dists.MultivariateNormal(
+            loc=local_domain.offset, 
+            covariance_matrix=cov, 
+            eigvals=eigvals, 
+            eigvecs=eigvecs
+        )
+        grid_schemes.append(get_optimal_grid_scheme(local_norm, num_locs=num_locs, domain=local_domain))
+
+    return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean, domain=domain)
+
+def default_prune_tol(gmm: dd_dists.MixtureMultivariateNormal, factor: float = 0.5):
+    stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]
+    weights = gmm.mixture_distribution.probs
+    avg_std = (weights * stds).sum()
+    return factor * avg_std.item()
+
+def prune_modes_weighted_averaging(modes: torch.Tensor, scores: torch.Tensor, tol: float) -> torch.Tensor:
+    """
+    Cluster modes by proximity and compute a weighted average within each cluster.
+
+    Args:
+        modes: Tensor [n, d] — mode locations
+        scores: Tensor [n] — associated log-density values (used as weights)
+        tol: float — distance threshold for pruning
+
+    Returns:
+        Tensor [n_clusters, d] — weighted average of each cluster
+    """
+    remaining = modes.clone()
+    scores_remaining = scores.clone()
+    pruned = []
+
+    while remaining.shape[0] > 0:
+        center = remaining[0:1]  # [1, d]
+        dists = torch.norm(remaining - center, dim=1)  # [n]
+        mask = dists < tol
+
+        cluster = remaining[mask]        # [k, d]
+        cluster_scores = scores_remaining[mask]  # [k]
+
+        # Convert log-scores to weights: w_i = exp(log p(x_i)) — stabilize first
+        weights = (cluster_scores - cluster_scores.max()).exp()
+        weights = weights / weights.sum()
+
+        pruned.append((weights[:, None] * cluster).sum(dim=0))  # [d]
+
+        remaining = remaining[~mask]
+        scores_remaining = scores_remaining[~mask]
+
+    return torch.stack(pruned, dim=0)
+
+
+def find_modes_gradient_ascent(
+    gmm: dd_dists.MixtureMultivariateNormal,
+    init_points: torch.Tensor,
+    n_iter: int = 1000,
+    lr: float = 0.005,
+    verbose: bool = False,
+) -> torch.Tensor:
+    """
+    Finds GMM modes using gradient ascent on log-density.
+
+    Args:
+        gmm: MixtureMultivariateNormal
+        initial_points: Tensor of shape [n_init, d]
+        n_iter: Number of gradient steps
+        lr: Learning rate
+        prune_tol: Distance threshold for merging close modes
+        verbose: Whether to print progress
+
+    Returns:
+        Tensor [n_modes, d] of approximate GMM modes
+    """
+    x = init_points.clone().detach().requires_grad_(True)
+    optimizer = torch.optim.Adam([x], lr=lr)
+
+    for i in range(n_iter):
+        optimizer.zero_grad()
+        log_probs = gmm.log_prob(x)  # [n_init]
+        assert not log_probs.isnan().any(), "Log probabilities contain NaN values. Check the GMM parameters."
+        loss = -log_probs.sum()
+        loss.backward()
+        optimizer.step()
+
+        if verbose and (i % 20 == 0 or i == n_iter - 1):
+            print(f"Step {i:3d} | Avg log p(x): {log_probs.mean().item():.4f}")
+
+    x_final = x.detach()
+    assert not x_final.isnan().any(), "Final modes contain NaN values. Check the GMM parameters."
+
+    return x_final
+
+def local_gaussian_covariance(gmm: dd_dists.MixtureMultivariateNormal, mode: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    """
+    Returns the local Gaussian covariance at a mode of the GMM.
+
+    Args:
+        gmm: MixtureMultivariateNormal
+        mode: Tensor [d], location of the mode
+        eps: for numerical stability in inversion
+
+    Returns:
+        covariance: local Gaussian covariance [d, d]
+    """
+    d = mode.shape[0]
+    mode = mode.detach().requires_grad_(True)
+
+    def log_density_fn(x: torch.Tensor):
+        return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
+
+    H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
+    H_neg = -0.5 * (H + H.swapaxes(-1, -2))  # symmetrize and flip sign
+    H_neg += eps * torch.eye(d, device=mode.device)
+
+    cov = torch.linalg.inv(H_neg)
+    return cov  # [d, d]
 
 
 ### --- Backup (TODO remove) --------------------------------------------------------------------------------------- ###
