@@ -85,15 +85,14 @@ def _discretize(
 
 
 def wasserstein_at_point(dist: dd_dists.MixtureMultivariateNormal, point: torch.Tensor, domain: dd_schemes.Cell) -> torch.Tensor:
-    kwargs = dict(rot_mat=domain.rot_mat, scales=domain.scales, offset=domain.offset)
-    grid_of_locs = dd_schemes.Grid(
+    grid_of_locs = dd_schemes.Grid.from_axes(
         points_per_dim=domain.to_local(point).unsqueeze(-1), 
-        **kwargs
+        axes=domain
     )
     partition = dd_schemes.GridPartition.from_vertices_per_dim(
                             lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
                             upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
-                            **kwargs
+                            axes=domain
     )
     _, _, w2 = _discretize(dist,  dd_schemes.GridScheme(grid_of_locs, partition))
     return w2
