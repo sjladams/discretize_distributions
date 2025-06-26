@@ -94,6 +94,33 @@ def have_common_eigenbasis(Sigma1, Sigma2, atol=1e-6):
     comm = torch.einsum('...ij,...jk->...ik', Sigma1, Sigma2) - torch.einsum('...ij,...jk->...ik', Sigma2, Sigma1)
     return torch.allclose(comm, torch.zeros_like(comm), atol=atol)
 
+def mats_commute(mat1: torch.Tensor, mat2: torch.Tensor, atol: float = 1e-6) -> bool:
+    """
+    Checks whether two square matrices (or batches of matrices) commute, i.e.,
+    whether mat1 @ mat2 == mat2 @ mat1 within a given numerical tolerance.
+
+    This is a sufficient condition for the matrices to be simultaneously diagonalizable 
+    provided both matrices are diagonalizable.
+    """
+    commutator = mat1 @ mat2 - mat2 @ mat1
+    return torch.allclose(commutator, torch.zeros_like(commutator), atol=atol)
+
+def is_permuted_eye(mat: torch.Tensor) -> bool:
+    if mat.ndim != 2 or mat.shape[0] != mat.shape[1]:
+        return False  # Must be square
+
+    # All elements must be 0 or 1
+    if not torch.all((mat == 0) | (mat == 1)):
+        return False
+
+    # Each row and each column must sum to 1
+    if not torch.all(mat.sum(dim=0) == 1):
+        return False
+    if not torch.all(mat.sum(dim=1) == 1):
+        return False
+
+    return True
+
 def cdf(x: Union[torch.Tensor, float], mu: Union[torch.Tensor, float] = 0., scale: Union[torch.Tensor, float] = 1.):
     """
     cdf normal distribution
