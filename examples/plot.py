@@ -41,6 +41,41 @@ def plot_2d_cell(ax, cell: dd_schemes.Cell, c: str = 'blue', linewidth: float = 
     ax.plot(verts[:, 0], verts[:, 1], linestyle='-', marker='', c=c, linewidth=linewidth, **kwargs)
     return ax
 
+def plot_2d_partition(ax, partition: dd_schemes.GridPartition, c: str = 'blue', linewidth: float = 2, **kwargs):
+    for i in range(partition.shape[0]):
+        for j in range(partition.shape[1]):
+            cell = partition[i, j]
+            if cell is not None:
+                try: 
+                    domain = cell.domain
+                except:
+                    domain = cell.domain
+
+                ax = plot_2d_cell(ax, cell.domain, c=c, linewidth=linewidth, **kwargs)
+    return ax
+
+def plot_2d_axes(ax, axes: dd_schemes.Axes, xlim, ylim, title: str = ""):
+    ax.set_title(title)
+    style = ['solid', 'dashed']
+    for i in range(axes.rot_mat.shape[1]):
+        ax.arrow(
+            *axes.offset, axes.rot_mat[0, i], axes.rot_mat[1, i],
+            head_width=0.1, head_length=0.1, fc='red', ec='red',
+            length_includes_head=True,
+            linewidth=3, linestyle=style[i]  
+        )
+    for i in range(axes.rot_mat.shape[1]):
+        ax.arrow(
+            *axes.offset, axes.transform_mat[0, i], axes.transform_mat[1, i],
+            head_width=0.1, head_length=0.1, fc='blue', ec='blue',
+            length_includes_head=True,
+            linestyle=style[i]
+        )
+    ax.plot(0, 0, 'ko', markersize=5)  # origin point
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_aspect('equal')
+
 def set_axis(ax, xlims=None, ylims=None):
     xlims = ax.get_xlim() if xlims is None else xlims
     ylims = ax.get_ylim() if ylims is None else ylims
