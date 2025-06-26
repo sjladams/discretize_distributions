@@ -75,6 +75,7 @@ def plot_2d_axes(ax, axes: dd_schemes.Axes, xlim, ylim, title: str = ""):
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     ax.set_aspect('equal')
+    return ax
 
 def set_axis(ax, xlims=None, ylims=None):
     xlims = ax.get_xlim() if xlims is None else xlims
