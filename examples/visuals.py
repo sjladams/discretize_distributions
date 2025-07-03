@@ -210,13 +210,14 @@ def plot_disc_grid_contours_2d(ax, disc, gmm_params, bounds = (-15, 15, -15, 15)
     return ax
 
 
-def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bounds = (-15, 15, -15, 15), shell=True):
+def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bounds=(-15, 15, -15, 15), shell=True):
     locs = disc_mix.locs.detach().numpy()
     probs = disc_mix.probs.detach().numpy()
 
     if shell:
-        shells = [gs.partition.domain for gs in mix_grid.grid_schemes]
-        for domain in shells:
+        for gs in mix_grid.grid_schemes:
+            # domain
+            domain = gs.partition.domain
             lower_vertex = domain.lower_vertex
             upper_vertex = domain.upper_vertex
 
@@ -226,7 +227,7 @@ def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bo
             width = upper_vertex[0] - lower_vertex[0]
             height = upper_vertex[1] - lower_vertex[1]
             rect = plt.Rectangle(lower_vertex, width, height,
-                                 fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
+                                 fill=False, edgecolor='black', linewidth=2)
             ax.add_patch(rect)
 
     K, pi, mu, Sigma = gmm_params
@@ -254,7 +255,6 @@ def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bo
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     return ax
-
 
 def plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid, resolution=40, slice_z_vals=None):
     samples = gmm.sample((1000,)).detach().numpy()
@@ -429,6 +429,7 @@ def plot_samples_gmm_3d(gmm):
     plt.tight_layout()
     plt.show()
 
+
 ### EDITED FUNCTIONS FROM GMMOT ####
 
 def densite_theorique2d(mu, Sigma, alpha, x):
@@ -474,8 +475,8 @@ if __name__ == "__main__":
 
     seed_everything(3)
     num_dims = 2
-    num_mix_elems = 5
-    setting = "overlapping2"
+    num_mix_elems = 4
+    setting = "spread"
 
     options = dict(
         overlapping=dict(
@@ -534,9 +535,9 @@ if __name__ == "__main__":
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            # torch.rand((num_mix_elems,))
                                                            # torch.tensor([.5, .5])  # close
-                                                           # torch.tensor([.5, .5, .5, .5])  # spread
+                                                           torch.tensor([.5, .5, .5, .5])  # spread
                                                            #  torch.tensor([.2, .5, .6, .7])  # test 2
-                                                            torch.tensor([.2, .5, .6, .7, .5])  # test 1
+                                                           #  torch.tensor([.2, .5, .6, .7, .5])  # test 1
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
@@ -611,19 +612,20 @@ if __name__ == "__main__":
     bounds = (-5, 5, -5, 5)
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, shell=False)
-    # plt.savefig(f'{setting}/discretization_contours_2d_multi_grid.svg')
+    plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, shell=True)
+    plt.savefig(f'visuals/{setting}/2d_gmm_multi_grid_shells.svg')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, bounds=bounds)
+    plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params)
     # plt.savefig(f'visuals/2d_gmm_per_component.svg')
     plt.show()
 
-    fig, ax = plt.subplots(figsize=(8, 8))
-    plot_disc_grid_contours_2d(ax, disc_, gmm_params, bounds=bounds)
-    # plt.savefig(f'visuals/2d_gmm_one_grid.svg')
-    plt.show()
+    ## only for domain = (-5, 5, -5, 5)
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # plot_disc_grid_contours_2d(ax, disc_, gmm_params)
+    # # plt.savefig(f'visuals/2d_gmm_one_grid.svg')
+    # plt.show()
 
     # ##### 3d #####
     # fig = plt.figure(figsize=(10, 8))

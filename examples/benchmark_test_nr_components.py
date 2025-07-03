@@ -23,39 +23,34 @@ def seed_everything(seed=3):
     torch.backends.cudnn.benchmark = False
 
 if __name__ == "__main__":
-    # torch.manual_seed(3)  # only for torch
-    # random.seed(3)  # for random functions eg sampling
     seed_everything(3)
+
     results = []
-    run_id = 0
     test_nr = 1
+    date_str = datetime.now().strftime("%Y-%m-%d")
 
-    all_pairs = list(product(range(2, 60), range(2, 100)))
-    selected_pairs = random.sample(all_pairs, 100)
+    num_mix_elems_list = range(2, 100)
+    num_dims = 2  # constant
 
-    for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
-        print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
+    for num_mix_elems in num_mix_elems_list:
 
-        # loc = torch.randn((num_mix_elems, num_dims))
-        #### overlapping components ####
+        print(f"\n--- Run {len(results)+1}: dims={num_dims}, components={num_mix_elems} ---")
+
         scale = 1 / np.sqrt(num_dims)
-        base = torch.rand((1, num_dims))  # values 0-1
-        noise = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale  # samples 0-1 then shifted by 0.5, scaled by dim
-        # only scale noise as this controls spread, so relative spread stays same in higher and lower dims
+        base = torch.rand((1, num_dims))
+        noise = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale
         loc = base + noise
 
-        min_var = 0.1  # minimum value to ensure no negligible var in some dims
+        min_var = 0.1
         raw_vars = torch.rand((num_mix_elems, num_dims))
         clamped_vars = torch.clamp(raw_vars, min=min_var)
         cov = torch.diag_embed(clamped_vars)
 
         component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov * scale)
-        # for higher dimensions
         mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
         gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-        # normalize w2 per case by ||\mu||^2 + trac(\Sigma) from finite NNs paper
-        mu_norm_sq = torch.sum(gmm.mean ** 2)  # sum over dimensions
+        mu_norm_sq = torch.sum(gmm.mean ** 2)
         trace_sigma = torch.sum(gmm.variance)
         factor = (mu_norm_sq + trace_sigma).sqrt()
 
@@ -76,8 +71,7 @@ if __name__ == "__main__":
         old_time = time.time() - start
 
         results.append({
-            "run": run_id,
-            "num_dims": num_dims,
+            "run": len(results) + 1,
             "num_mix_elems": num_mix_elems,
             "w2_mix": (w2_mix / factor).item(),
             "w2_old": (w2_old / factor).item(),
@@ -87,22 +81,6 @@ if __name__ == "__main__":
             "nr_locs_old": len(disc_old.locs),
         })
 
-        # results.append({
-        #     "run": run_id,
-        #     "num_dims": num_dims,
-        #     "num_mix_elems": num_mix_elems,
-        #     "w2_mix": (average_w2 / factor).item(),
-        #     "std_w2_mix": (std_w2 / factor).item(),
-        #     "w2_old": (w2_old / factor).item(),
-        #     "time_mix": average_time,
-        #     "std_time_mix": std_time,
-        #     "time_old": old_time,
-        #     "nr_locs_mix": len(disc_mix.locs),
-        #     "nr_locs_old": len(disc_old.locs),
-        # })
-
-    date_str = datetime.now().strftime("%Y-%m-%d")
     df = pd.DataFrame(results)
-
-    df.to_excel(f"benchmark_results/gmm_discretization_results_test_{date_str}_{test_nr}.xlsx", index=False)
+    df.to_excel(f"benchmark_results/gmm_2d_discretization_results_nr_components_test_{date_str}_{test_nr}.xlsx", index=False)
     print("Results saved to Excel.")
