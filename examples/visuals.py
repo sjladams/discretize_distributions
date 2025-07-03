@@ -76,80 +76,6 @@ def plot_2d_dist_per_component(ax, gmm, colors):
     return ax
 
 
-def plot_2d_grid(ax, grid, color, label):
-    ax.scatter(
-        grid.points[:, 0],
-        grid.points[:, 1],
-        s=10,
-        c=color,
-        label=label,
-    )
-    return ax
-
-
-def set_axis(ax):
-    xlims = ax.get_xlim()
-    ylims = ax.get_ylim()
-    min_lim = min(xlims[0], ylims[0])
-    max_lim = max(xlims[1], ylims[1])
-    ax.set_xlim(min_lim, max_lim)
-    ax.set_ylim(min_lim, max_lim)
-    return ax
-
-
-def transform_cell_to_global(cell):
-    lower_global = utils.transform_to_global(cell.lower_vertex.unsqueeze(0), cell.rot_mat, cell.scales,
-                                             cell.offset).squeeze(0)
-    upper_global = utils.transform_to_global(cell.upper_vertex.unsqueeze(0), cell.rot_mat, cell.scales,
-                                             cell.offset).squeeze(0)
-    return lower_global, upper_global
-
-
-def plot_final_discretization_with_shells_2d(ax, gmm, disc_mix, mix_grid):
-    density_samples = gmm.sample((10000,)).detach().numpy()
-    ax.hist2d(density_samples[:, 0], density_samples[:, 1],
-              bins=[50, 50], density=True, cmap='viridis', alpha=0.5)
-
-    locs = disc_mix.locs.detach().numpy()
-    ax.scatter(locs[:, 0], locs[:, 1],
-               c='cyan', s=20, edgecolor='k', alpha=0.8, label='Grid points')
-
-    ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
-               c='red', marker='o', s=100, label='Outer loc (z)')
-
-    shells = [gs.partition.domain for gs in mix_grid.grid_schemes]
-    shell_sizes = []
-    for domain in shells:
-        # lower_global, upper_global = transform_cell_to_global(shell)
-        lower_vertex = domain.lower_vertex  # now local vertices, not yet transformed
-        upper_vertex = domain.upper_vertex
-        shell_size = upper_vertex - lower_vertex / 2
-
-        # transform by scaling, rot and offset of domain
-        upper_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, upper_vertex) + domain.offset
-        lower_vertex = torch.einsum('ij, ...j->...i', domain.transform_mat, lower_vertex) + domain.offset
-
-        width = upper_vertex[0] - lower_vertex[0]
-        height = upper_vertex[1] - lower_vertex[1]
-        rect = plt.Rectangle(lower_vertex, width, height,
-                             fill=False, edgecolor='cyan', linewidth=2, linestyle='--')
-        ax.add_patch(rect)
-
-        center = (lower_vertex + upper_vertex) / 2
-        ax.text(center[0], center[1],
-                f"{shell_size.numpy()}", fontsize=8, color='black',
-                ha='center', va='center', bbox=dict(facecolor='white', alpha=0.6, boxstyle='round,pad=0.2'))
-
-        shell_sizes.append(shell_size)
-    ax.legend()
-    ax.set_xlim(-10, 10)
-    ax.set_ylim(-10, 10)
-    ax.set_title("Density + Grid Points + Shells + Centers")
-    # print(f'Shell sizes: {shell_sizes}')
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    return ax
-
 def plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, bounds = (-15, 15, -15, 15)):
     num_colors = len(grid_schemes)
     colors = cm.get_cmap('Set1', num_colors)
@@ -213,8 +139,11 @@ def plot_disc_grid_contours_2d(ax, disc, gmm_params, bounds = (-15, 15, -15, 15)
 def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bounds=(-15, 15, -15, 15), shell=True):
     locs = disc_mix.locs.detach().numpy()
     probs = disc_mix.probs.detach().numpy()
-
+    ax_x, bx, ay, by = bounds
     if shell:
+        full_rect = plt.Rectangle((ax_x, ay), bx - ax_x, by - ay,
+                                  facecolor='lightgray', edgecolor='none', zorder=0)
+        ax.add_patch(full_rect)
         for gs in mix_grid.grid_schemes:
             # domain
             domain = gs.partition.domain
@@ -227,7 +156,7 @@ def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bo
             width = upper_vertex[0] - lower_vertex[0]
             height = upper_vertex[1] - lower_vertex[1]
             rect = plt.Rectangle(lower_vertex, width, height,
-                                 fill=False, edgecolor='black', linewidth=2)
+                                 fill='white', alpha=0.5, edgecolor='blue', linewidth=3, zorder=0)
             ax.add_patch(rect)
 
     K, pi, mu, Sigma = gmm_params
@@ -243,8 +172,8 @@ def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bo
 
     ax.contour(X, Y, Z, levels=12, cmap='plasma')
 
-    ax.scatter(locs[:, 0], locs[:, 1],
-               c='blue', s=probs * 1000, alpha=0.8, label='Grid points')
+    ax.scatter(locs[:-1, 0], locs[:-1, 1],
+               c='blue', s=probs[:-1] * 1000, alpha=0.8, label='Grid points')
 
     ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
                c='red', marker='o', s=probs[-1] * 1000, label='Outer loc (z)')
@@ -267,19 +196,6 @@ def plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid, resolu
     z = torch.linspace(-15, 15, resolution)
     X, Y, Z = torch.meshgrid(x, y, z, indexing='ij')
     grid = torch.stack([X.reshape(-1), Y.reshape(-1), Z.reshape(-1)], dim=-1)
-
-    # # Evaluate GMM density
-    # with torch.no_grad():
-    #     density = gmm.log_prob(grid).exp().reshape(resolution, resolution, resolution).numpy()
-    #
-    # # Plot 2D contour slices at specified z levels
-    # if slice_z_vals is None:
-    #     slice_z_vals = [-6,-7, 7, 8]
-    #
-    # for zi in slice_z_vals:
-    #     idx = (torch.abs(z - zi)).argmin().item()
-    #     ax.contour(X[:, :, idx].numpy(), Y[:, :, idx].numpy(),
-    #                density[:, :, idx], levels=10, cmap='viridis', linestyles='solid')
 
     # Plot 2D box outlines (sliced)
     for gs in mix_grid.grid_schemes:
@@ -307,44 +223,6 @@ def plot_final_discretization_with_shells_3d(ax, gmm, disc_mix, mix_grid, resolu
     return ax
 
 
-def plot_histogram_surface_from_samples(ax, gmm, bins=50, scale='linear', alpha=0.8, z_scale=10):
-    samples = gmm.sample((10000,)).detach().numpy()
-    x, y = samples[:, 0], samples[:, 1]
-    hist, xedges, yedges = np.histogram2d(x, y, bins=bins, density=True)
-
-    xcenters = (xedges[:-1] + xedges[1:]) / 2
-    ycenters = (yedges[:-1] + yedges[1:]) / 2
-    X, Y = np.meshgrid(xcenters, ycenters, indexing='ij')
-
-    Z = hist
-
-    if scale == 'log':
-        Z = np.log1p(Z)
-    elif scale == 'linear':
-        Z *= z_scale
-
-    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=alpha)
-
-def plot_gmm_surface_on_xy(ax, gmm, resolution=100, bins=50, scale='log'):
-    # Sample data
-    samples = gmm.sample((10000,)).detach().numpy()
-    x, y = samples[:, 0], samples[:, 1]
-
-    # Compute 2D histogram
-    hist, xedges, yedges = np.histogram2d(x, y, bins=bins, density=True)
-
-    # Bin centers
-    xcenters = (xedges[:-1] + xedges[1:]) / 2
-    ycenters = (yedges[:-1] + yedges[1:]) / 2
-    X, Y = np.meshgrid(xcenters, ycenters, indexing='ij')
-
-    Z = hist
-
-    # Plot surface
-    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none', alpha=0.8)
-    ax.set_title('GMM Surface (Sampled Density)')
-
-
 def _plot_3d_box(ax, lower, upper, color='cyan', linestyle='--', linewidth=1.5):
     # 8 corner points of the box
     points = np.array(list(product(*zip(lower, upper))))
@@ -355,10 +233,6 @@ def _plot_3d_box(ax, lower, upper, color='cyan', linestyle='--', linewidth=1.5):
 
 
 def plot_final_discretization_3d(ax, gmm, grid_schemes, resolution=40, slice_z_vals=None):
-    # plot_density_cloud(ax, gmm, resolution=50, density_threshold=0.2)
-    # samples = gmm.sample((3000,)).detach().numpy()
-    # ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
-    #            alpha=0.05, s=100, c='blue', label='GMM samples')
     samples = gmm.sample((1000,)).detach().numpy()
     ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2],
                alpha=0.1, s=100, c='blue', label='GMM samples')
@@ -369,20 +243,6 @@ def plot_final_discretization_3d(ax, gmm, grid_schemes, resolution=40, slice_z_v
     z = torch.linspace(-15, 15, resolution)
     X, Y, Z = torch.meshgrid(x, y, z, indexing='ij')
     grid = torch.stack([X.reshape(-1), Y.reshape(-1), Z.reshape(-1)], dim=-1)
-
-    # Evaluate GMM density
-    # with torch.no_grad():
-    #     density = gmm.log_prob(grid).exp().reshape(resolution, resolution, resolution).numpy()
-    #
-    # # Plot 2D contour slices at specified z levels
-    # if slice_z_vals is None:
-    #     slice_z_vals = [-6,-7, 7, 8]
-    #
-    # for zi in slice_z_vals:
-    #     idx = (torch.abs(z - zi)).argmin().item()
-    #     ax.contour(X[:, :, idx].numpy(), Y[:, :, idx].numpy(),
-    #                density[:, :, idx], levels=10, cmap='viridis', linestyles='solid')
-
     num_colors = len(grid_schemes)
     colors = cm.get_cmap('tab20', num_colors)  # or 'tab20', 'Set3', etc.
 
@@ -488,8 +348,8 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
         ),
         close=dict(
-            loc=torch.tensor([[0.1, 0.1], [0.2, 0.2]]),
-            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
+            loc=torch.tensor([[-4.0, 0.0], [1, 2]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [3., 1.]]))
         ),
         spread=dict(
             loc=torch.tensor([[-6.0, -6.0], [-7.0, -10.0], [7.0, 4.0], [6.0, 5.0]]),
@@ -609,7 +469,7 @@ if __name__ == "__main__":
     S = covariance_matrix.detach().numpy()
     K = len(alpha)
     gmm_params = [K, alpha, m, S]
-    bounds = (-5, 5, -5, 5)
+    bounds = (-10, 10, -10, 10)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, shell=True)
