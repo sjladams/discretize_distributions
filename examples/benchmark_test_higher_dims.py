@@ -25,18 +25,19 @@ def seed_everything(seed=3):
 if __name__ == "__main__":
     seed_everything(3)
 
-    results = []
+    dim_results = []
+    summary_results = []
     test_nr = 1
     date_str = datetime.now().strftime("%Y-%m-%d")
 
-    dims_range = range(50, 61)  # dims 10 to 60
-    num_cases_per_dim = 10
+    dims_range = range(10, 61)  # dims 10 to 60
+    num_cases_per_dim = 5
 
     for num_dims in dims_range:
         for case_id in range(num_cases_per_dim):
             num_mix_elems = random.randint(2, 100)
 
-            print(f"\n--- Run {len(results)+1}: dims={num_dims}, components={num_mix_elems} ---")
+            print(f"\n--- Run {len(dim_results)+1}: dims={num_dims}, components={num_mix_elems} ---")
 
             scale = 1 / np.sqrt(num_dims)
             base = torch.rand((1, num_dims))
@@ -48,7 +49,7 @@ if __name__ == "__main__":
             clamped_vars = torch.clamp(raw_vars, min=min_var)
             cov = torch.diag_embed(clamped_vars)
 
-            component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)  # without variance scaling!
+            component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)   # without variance scaling!
             mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
             gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
@@ -72,8 +73,8 @@ if __name__ == "__main__":
             disc_old, w2_old = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
             old_time = time.time() - start
 
-            results.append({
-                "run": len(results) + 1,
+            dim_results.append({
+                "run": len(dim_results) + 1,
                 "num_dims": num_dims,
                 "num_mix_elems": num_mix_elems,
                 "w2_mix": (w2_mix / factor).item(),
@@ -84,6 +85,25 @@ if __name__ == "__main__":
                 "nr_locs_old": len(disc_old.locs),
             })
 
-    df = pd.DataFrame(results)
+        # After 10 runs take mean
+        dim_stats = {
+            "num_dims": num_dims,
+            "w2_mix_mean": np.mean([d["w2_mix"] for d in dim_results]),
+            "w2_mix_std": np.std([d["w2_mix"] for d in dim_results]),
+            "w2_old_mean": np.mean([d["w2_old"] for d in dim_results]),
+            "w2_old_std": np.std([d["w2_old"] for d in dim_results]),
+            "time_mix_mean": np.mean([d["time_mix"] for d in dim_results]),
+            "time_mix_std": np.std([d["time_mix"] for d in dim_results]),
+            "time_old_mean": np.mean([d["time_old"] for d in dim_results]),
+            "time_old_std": np.std([d["time_old"] for d in dim_results]),
+            "nr_locs_mix_mean": np.mean([d["nr_locs_mix"] for d in dim_results]),
+            "nr_locs_mix_std": np.std([d["nr_locs_mix"] for d in dim_results]),
+            "nr_locs_old_mean": np.mean([d["nr_locs_old"] for d in dim_results]),
+            "nr_locs_old_std": np.std([d["nr_locs_old"] for d in dim_results]),
+        }
+
+        summary_results.append(dim_stats)
+
+    df = pd.DataFrame(summary_results)
     df.to_excel(f"benchmark_results/gmm_discretization_results_higher_dims_test_{date_str}_{test_nr}.xlsx", index=False)
     print("Results saved to Excel.")
