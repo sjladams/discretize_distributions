@@ -29,7 +29,7 @@ if __name__ == "__main__":
     test_nr = 1
     date_str = datetime.now().strftime("%Y-%m-%d")
 
-    dims_range = range(10, 61)  # dims 10 to 60
+    dims_range = range(50, 61)  # dims 10 to 60
     num_cases_per_dim = 10
 
     for num_dims in dims_range:
@@ -48,7 +48,7 @@ if __name__ == "__main__":
             clamped_vars = torch.clamp(raw_vars, min=min_var)
             cov = torch.diag_embed(clamped_vars)
 
-            component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov * scale)
+            component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)  # without variance scaling!
             mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
             gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
