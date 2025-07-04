@@ -20,6 +20,10 @@ from matplotlib.colors import LogNorm
 from mpl_toolkits.mplot3d import Axes3D
 from itertools import product, combinations
 import gmmot_delon as gmmot
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.gridspec import GridSpec
+from scipy.stats import norm, multivariate_normal
+
 
 def plot_2d_dist(ax, dist):
     samples = dist.sample((10000,))
@@ -331,12 +335,81 @@ def seed_everything(seed=3):
     torch.backends.cudnn.benchmark = False
 
 
+def overlay_colored_boundary_and_interior(ax, grid, left_color='red', bottom_color='blue', inner_color='magenta'):
+    points = grid.points.detach().numpy()
+
+    x_vals = points[:, 0]
+    y_vals = points[:, 1]
+
+    x_min, x_max = x_vals.min(), x_vals.max()
+    y_min, y_max = y_vals.min(), y_vals.max()
+
+    left_boundary = points[np.isclose(x_vals, x_min)]
+    bottom_boundary = points[np.isclose(y_vals, y_min)]
+
+    left_only = np.array([pt for pt in left_boundary if not any(np.allclose(pt, bpt) for bpt in bottom_boundary)])
+
+    is_left = np.isclose(x_vals, x_min)
+    is_bottom = np.isclose(y_vals, y_min)
+    is_boundary = is_left | is_bottom
+    interior = points[~is_boundary]
+
+    ax.scatter(left_only[:, 0], left_only[:, 1], c=left_color, s=50, zorder=5)
+    ax.scatter(bottom_boundary[:, 0], bottom_boundary[:, 1], c=bottom_color, s=50, zorder=5)
+    ax.scatter(interior[:, 0], interior[:, 1], c=inner_color, s=30, zorder=5, alpha=0.8)
+    return ax
+
+
+def plot_center_with_marginals_aligned(mean, cov, grid_points):
+    cov = np.array(cov)
+    fig = plt.figure(figsize=(6, 6))
+    gs = GridSpec(2, 2, width_ratios=[1, 4], height_ratios=[4, 1],
+                  left=0.15, right=0.95, bottom=0.15, top=0.95,
+                  wspace=0.0, hspace=0.0)
+
+    ax_main = fig.add_subplot(gs[0, 1])
+    ax_y = fig.add_subplot(gs[0, 0], sharey=ax_main)
+    ax_x = fig.add_subplot(gs[1, 1], sharex=ax_main)
+
+    x = np.linspace(-5, 5, 200)
+    y = np.linspace(-5, 5, 200)
+    X, Y = np.meshgrid(x, y)
+    pos = np.dstack((X, Y))
+    rv = multivariate_normal(mean, cov)
+    Z = rv.pdf(pos)
+    ax_main.contour(X, Y, Z, levels=10, cmap="plasma")
+
+    x_vals, y_vals = grid_points[:, 0], grid_points[:, 1]
+    x_min, x_max = x_vals.min(), x_vals.max()
+    y_min, y_max = y_vals.min(), y_vals.max()
+
+    left = grid_points[np.isclose(x_vals, x_min)]
+    bottom = grid_points[np.isclose(y_vals, y_min)]
+    interior = grid_points[(~np.isclose(x_vals, x_min)) & (~np.isclose(y_vals, y_min))]
+
+    ax_main.scatter(interior[:, 0], interior[:, 1], color='magenta', s=20)
+    ax_main.scatter(left[:, 0], left[:, 1], color='red', s=40)
+    ax_main.scatter(bottom[:, 0], bottom[:, 1], color='blue', s=40)
+
+    x_pdf = norm.pdf(x, loc=mean[0], scale=np.sqrt(cov[0, 0]))
+    y_pdf = norm.pdf(y, loc=mean[1], scale=np.sqrt(cov[1, 1]))
+
+    ax_x.plot(x, -x_pdf + x_pdf.max(), color='blue')
+
+    ax_y.plot(-y_pdf + y_pdf.max(), y, color='red')
+    ax_x.axis("off")
+    ax_y.axis("off")
+
+    return fig, ax_main, ax_x, ax_y
+
+
+
 if __name__ == "__main__":
 
     seed_everything(3)
     num_dims = 2
-    num_mix_elems = 4
-    setting = "spread"
+    num_mix_elems = 1
+    setting = "equal"
 
     options = dict(
         overlapping=dict(
@@ -394,8 +467,8 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            # torch.rand((num_mix_elems,))
-                                                           # torch.tensor([.5, .5])  # close
-                                                           torch.tensor([.5, .5, .5, .5])  # spread
+                                                           torch.tensor([.5])  # close
+                                                           # torch.tensor([.5, .5, .5, .5])  # spread
                                                            #  torch.tensor([.2, .5, .6, .7])  # test 2
                                                            #  torch.tensor([.2, .5, .6, .7, .5])  # test 1
                                                            )
@@ -469,11 +542,22 @@ if __name__ == "__main__":
     S = covariance_matrix.detach().numpy()
     K = len(alpha)
     gmm_params = [K, alpha, m, S]
-    bounds = (-10, 10, -10, 10)
+    bounds = (-5, 5, -5, 5)
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, shell=True)
-    plt.savefig(f'visuals/{setting}/2d_gmm_multi_grid_shells.svg')
+    plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, shell=False, bounds=bounds)
+    overlay_colored_boundary_and_interior(ax, mix_grid.grid_schemes[0].locs)
+    # plt.savefig(f'visuals/{setting}/2d_gmm_multi_grid_shells.svg')
+    plt.show()
+
+    # single gaussian to show creation of grids
+    mean = [0, 0]
+    cov = [[1, 0], [0, 1]]
+    grid_points = mix_grid.grid_schemes[0].locs.points.detach().numpy()
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    plot_center_with_marginals_aligned(mean, cov, grid_points)
+    plt.savefig(f'visuals/grid_with_marginals.svg')
     plt.show()
 
     fig, ax = plt.subplots(figsize=(8, 8))
