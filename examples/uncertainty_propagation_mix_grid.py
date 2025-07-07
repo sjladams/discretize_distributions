@@ -252,7 +252,7 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
 
                 ax.scatter(data[:, 0], data[:, 1], color=color, s=16, alpha=0.5)
                 center_x, center_y = data[:, 0].mean() - 0.05, data[:, 1].mean() + 0.1
-                ax.text(center_x, center_y, f'$t_{{{k + 1}}}$', fontsize=16, weight='bold', color='black')
+                # ax.text(center_x, center_y, f'$t_{{{k + 1}}}$', fontsize=16, weight='bold', color='black')
 
                 # ambiguity_set = Circle(q.mean, w2_p1__q1_store[k]['w2_p1__q1_global_lipschitz'], color=colors[k+1], fill=False, lw=2, alpha=1.0)
                 # ax.add_patch(ambiguity_set)
@@ -265,7 +265,7 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         plt.ylim(ylim) if ylim is not None else None
         plt.tight_layout()
         # plt.title(f'{tag}')
-        plt.savefig(f'{tag}.svg')
+        plt.savefig(f'{tag}_eps.svg')
         plt.show()
 
 @torch.no_grad()
@@ -354,50 +354,19 @@ def seed_everything(seed=3):
 
 if __name__== '__main__':
     seed_everything(3)
-    # mat = rot_mat(theta=-math.pi / 8., rho=0.8, delta=0.)
-    # dynamics = LinearDynamics(global_lipschitz=torch.linalg.norm(mat, ord=2), mat=mat)
-    #
-    # # 2D
-    # w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store = multi_step(
-    #     dynamics=dynamics,
-    #     noise_dist=dd_dists.MultivariateNormal(
-    #         loc=torch.zeros(2),
-    #         covariance_matrix=torch.eye(2) * 0.001
-    #     ),
-    #     q=dd_dists.MultivariateNormal(
-    #         loc=torch.ones(2) * 0.8,
-    #         covariance_matrix=torch.eye(2) * 0.0001
-    #     ),
-    #     num_time_steps=10,
-    #     num_samples=100,
-    #     num_locs=10
-    # )
-    #
-    # print(f'W2 per time step: {w2_q__sign_q_store}')
-    #
-    # xlim, ylim = [-1., 1.], [-1., 1.]
-    # plot_2d_dynamics(dynamics, xlim=xlim, ylim=ylim)
-    # plot_2d_ambiguity_balls(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
+    mat = rot_mat(theta=-math.pi / 8., rho=0.8, delta=0.)
+    dynamics = LinearDynamics(global_lipschitz=torch.linalg.norm(mat, ord=2), mat=mat)
 
-    # 3D sys
-    # Dubins car
-    dubins_car = dyn.DubinsCar(v=1.5, dt=0.1)
-    u_fixed = torch.tensor([[0.2]])  # fixed input
-
-    # how to estimate this?
-    global_lipschitz = 1.5
-
-    dynamics = DubinsDynamicsWrapper(dubins_car, u_fixed, global_lipschitz=global_lipschitz)
-
+    # 2D
     w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store = multi_step(
         dynamics=dynamics,
         noise_dist=dd_dists.MultivariateNormal(
-            loc=torch.zeros(3),
-            covariance_matrix=0.001 * torch.eye(3)
+            loc=torch.zeros(2),
+            covariance_matrix=torch.eye(2) * 0.001
         ),
         q=dd_dists.MultivariateNormal(
-            loc=torch.tensor([0.8, 0.8, 0.0]),  # x, y, theta
-            covariance_matrix=0.0001 * torch.eye(3)
+            loc=torch.ones(2) * 0.8,
+            covariance_matrix=torch.eye(2) * 0.0001
         ),
         num_time_steps=10,
         num_samples=100,
@@ -406,8 +375,39 @@ if __name__== '__main__':
 
     print(f'W2 per time step: {w2_q__sign_q_store}')
 
-    xlim, ylim = [0.5, 3], [0.5, 1.5]
-    plot_2d_dynamics_dubins_car(dynamics, xlim=xlim, ylim=ylim)
-    plot_2d_ambiguity_balls_dubins_car(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
+    xlim, ylim = [-1., 1.], [-1., 1.]
+    plot_2d_dynamics(dynamics, xlim=xlim, ylim=ylim)
+    plot_2d_ambiguity_balls(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
 
-
+    # 3D sys
+    # Dubins car
+    # dubins_car = dyn.DubinsCar(v=1.5, dt=0.1)
+    # u_fixed = torch.tensor([[0.2]])  # fixed input
+    #
+    # # how to estimate this?
+    # global_lipschitz = 1.5
+    #
+    # dynamics = DubinsDynamicsWrapper(dubins_car, u_fixed, global_lipschitz=global_lipschitz)
+    #
+    # w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store = multi_step(
+    #     dynamics=dynamics,
+    #     noise_dist=dd_dists.MultivariateNormal(
+    #         loc=torch.zeros(3),
+    #         covariance_matrix=0.001 * torch.eye(3)
+    #     ),
+    #     q=dd_dists.MultivariateNormal(
+    #         loc=torch.tensor([0.8, 0.8, 0.0]),  # x, y, theta
+    #         covariance_matrix=0.0001 * torch.eye(3)
+    #     ),
+    #     num_time_steps=10,
+    #     num_samples=100,
+    #     num_locs=10
+    # )
+    #
+    # print(f'W2 per time step: {w2_q__sign_q_store}')
+    #
+    # xlim, ylim = [0.5, 3], [0.5, 1.5]
+    # plot_2d_dynamics_dubins_car(dynamics, xlim=xlim, ylim=ylim)
+    # plot_2d_ambiguity_balls_dubins_car(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
+    #
+    #

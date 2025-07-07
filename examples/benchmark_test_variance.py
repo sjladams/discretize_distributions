@@ -26,7 +26,7 @@ if __name__ == "__main__":
     seed_everything(3)
 
     results = []
-    test_nr = 2
+    test_nr = 1
     date_str = datetime.now().strftime("%Y-%m-%d")
 
     num_cases = 100

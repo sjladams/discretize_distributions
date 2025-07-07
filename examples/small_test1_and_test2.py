@@ -153,7 +153,7 @@ if __name__ == "__main__":
     seed_everything(3)
     num_dims = 2
     num_mix_elems = 4
-    setting = "equal"
+    setting = "test2"
 
     options = dict(
         test1=dict(
@@ -182,30 +182,6 @@ if __name__ == "__main__":
     mix_grid = dd_optimal.create_grid_from_clusters(centers, clusters)
     disc_mix, w2_mix = dd.discretize(gmm, mix_grid)
     time_mix = time.time() - start
-
-    # w2_values = []
-    # times = []
-    # disc_mix_c = None
-    # for i in range(10):  # 10 times
-    #     start = time.time()
-    #
-    #     centers, clusters = dd_optimal.dbscan_clusters(gmm)
-    #     mix_grid_c = dd_optimal.create_grid_from_clusters(gmm, centers, clusters)
-    #     disc, w2 = dd.discretize(gmm, mix_grid_c)
-    #
-    #     elapsed = time.time() - start
-    #     times.append(elapsed)
-    #     w2_values.append(w2.item())
-    #
-    #     if disc_mix_c is None:
-    #         disc_mix_c = disc
-    #
-    #     print(f'Run {i + 1}, w2 = {w2}, time = {elapsed:.2f}s')
-    #
-    # average_w2 = np.mean(w2_values)
-    # std_w2 = np.std(w2_values)
-    # average_time = np.mean(times)
-    # std_time = np.std(times)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
@@ -270,9 +246,19 @@ if __name__ == "__main__":
         restricted = unique_locs_per_dim[dim][indices]
         restricted_points_per_dim.append(restricted)
 
-    grid = dd_schemes.Grid(restricted_points_per_dim)
-    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
-    grid_scheme = dd_schemes.GridScheme(grid, new_partition)
+    # grid = dd_schemes.Grid(restricted_points_per_dim)
+    # new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
+    # grid_scheme = dd_schemes.GridScheme(grid, new_partition)
+
+    # uniform grid
+    domain = dd_schemes.Cell(
+        lower_vertex=torch.tensor([-10, -10]),
+        upper_vertex=torch.tensor([10, 10])
+    )
+    shape = torch.Size([10, 10])
+    grid_uniform = dd_schemes.Grid.from_shape(shape, domain)
+    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid_uniform)
+    grid_scheme = dd_schemes.GridScheme(grid_uniform, new_partition)
 
     disc_, w2_ = dd.discretize(gmm, grid_scheme)
     print(f"Time one grid: {time.time() - start}")
