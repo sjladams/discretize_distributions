@@ -154,7 +154,7 @@ if __name__ == "__main__":
     results = []
 
     all_pairs = list(product(range(2, 10), range(2, 100)))
-    selected_pairs = random.sample(all_pairs, 10)
+    selected_pairs = random.sample(all_pairs, 100)
 
     for run_id, (num_dims, num_mix_elems) in enumerate(selected_pairs, 1):
         print(f"\n--- Run {run_id}: dims={num_dims}, components={num_mix_elems} ---")
@@ -162,9 +162,13 @@ if __name__ == "__main__":
         scale = 0.5 / np.sqrt(num_dims)
         loc = 10 * torch.rand((num_mix_elems, num_dims))  # centers (0-10)
         cov = torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
-        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov * scale)
+        component_distribution = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=cov)  # no dim scaling
         mixture_distribution = torch.distributions.Categorical(probs=torch.rand((num_mix_elems,)))
         gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+
+        mu_norm_sq = torch.sum(gmm.mean ** 2)
+        trace_sigma = torch.sum(gmm.variance)
+        factor = (mu_norm_sq + trace_sigma).sqrt()
 
         centers, clusters = dd_optimal.dbscan_clusters(gmm=gmm)
 
@@ -203,13 +207,13 @@ if __name__ == "__main__":
             'num_dims': num_dims,
             'num_mix_elems': num_mix_elems,
             'best_eps': best_eps,
-            'w2_grid_search': w2_mix.item(),
-            'w2_dbscan': w2_dbscan.item(),
+            'w2_grid_search': (w2_mix / factor).item(),
+            'w2_dbscan': (w2_dbscan / factor).item(),
             'prob_mass_grid_search': 1 - disc_mix.probs[-1],
             'prob_mass_dbscan': 1 - disc_dbscan.probs[-1]
         })
 
 
     df = pd.DataFrame(results)
-    df.to_excel(f"benchmark_results/shell_heuristic2.xlsx", index=False)
+    df.to_excel(f"benchmark_results/shell_heuristic3.xlsx", index=False)
     print("Results saved to Excel.")

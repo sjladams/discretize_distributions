@@ -31,19 +31,16 @@ if __name__ == "__main__":
     date_str = datetime.now().strftime("%Y-%m-%d")
 
     dims_range = range(10, 61)  # dims 10 to 60
-    num_cases_per_dim = 5
+    num_cases_per_dim = 10
+    num_mix_elems = 20  # constant
 
     for num_dims in dims_range:
         for case_id in range(num_cases_per_dim):
-            num_mix_elems = random.randint(2, 100)
 
             print(f"\n--- Run {len(dim_results)+1}: dims={num_dims}, components={num_mix_elems} ---")
 
             scale = 1 / np.sqrt(num_dims)
-            base = torch.rand((1, num_dims))
-            noise = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale
-            loc = base + noise
-
+            loc = (torch.rand((num_mix_elems, num_dims)) - 0.5) * scale
             min_var = 0.1
             raw_vars = torch.rand((num_mix_elems, num_dims))
             clamped_vars = torch.clamp(raw_vars, min=min_var)

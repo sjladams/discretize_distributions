@@ -152,8 +152,8 @@ if __name__ == "__main__":
 
     seed_everything(3)
     num_dims = 2
-    num_mix_elems = 4
-    setting = "test2"
+    num_mix_elems = 5
+    setting = "test1"
 
     options = dict(
         test1=dict(
@@ -171,8 +171,8 @@ if __name__ == "__main__":
     )
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           torch.tensor([.2, .5, .6, .7])  # test 2
-                                                        # torch.tensor([.2, .5, .6, .7, .5])  # test 1
+                                                           # torch.tensor([.2, .5, .6, .7])  # test 2
+                                                        torch.tensor([.2, .5, .6, .7, .5])  # test 1
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
@@ -223,7 +223,7 @@ if __name__ == "__main__":
     start = time.time()
     all_points = []
     for component in gmm.component_distribution:
-        grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=100)
+        grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=x)
         locs = grid_scheme.locs.points
         all_points.append(locs)
 
@@ -246,19 +246,19 @@ if __name__ == "__main__":
         restricted = unique_locs_per_dim[dim][indices]
         restricted_points_per_dim.append(restricted)
 
-    # grid = dd_schemes.Grid(restricted_points_per_dim)
-    # new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
-    # grid_scheme = dd_schemes.GridScheme(grid, new_partition)
+    grid = dd_schemes.Grid(restricted_points_per_dim)
+    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
+    grid_scheme = dd_schemes.GridScheme(grid, new_partition)
 
     # uniform grid
-    domain = dd_schemes.Cell(
-        lower_vertex=torch.tensor([-10, -10]),
-        upper_vertex=torch.tensor([10, 10])
-    )
-    shape = torch.Size([10, 10])
-    grid_uniform = dd_schemes.Grid.from_shape(shape, domain)
-    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid_uniform)
-    grid_scheme = dd_schemes.GridScheme(grid_uniform, new_partition)
+    # domain = dd_schemes.Cell(
+    #     lower_vertex=torch.tensor([-10, -10]),
+    #     upper_vertex=torch.tensor([10, 10])
+    # )
+    # shape = torch.Size([10, 10])
+    # grid_uniform = dd_schemes.Grid.from_shape(shape, domain)
+    # new_partition = dd_schemes.GridPartition.from_grid_of_points(grid_uniform)
+    # grid_scheme = dd_schemes.GridScheme(grid_uniform, new_partition)
 
     disc_, w2_ = dd.discretize(gmm, grid_scheme)
     print(f"Time one grid: {time.time() - start}")
