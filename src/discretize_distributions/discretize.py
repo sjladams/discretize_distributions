@@ -137,29 +137,45 @@ def discretize(
             return disc_total, w2
 
         elif isinstance(scheme, dd_schemes.GridScheme):
-            probs, w2_sq, masses = [], [], []
+            # probs, w2_sq, masses = [], [], []
+            # for idx in range(dist.num_components):
+            #     disc_component, w2_component = discretize(dist.component_distribution[idx], scheme)
+            #     probs.append(disc_component.probs_unravelled * dist.mixture_distribution.probs[idx])
+            #     w2_sq.append(w2_component.pow(2) * dist.mixture_distribution.probs[idx])
+            #     masses.append(disc_component.grid_mass * dist.mixture_distribution.probs[idx])  # scaled per component
+            #
+            # probs = torch.stack(probs, dim=-1).sum(-1)
+            # w2 = torch.stack(w2_sq).sum().sqrt()
+            # total_mass_inside_grid = torch.stack(masses).sum()
+            #
+            # grid_shape = [len(p) for p in scheme.locs.points_per_dim]
+            # probs_nd = probs.view(*grid_shape)
+            #
+            # probs_per_dim = []  # ERROR FOR 1D DISTRIBUTIONS
+            # for i in range(len(grid_shape)):
+            #     dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
+            #     marginal = probs_nd.sum(dim=dims_to_sum)
+            #     # if marginal.ndim == 0:
+            #     #     marginal = marginal.view(1)
+            #     probs_per_dim.append(marginal)
+            #
+            # probs_grid = dd_schemes.Grid(probs_per_dim)
+            grid_shape = scheme.locs.shape
+            accum_probs = torch.zeros(grid_shape, device=dist.mixture_distribution.probs.device)
+            w2_sq = []
+
             for idx in range(dist.num_components):
-                disc_component, w2_component = discretize(dist.component_distribution[idx], scheme)
-                probs.append(disc_component.probs_unravelled * dist.mixture_distribution.probs[idx])
-                w2_sq.append(w2_component.pow(2) * dist.mixture_distribution.probs[idx])
-                masses.append(disc_component.grid_mass * dist.mixture_distribution.probs[idx])  # scaled per component
+                disc_comp, w2_component = discretize(dist.component_distribution[idx], scheme)
+                weight = dist.mixture_distribution.probs[idx]
 
-            probs = torch.stack(probs, dim=-1).sum(-1)
+                probs_nd = disc_comp.probs_unravelled.view(grid_shape)
+                accum_probs += probs_nd * weight
+                w2_sq.append(w2_component.pow(2) * weight)
+
             w2 = torch.stack(w2_sq).sum().sqrt()
-            total_mass_inside_grid = torch.stack(masses).sum()
+            total_mass_inside_grid = accum_probs.sum()
 
-            grid_shape = [len(p) for p in scheme.locs.points_per_dim]
-            probs_nd = probs.view(*grid_shape)
-
-            probs_per_dim = []  # ERROR FOR 1D DISTRIBUTIONS
-            for i in range(len(grid_shape)):
-                dims_to_sum = [j for j in range(len(grid_shape)) if j != i]
-                marginal = probs_nd.sum(dim=dims_to_sum)
-                # if marginal.ndim == 0:
-                #     marginal = marginal.view(1)
-                probs_per_dim.append(marginal)
-
-            probs_grid = dd_schemes.Grid(probs_per_dim)
+            probs_grid = scheme.locs.with_joint_probs(accum_probs)
 
             return dd_dists.CategoricalGrid(scheme.locs, probs_grid, total_mass_inside_grid), w2
 

@@ -146,7 +146,28 @@ class Grid(Axes):
             scales=self.scales,
             offset=self.offset
         )
-    
+
+    def with_joint_probs(self, values: torch.Tensor):
+        if values.shape != self.shape:
+            raise ValueError(f"Expected tensor of shape {self.shape}, got {values.shape}")
+
+        identity_rot = torch.eye(self.ndim_support, device=values.device)
+
+        grid = Grid(
+            points_per_dim=self.points_per_dim,
+            rot_mat=identity_rot,  # no rotation
+            scales=None,
+            offset=None
+        )
+        grid._joint_probs = values
+        return grid
+
+    @property
+    def joint_probs(self):
+        if not hasattr(self, '_joint_probs'):
+            raise AttributeError("joint_probs not set. Use `with_joint_probs()` to create it.")
+        return self._joint_probs
+
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if isinstance(idx, tuple):
             selected_axes = self._select_axes(idx)
