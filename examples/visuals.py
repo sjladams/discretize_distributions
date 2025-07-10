@@ -102,7 +102,7 @@ def plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, boun
         locs = grid.points
         probs = disc.probs[np.arange(len(locs))]
         color = colors(i)
-        ax.scatter(locs[:, 0], locs[:, 1], c=[color], s=probs*2000, label=f'Component {i} grid points')
+        ax.scatter(locs[:, 0], locs[:, 1], c=[color], s=probs*1000, label=f'Component {i}')
 
     ax.legend()
     ax.set_xlim(ax_x, bx)
@@ -130,7 +130,7 @@ def plot_disc_grid_contours_2d(ax, disc, gmm_params, bounds = (-15, 15, -15, 15)
     locs = disc.locs_unravelled
     probs = disc.probs_unravelled
 
-    ax.scatter(locs[:, 0], locs[:, 1], color='red', s=probs, label=f'Grid points')
+    ax.scatter(locs[:, 0], locs[:, 1], color='red', s=probs*1000, label=f'Grid points')
 
     ax.legend()
     ax.set_xlim(ax_x, bx)
@@ -177,10 +177,10 @@ def plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, bo
     ax.contour(X, Y, Z, levels=12, cmap='plasma')
 
     ax.scatter(locs[:-1, 0], locs[:-1, 1],
-               c='blue', s=probs[:-1] * 2000, alpha=0.8, label='Grid points')
+               c='blue', s=probs[:-1] * 1000, alpha=0.8, label='Grid points')
 
     ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
-               c='red', marker='o', s=probs[-1] * 2000, label='Outer loc (z)')
+               c='red', marker='o', s=probs[-1] * 1000, label='Outer loc (z)')
 
     ax.legend()
     ax.set_xlim(ax_x, bx)
@@ -408,8 +408,8 @@ if __name__ == "__main__":
 
     seed_everything(3)
     num_dims = 2
-    num_mix_elems = 4
-    setting = "test2"
+    num_mix_elems = 5
+    setting = "overlapping2"
 
     options = dict(
         overlapping=dict(
@@ -466,10 +466,10 @@ if __name__ == "__main__":
 
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           # torch.rand((num_mix_elems,))
+                                                           torch.rand((num_mix_elems,))
                                                            # torch.tensor([.5])  # close
                                                            # torch.tensor([.5, .5, .5, .5])  # spread
-                                                            torch.tensor([.2, .5, .6, .7])  # test 2
+                                                           #  torch.tensor([.2, .5, .6, .7])  # test 2
                                                             # torch.tensor([.2, .5, .6, .7, .5])  # test 1
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
@@ -485,43 +485,43 @@ if __name__ == "__main__":
     x = int(rounded_value / num_mix_elems)
 
     for i in range(num_mix_elems):
-        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=x))
+        grid_schemes.append(dd_optimal.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=100))
 
     disc, w2 = dd.discretize_gmms_the_old_way(gmm, grid_schemes)
 
-    all_points = []
-    for component in gmm.component_distribution:
-        grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=x)
-        locs = grid_scheme.locs.points
-        all_points.append(locs)
-
-    all_points_cat = torch.cat(all_points, dim=0)
-
-    unique_locs_per_dim = [
-        torch.sort(torch.unique(all_points_cat[:, dim]))[0]
-        for dim in range(num_dims)
-    ]
-
-    # locs per dim, rounded down
-    nr_locs_per_dim = math.floor(rounded_value ** (1 / num_dims))
-    restricted_points_per_dim = []
-    for dim in range(num_dims):
-        indices = torch.linspace(
-            0, unique_locs_per_dim[dim].shape[0] - 1, steps=nr_locs_per_dim
-        ).long()
-        restricted = unique_locs_per_dim[dim][indices]
-        restricted_points_per_dim.append(restricted)
-
-    grid = dd_schemes.Grid(restricted_points_per_dim)
-    new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
-    grid_scheme = dd_schemes.GridScheme(grid, new_partition)
+    # all_points = []
+    # for component in gmm.component_distribution:
+    #     grid_scheme = dd_optimal.get_optimal_grid_scheme(component, num_locs=x)
+    #     locs = grid_scheme.locs.points
+    #     all_points.append(locs)
+    #
+    # all_points_cat = torch.cat(all_points, dim=0)
+    #
+    # unique_locs_per_dim = [
+    #     torch.sort(torch.unique(all_points_cat[:, dim]))[0]
+    #     for dim in range(num_dims)
+    # ]
+    #
+    # # locs per dim, rounded down
+    # nr_locs_per_dim = math.floor(rounded_value ** (1 / num_dims))
+    # restricted_points_per_dim = []
+    # for dim in range(num_dims):
+    #     indices = torch.linspace(
+    #         0, unique_locs_per_dim[dim].shape[0] - 1, steps=nr_locs_per_dim
+    #     ).long()
+    #     restricted = unique_locs_per_dim[dim][indices]
+    #     restricted_points_per_dim.append(restricted)
+    #
+    # grid = dd_schemes.Grid(restricted_points_per_dim)
+    # new_partition = dd_schemes.GridPartition.from_grid_of_points(grid)
+    # grid_scheme = dd_schemes.GridScheme(grid, new_partition)
 
     # uniform grid
     domain = dd_schemes.Cell(
         lower_vertex=torch.tensor([-10, -10]),
         upper_vertex=torch.tensor([10, 10])
     )
-    shape = torch.Size([20, 10])
+    shape = torch.Size([25, 25])
     grid_uniform = dd_schemes.Grid.from_shape(shape,domain)
     new_partition = dd_schemes.GridPartition.from_grid_of_points(grid_uniform)
     grid_scheme = dd_schemes.GridScheme(grid_uniform, new_partition)
@@ -568,7 +568,7 @@ if __name__ == "__main__":
     # fig, ax = plt.subplots(figsize=(8, 8))
     # plot_disc_per_component_contours_2d(ax, disc, grid_schemes, gmm_params, bounds=bounds)
     # plt.legend(fontsize=14)
-    # # plt.savefig(f'visuals/discretization_per_component_contours_2d.svg')
+    # plt.savefig(f'visuals/2d_gmm_per_component.svg')
     #
     # plt.show()
     #
@@ -576,10 +576,10 @@ if __name__ == "__main__":
     # fig, ax = plt.subplots(figsize=(8, 8))
     # plot_disc_grid_contours_2d(ax, disc_, gmm_params, bounds=bounds)
     # plt.legend(fontsize=14)
-    # # plt.savefig(f'visuals/discretization_one_grid_contours_2d.svg')
+    # plt.savefig(f'visuals/2d_gmm_one_grid.svg')
     #
     # plt.show()
-    #
+
 
     fig, ax = plt.subplots(figsize=(8, 8))
     plot_disc_with_shells_and_contours_2d(ax, disc_mix, mix_grid, gmm_params, shell=False)

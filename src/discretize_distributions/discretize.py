@@ -174,8 +174,8 @@ def discretize(
 
             w2 = torch.stack(w2_sq).sum().sqrt()
             total_mass_inside_grid = accum_probs.sum()
-
-            probs_grid = scheme.locs.with_joint_probs(accum_probs)
+            probs_grid = dd_schemes.Grid(points_per_dim=scheme.locs.points_per_dim)
+            probs_grid._joint_probs = accum_probs
 
             return dd_dists.CategoricalGrid(scheme.locs, probs_grid, total_mass_inside_grid), w2
 
