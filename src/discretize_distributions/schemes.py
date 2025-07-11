@@ -147,12 +147,6 @@ class Grid(Axes):
             offset=self.offset
         )
 
-    @property
-    def joint_probs(self):
-        if not hasattr(self, '_joint_probs'):
-            raise AttributeError("joint_probs not set. Use `with_joint_probs()` to create it.")
-        return self._joint_probs
-
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if isinstance(idx, tuple):
             selected_axes = self._select_axes(idx)

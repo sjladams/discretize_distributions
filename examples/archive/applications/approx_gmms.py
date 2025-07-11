@@ -1,4 +1,4 @@
-from examples.applications.dynamics import DubinsCar
+from examples.archive.applications.dynamics import DubinsCar
 from sklearn.mixture import GaussianMixture
 import torch
 

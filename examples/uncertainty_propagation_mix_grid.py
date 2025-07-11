@@ -1,16 +1,15 @@
-from typing import Union, Callable, Optional
+from typing import Union, Optional
 import random
 import torch
 import math
 import ot
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
-from matplotlib.patches import Circle
 import numpy as np
 import discretize_distributions as dd
 import discretize_distributions.distributions as dd_dists
 import discretize_distributions.optimal as dd_optimal
-import examples.applications.dynamics as dyn
+import examples.archive.applications.dynamics as dyn
 
 COLORS = ['Blues', 'BuPu', 'PuRd', 'Greens', 'Oranges', 'Reds', 'Greys', 'Purples',
                       'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
