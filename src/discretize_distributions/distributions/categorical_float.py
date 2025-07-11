@@ -22,7 +22,8 @@ class CategoricalFloat(Distribution):
     def __init__(
             self, 
             locs: torch.Tensor, 
-            probs: torch.Tensor, 
+            probs: torch.Tensor,
+            mass=None,
             validate_args=None
     ):
         """ 
@@ -36,6 +37,7 @@ class CategoricalFloat(Distribution):
 
         self.locs = locs
         self.probs = probs / probs.sum(-1, keepdim=True)
+        self.mass = mass
 
         batch_shape = probs.shape[:-1]
         event_shape = torch.Size((locs.shape[-1],))
@@ -90,7 +92,7 @@ class CategoricalGrid(Distribution):
             self, 
             locs: Grid, 
             probs: Grid,
-            grid_mass=None,
+            mass=None,
             validate_args=None
     ):
         if probs.shape != locs.shape:
@@ -102,7 +104,7 @@ class CategoricalGrid(Distribution):
 
         self.probs = probs
         self.locs = locs
-        self.grid_mass = grid_mass
+        self.mass = mass
 
         # event_shape is the last dimension of locs
         event_shape = torch.Size((probs.ndim,))
