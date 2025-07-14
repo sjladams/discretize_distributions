@@ -55,11 +55,19 @@ def single_step(
         sign_q, w2_q__disc_q = dd.discretize(q, grid_scheme)
     else:
         # Discretize per component (the old way):
-        grid_schemes = []
-        for i in range(q.num_components):
-            grid_schemes.append(dd_gen.get_optimal_grid_scheme(q.component_distribution[i], num_locs=10))
+        # grid_schemes = []
+        # for i in range(q.num_components):
+        #     grid_schemes.append(dd_gen.get_optimal_grid_scheme(q.component_distribution[i], num_locs=num_locs))
 
-        sign_q, w2_q__disc_q = dd.discretize_gmms_the_old_way(q, grid_schemes)
+        grid_schemes = dd_gen.get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
+            q, 
+            num_locs=num_locs, 
+            prune_factor=0.01, 
+            n_iter=1000,
+            lr=0.01
+        )
+
+        sign_q, w2_q__disc_q = dd.discretize(q, grid_schemes)
 
     if isinstance(sign_q, dd_dists.CategoricalGrid):
         sign_q = sign_q.to_categorical_float()
@@ -102,8 +110,8 @@ def multi_step(
     num_time_steps: int,
     num_samples: int,
     num_locs: int,
+    run_empirical: bool = False
 ):
-        # stores
     w2_p1__q1_store = {-1: dict(w2_p1__q1_global_lipschitz=0.)}
     w2_q__sign_q_store = dict()
     q_store = {-1: {'q1': q}}
@@ -122,7 +130,8 @@ def multi_step(
             p_samples=samples_store[k-1]['p1_samples'],
             w2_p__q_global_lipschitz=w2_p1__q1_store[k-1]['w2_p1__q1_global_lipschitz'],
             num_samples=num_samples,
-            num_locs=num_locs
+            num_locs=num_locs, 
+            run_empirical=run_empirical
         )
 
         w2_p1__q1_store[k] = {key: value for key, value in out.items() if 'w2_p1__q1' in key}
@@ -131,7 +140,7 @@ def multi_step(
         q_store[k] = dict(q1=out['q1'], q=out['q'])
 
         print(
-            f"Bounds on W_2(p_{k+1}, q_{k+1}) via:\n"
+            f"Bounds on W_2(p_{k+1}, q_{k+1}) with len(sup(q_{k+1}))={out['q1'].num_components} via:\n"
             f"\t Global Lipschitz: {out['w2_p1__q1_global_lipschitz']:.4f}\n"
             f"\t Empirical: {out['w2_p1__q1_empirical']:.4f}\n"
         )
@@ -247,7 +256,8 @@ if __name__== '__main__':
         ),
         num_time_steps=3,
         num_samples=100,
-        num_locs=10
+        num_locs=10, 
+        run_empirical=False
     )
 
     xlim, ylim = [-1., 1.], [-1., 1.]
