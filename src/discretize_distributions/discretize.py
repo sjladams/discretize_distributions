@@ -48,6 +48,7 @@ def _discretize(
 
         return locs, probs, w2
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
+        raise NotImplementedError('Implementation to be checked')
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):
             _, probs_component, w2_component = _discretize(dist.component_distribution[i], scheme)
