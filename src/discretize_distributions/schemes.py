@@ -442,6 +442,8 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
             raise ValueError("Number of locations must match the number of partitions.")
         if grid_of_locs.ndim != partition.ndim:
             raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
+        if not equal_axes(grid_of_locs, partition):
+            raise ValueError("Grid of locations and partition must have the same axes (rot_mat, scales, offset).") # TODO this simplifies the implementation of the discretization operations, but could be relaxed
 
         self.grid_of_locs = grid_of_locs
         self.partition = partition
@@ -483,11 +485,11 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
     def __len__(self):
         return len(self.grid_of_locs)
     
-    # def rebase(self, rot_mat: torch.Tensor):
-    #     if not axes_have_common_eigenbasis(self.grid_of_locs, self.partition):
-    #         raise ValueError('we can only rebase if the grid_of_locsa and partition share the same axes')
-
-    #     return Grid.from_axes(self.points_per_dim, axes=super().rebase(rot_mat))
+    def rebase(self, rot_mat: torch.Tensor):
+        return GridScheme(
+            grid_of_locs=self.grid_of_locs.rebase(rot_mat),
+            partition=self.partition.rebase(rot_mat)
+        )
 
 
 class MultiGridScheme(Scheme):
