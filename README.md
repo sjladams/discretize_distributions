@@ -1,3 +1,5 @@
+## TO BE UPDATED ##
+
 # Discretize distributions
 This project provides tools for approximating (mixtures of) multivariate Gaussian distributions with discrete (categorical float) distributions in PyTorch, following Algorithm 2 from [this paper](https://arxiv.org/pdf/2407.18707).
 
