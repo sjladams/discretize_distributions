@@ -17,7 +17,7 @@ TOL = 1e-8
 class Axes:
     def __init__(
         self,
-        ndim_support: int, # TODO make optional
+        ndim_support: int,
         rot_mat: Optional[torch.Tensor] = None, 
         permute_mat: Optional[torch.Tensor] = None,
         scales: Optional[torch.Tensor] = None,
@@ -432,7 +432,7 @@ class Scheme:
     pass 
 
 
-class GridScheme(Scheme):
+class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_locs and partition to share the same axes?
     def __init__(
             self, 
             grid_of_locs: Grid,
@@ -482,6 +482,12 @@ class GridScheme(Scheme):
 
     def __len__(self):
         return len(self.grid_of_locs)
+    
+    # def rebase(self, rot_mat: torch.Tensor):
+    #     if not axes_have_common_eigenbasis(self.grid_of_locs, self.partition):
+    #         raise ValueError('we can only rebase if the grid_of_locsa and partition share the same axes')
+
+    #     return Grid.from_axes(self.points_per_dim, axes=super().rebase(rot_mat))
 
 
 class MultiGridScheme(Scheme):
