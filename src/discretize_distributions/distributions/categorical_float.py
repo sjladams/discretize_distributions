@@ -1,89 +1,66 @@
 import torch
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
-from torch.distributions.utils import probs_to_logits, logits_to_probs, lazy_property, broadcast_all
 
-from discretize_distributions.tensors import kmean_clustering_batches
+from discretize_distributions.utils import kmean_clustering_batches
+from discretize_distributions.schemes import Grid
 
-__all__ = ['CategoricalFloat', 'compress_categorical_floats', 'cross_product_categorical_floats']
+TOL = 1e-8
+
+__all__ = [
+    'CategoricalFloat', 
+    'CategoricalGrid',
+    'compress_categorical_floats', 
+    'cross_product_categorical_floats'
+    ]
 
 
 class CategoricalFloat(Distribution):
-
     arg_constraints = {'probs': constraints.simplex,
                        'locs': constraints.real_vector}
 
-    has_enumerate_support = True
-
-    def __init__(self, probs, locs, validate_args=None):
+    def __init__(
+            self, 
+            locs: torch.Tensor, 
+            probs: torch.Tensor, 
+            validate_args=None
+    ):
+        """ 
+        only accepts single dimensionsl event_shape
         """
-        :param probs: [batch_size, nr_locs]
-        :param locs: [batch_size, nr_locs, event_size] (do not have to be sorted)
-        """
-        self.probs, self.locs = probs.round(decimals=7), locs
-        self.probs = self.probs / self.probs.sum(-1, keepdim=True)
 
-        if self.probs.dtype != self.locs.dtype:
-            raise ValueError('probs and locs types are different')
+        if locs.shape[:-2] != probs.shape[:-1]:
+            raise ValueError('locs and probs must have the same batch shape')
+        if locs.shape[-2] != probs.shape[-1]:
+            raise ValueError('locs and probs must have the same support size')
 
-        batch_shape = self.probs.shape[:-1]
-        nr_batch_dims = len(batch_shape)
-        self._num_component = self.probs.shape[-1]
-        event_shape = self.locs.shape[nr_batch_dims + 1:]
+        self.locs = locs
+        self.probs = probs / probs.sum(-1, keepdim=True)
 
-        if not self.locs.shape[0:nr_batch_dims] == batch_shape:
-            raise ValueError('batch shapes do not match')
-        elif not self.locs.shape[nr_batch_dims] == self._num_component:
-            raise ValueError('number of locs do not match')
+        batch_shape = probs.shape[:-1]
+        event_shape = torch.Size((locs.shape[-1],))
+        self.num_components = probs.shape[-1]
 
-        super(CategoricalFloat, self).__init__(batch_shape=batch_shape, event_shape=event_shape,
-                                               validate_args=validate_args)
-
-    @property
-    def num_components(self):
-        return self._num_component
-
-    @constraints.dependent_property
-    def support(self):
-        return constraints.interval(self.locs.min(), self.locs.max())
-
-    @lazy_property
-    def logits(self):
-        return probs_to_logits(self.probs)
-
-    @property
-    def param_shape(self):
-        return self.probs.size()
+        super(CategoricalFloat, self).__init__(
+            batch_shape=batch_shape, 
+            event_shape=event_shape,
+            validate_args=validate_args
+        )
 
     @property
     def mean(self):
-        if len(self.event_shape) == 0:
-            return torch.einsum('...e,...e->...', self.probs, self.locs)
-        else:
-            return torch.multiply(
-                self.probs.reshape(self.batch_shape + (self.num_components, ) + len(self.event_shape) * (1,)),
-                self.locs
-            ).sum(-len(self.event_shape)-1)
+        return torch.einsum('...i, ...ij->...j', self.probs, self.locs)
 
     @property
     def covariance_matrix(self):
-        if len(self.event_shape) == 0:
-            centered_locs = self.locs - self.mean.unsqueeze(-2)
-            return torch.einsum('...e,...e,...e->...', self.probs, centered_locs, centered_locs)
-        elif len(self.event_shape) == 1:
-            centered_locs = self.locs - self.mean.unsqueeze(-len(self.event_shape) - 1)
-            return torch.einsum('...e,...ei,...ej->...ij', self.probs, centered_locs, centered_locs)
-        else:
-            return None
+        centered_locs = self.locs - self.mean.unsqueeze(-2)
+        return torch.einsum('...e,...ei,...ej->...ij', self.probs, centered_locs, centered_locs)
 
     @property
     def variance(self):
         return torch.diagonal(self.covariance_matrix, dim1=-2, dim2=-1)
 
-    @property
-    def mode(self):
-        return self.probs.argmax(axis=-1)
-
+    @torch.no_grad()
     def sample(self, sample_shape=torch.Size()):
         """
         Generates a sample from the distribution.
@@ -96,18 +73,77 @@ class CategoricalFloat(Distribution):
         elif isinstance(sample_shape, int):
             sample_shape = torch.Size((sample_shape,))
 
-        with torch.no_grad():
-            flat_probs = self.probs.view(-1, self.num_components)
-            indices = torch.multinomial(flat_probs, sample_shape.numel(), replacement=True)
-            flat_locs = self.locs.view(-1, self.num_components, *self.event_shape)
+        flat_probs = self.probs.view(-1, self.num_components)
+        flat_locs = self.locs.view(-1, self.num_components, *self.event_shape)
 
-            batch_indices = torch.arange(flat_probs.size(0), device=indices.device).repeat_interleave(indices.size(1))
-            samples = flat_locs[batch_indices, indices.view(-1)].view(*sample_shape, *self.batch_shape, \
-                                                                      *self.event_shape)
-
-            return samples
+        indices = torch.multinomial(flat_probs, sample_shape.numel(), replacement=True)
+        batch_indices = torch.arange(flat_probs.size(0), device=indices.device).repeat_interleave(indices.size(1))
+        samples = flat_locs[batch_indices, indices.view(-1)]
+        samples = samples.view(*sample_shape, *self.batch_shape, *self.event_shape)
+        return samples
 
 
+class CategoricalGrid(Distribution):
+    _validate_args = False
+
+    def __init__(
+            self, 
+            grid_of_locs: Grid,
+            grid_of_probs: Grid,
+            validate_args=None
+    ):
+        if grid_of_probs.shape != grid_of_locs.shape:
+            raise ValueError("probs grid shape must match locs grid shape (excluding event dim)")
+        if grid_of_probs.ndim_support != grid_of_locs.ndim_support:
+            raise ValueError("probs and locs must have the same number of dimensions")
+        
+        assert torch.allclose(grid_of_probs.rot_mat, torch.eye(grid_of_probs.ndim), atol=TOL), "probs grid should have no rotation"
+
+        self.grid_of_probs = grid_of_probs
+        self.grid_of_locs = grid_of_locs
+
+        # event_shape is the last dimension of locs
+        event_shape = torch.Size((grid_of_probs.ndim,))
+        batch_shape = torch.Size()  # No explicit batch for now
+
+        super().__init__(
+            batch_shape=batch_shape,
+            event_shape=event_shape,
+            validate_args=validate_args
+        )
+
+    def to_categorical_float(self):
+        """
+        Converts the CategoricalGrid to a CategoricalFloat distribution.
+        """
+        return CategoricalFloat(probs=self.probs, locs=self.locs)
+
+    @property
+    def mean(self):
+        raise NotImplementedError
+
+    @property
+    def covariance_matrix(self):
+        raise NotImplementedError
+
+    @property
+    def variance(self):
+        return torch.diagonal(self.covariance_matrix, dim1=-2, dim2=-1)
+
+    @torch.no_grad()
+    def sample(self, sample_shape=torch.Size()):
+        raise NotImplementedError
+
+    @property
+    def probs(self):
+        return self.grid_of_probs.query(slice(None)).prod(dim=-1)  
+    
+    @property
+    def locs(self):
+        return self.grid_of_locs.query(slice(None))
+
+
+### Utility functions for CategoricalFloat distributions --------------------------- ###
 def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
     """
     Compress CategoricalFloat from n support locations to n_max.
@@ -130,7 +166,7 @@ def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
         locs = labels.T @ dist.locs / labels.sum(dim=0).unsqueeze(1)
         probs = labels.T @ dist.probs
 
-    return CategoricalFloat(probs, locs)
+    return CategoricalFloat(locs, probs)
 
 
 def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: CategoricalFloat):
@@ -143,4 +179,4 @@ def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: Categorical
     cross_product_locs = torch.cat((dist0_locs.expand(-1, m, -1), dist_locs.expand(n, -1, -1)), dim=-1).view(-1, d + q)
     cross_product_probs = (dist0.probs.unsqueeze(1) * dist1.probs.unsqueeze(0)).view(-1)
 
-    return CategoricalFloat(probs=cross_product_probs, locs=cross_product_locs)
+    return CategoricalFloat(cross_product_locs, cross_product_probs)

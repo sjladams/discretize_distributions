@@ -1,111 +1,130 @@
 import math
-import os
 import torch
-from typing import List
+from typing import List, Optional, Tuple
+from importlib.resources import files
 
-from .utils import pickle_dump, pickle_load
+from utils import pickle_dump, pickle_load
+import argparse
+import pickle
 
 
-def generate_feasible_combinations(N: int, n: int, max_element_value: int = None):
+with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').open('rb') as f:
+    OPTIMAL_1D_GRIDS = pickle.load(f)
+
+
+def generate_feasible_grid_configs(
+        max_num_locs: int, 
+        num_dims: int, 
+        max_num_locs_per_dim: int = None
+    ) -> Tuple:
     """
-    Generate all non-dominated combinations of n integers whose product is less than or equal to N,
-    with each tuple in reversed order, and with an optional constraint on the maximum value of each element.
+    Generate all non-dominated grid configurations for a given number of dimensions and a maximum total number of locations.
+
+    Each configuration is a tuple of integers, where each integer represents the number of locations in a dimension.
+    The function finds all combinations such that:
+      - The product of the locations per dimension does not exceed `max_num_locs`.
+      - Each dimension has at least as many locations as the previous (non-increasing order).
+      - No configuration is strictly dominated by another (i.e., there is no other configuration with all dimensions 
+        greater than or equal and at least one strictly greater).
 
     Args:
-        N (int): The upper limit on the product of the integers in any combination.
-        n (int): The number of integers in each combination.
-        max_element_value (int, optional): The maximum value for any integer in the combination. Defaults to None.
+        max_num_locs (int): The upper limit on the total number of locations in any configuration (product of 
+                            locations per dimension).
+        num_dims (int): The number of dimensions of the grid.
+        max_num_locs_per_dim (int, optional): The maximum number of locations allowed per dimension. If None, defaults 
+                                              to `max_num_locs`.
 
     Returns:
-        List[tuple]: A list of non-dominated integer combinations, each in reversed order.
+        Tuple[torch.Tensor, torch.Tensor]:
+            - configs: 2D tensor of shape (num_configs, num_dims) with all non-dominated grid configurations.
+            - w2: 2D tensor of shape (num_configs, num_dims) with the corresponding W2 costs for each configuration.
     """
-    results = []  # Store all valid combinations that meet the product requirement
 
-    # Use the smaller of N and max_element_value if max_element_value is provided
-    max_val = min(max_element_value, N) if max_element_value is not None else N
+    max_num_locs_per_dim = max_num_locs if max_num_locs_per_dim is None else min(max_num_locs_per_dim, max_num_locs)
 
-    def backtrack(combination: list, start: int, product: int):
+    configs = []
+    def backtrack(current_config: list, min_locs_per_dim: int, current_product: int):
         """
-        A recursive helper function to generate combinations using backtracking.
+        Recursively generate all possible grid configurations for the given number of dimensions,
+        ensuring non-increasing order of locations per dimension and that the total number of locations
+        does not exceed max_num_locs.
 
         Args:
-            combination (list): The current partial combination being constructed.
-            start (int): The starting integer to consider in this recursion level.
-            product (int): The current product of integers in the combination.
+            current_config (list): The current partial grid configuration (number of locations per dimension).
+            min_locs_per_dim (int): The minimum number of locations to consider for the next dimension (to enforce 
+                                    non-increasing order).
+            current_product (int): The product of the locations in the current configuration (total grid size so far).
         """
-        if len(combination) == n:  # Base case: combination is of length n
-            if product <= N:
-                results.append(tuple(combination[::-1]))  # Add reversed tuple to results if product is within the limit
+        if len(current_config) == num_dims:  # Base case: configuration is complete
+            if current_product <= max_num_locs:
+                configs.append(tuple(current_config[::-1]))  # Store reversed config for consistency
             return
 
-        if product > N:  # Early stopping if the product has exceeded the limit
+        if current_product > max_num_locs:  # Prune branches that exceed the total allowed locations
             return
 
-        # Generate further combinations by increasing the current number
-        for i in range(start, max_val + 1):
-            if product * i > N:
-                break  # Stop if the next product will exceed N
-            backtrack(combination + [i], i, product * i)
+        # Try adding more locations to the current dimension, maintaining non-increasing order
+        for locs in range(min_locs_per_dim, max_num_locs_per_dim + 1):
+            if current_product * locs > max_num_locs:
+                break  # Further increases will only exceed the limit
+            backtrack(current_config + [locs], locs, current_product * locs)
 
-    backtrack([], 1, 1)  # Start the recursion with an empty combination and product 1
+    backtrack([], 1, 1)
 
-    # Filter out strictly dominated combinations
-    filtered_results = []
-    for comb in results:
+    filtered_configs = []
+    w2s = []
+    for comb in configs:
         is_dominated = False
-        for other in results:
+        for other in configs:
             if all(o >= c for o, c in zip(other, comb)) and any(o > c for o, c in zip(other, comb)):
                 is_dominated = True  # Check if 'comb' is dominated by 'other'
                 break
         if not is_dominated:
-            filtered_results.append(comb)  # Include only non-dominated combinations
+            filtered_configs.append(comb)  # Include only non-dominated combinations
+            w2s.append(get_w2_config(comb))  # Store the corresponding W2 config
 
-    return filtered_results
+    filtered_configs = torch.tensor(filtered_configs, dtype=torch.long)
+    w2s = torch.tensor(w2s, dtype=torch.float)
+
+    return filtered_configs, w2s
 
 
-def generate_lookup_grid_config(num_loc_options: List, tag: str):
-    path_to_lookup_opt_grid_uni_norm = f".{os.sep}data{os.sep}lookup_opt_grid_uni_normal"
-    path_to_lookup_grid_config = f".{os.sep}data{os.sep}{tag}"
+def get_w2_config(config: Tuple):
+    return tuple([OPTIMAL_1D_GRIDS['w2'][int(num_locs_per_dim)] for num_locs_per_dim in config])
 
-    if not os.path.exists(f"{path_to_lookup_opt_grid_uni_norm}.pickle"):
-        raise FileNotFoundError(f"Could not find the lookup table for the optimal grid of an univariate Normal "
-                                f"distribution at location {path_to_lookup_opt_grid_uni_norm}")
-    else:
-        optimal_1d_grids = pickle_load(path_to_lookup_opt_grid_uni_norm)
 
-    max_size_1d_grid = max(list(optimal_1d_grids['w2'].keys()))
+def generate_grid_configs(num_locs_options: List):
+    max_num_locs_per_dim = max(list(OPTIMAL_1D_GRIDS['w2'].keys()))
 
-    if max(num_loc_options) > max_size_1d_grid:
-        print(f"WARNING - the lookuptable for the optimal 1d grid only contains 1d-grids up to size {max_size_1d_grid},"
-              f" whereas the nr_loc_options allows for grids of size {max(num_loc_options)}. Hence, the wasserstein "
-              f"distance for dimensions of grids with more than {max_size_1d_grid} signature locations are saturated at"
-              f" {max_size_1d_grid}")
+    table = dict()
+    for num_locs in num_locs_options: # TODO fix strange behaviro at num_locs=1
+        table[num_locs] = dict()
+        print(f'num_locs: {num_locs}')
 
-    if not os.path.exists(f"{path_to_lookup_grid_config}.pickle"):
-        store = dict()
-        for nr_locs in num_loc_options:
-            store[nr_locs] = dict()
-            print(f'N: {nr_locs}')
+        # Set the number of dimensions so that if each dimension had 2 locations, their product would 
+        # equal num_locs (i.e., 2**num_dims = num_locs):
+        num_dims = max(1, int(math.log2(num_locs)))
 
-            max_nr_dims = int(math.log2(nr_locs))  # Setting 'n' as log2(N) to limit the number of factors reasonably
+        configs, w2s = generate_feasible_grid_configs(
+            max_num_locs=num_locs, 
+            num_dims=num_dims,   
+            max_num_locs_per_dim=max_num_locs_per_dim
+        )
+        table[num_locs] = dict(configs=configs, w2=w2s)
 
-            store[nr_locs]['configs'] = generate_feasible_combinations(N=nr_locs, n=max_nr_dims,
-                                                                       max_element_value=max_size_1d_grid)
-
-            costs = list()
-            for config in store[nr_locs]['configs']:
-                config = torch.tensor(config, dtype=torch.long)
-                # saturate at costs of max 1d-grid size vailable
-                config = config.clip(0, max_size_1d_grid)
-                cost = [optimal_1d_grids['w2'][int(nr_locs_per_dim)] for nr_locs_per_dim in config]
-                costs.append(tuple(cost))
-            store[nr_locs]['costs'] = costs
-
-        pickle_dump(store, path_to_lookup_grid_config)
+    return table
 
 
 if __name__ == '__main__':
-    generate_lookup_grid_config(num_loc_options=[1, 10, 100], tag="lookup_grid_config_NEW")
+    parser = argparse.ArgumentParser(description="Generate lookup grid configuration.")
+    parser.add_argument('--num_locs_options', type=int, nargs='+', default=[1, 10, 100, 1000],
+                        help='List of location options (e.g., --num_locs_options 1 10 100)')
+    parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
+    args = parser.parse_args()
 
+    lookup_table = generate_grid_configs(num_locs_options=args.num_locs_options)
 
+    path = str(files('discretize_distributions.data').joinpath(f'grid_configs{args.tag}.pickle'))
+
+    pickle_dump(lookup_table, path)
 

@@ -1,86 +1,144 @@
 import torch
 import discretize_distributions as dd
-from discretize_distributions.utils import calculate_w2_disc_uni_stand_normal
-from discretize_distributions.discretize import GRID_CONFIGS, OPTIMAL_1D_GRIDS
-from discretize_distributions.grid import Grid
+
+import discretize_distributions.schemes as dd_schemes
+import discretize_distributions.distributions as dd_dists
+import discretize_distributions.generate_scheme as dd_gen
 
 from matplotlib import pyplot as plt
+from plot import *
+
 
 if __name__ == "__main__":
-    # test discretization of multivariate normal distribution via grids
-    grid  = Grid([torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])])
-    grid2 = Grid.from_shape((5, 3), torch.tensor([[0., 1.], [0., 4.]]))
+    torch.manual_seed(3)
+    print(dd.info)
 
-    norm = dd.MultivariateNormal(loc=torch.zeros(2), covariance_matrix=torch.diag(torch.tensor([1.,2.])))
-    locs, probs, w2 = dd.discretize_multi_norm_dist(norm, grid=grid)
+    ## Test Optimal 1d grid MultivariateNormal distribution
+    mean = torch.tensor([-5., -5.])
+    cov_mat = torch.diag(torch.tensor([3.,1.]))
+    norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
+    domain = dd_schemes.Cell(
+        lower_vertex=torch.tensor([-1.0, -1.0]),
+        upper_vertex=torch.tensor([1.0, 1.0]),
+        offset=norm.loc,
+        rot_mat=norm.eigvecs,
+        scales=norm.eigvals_sqrt
+    )
 
-    # # Visually check MultivariateNormal implementation for degenerate example
-    # norm = torch.distributions.MultivariateNormal(
-    #     loc=torch.ones(2),
-    #     covariance_matrix=torch.tensor([[1., 1.], [1., 1.]])
-    # )
-    # samples_norm = norm.sample((1000,))
-    # grid = torch.meshgrid(torch.linspace(-3, 3, 100), torch.linspace(-3, 3, 100), indexing='ij')
-    # values = torch.stack(grid, dim=-1)
-    # prob = norm.log_prob(values.view(-1, 2)).exp().view(100, 100)
-    #
-    # fig, ax = plt.subplots(1,2, figsize=(10,5))
-    # ax[0].hist2d(samples_norm[:,0], samples_norm[:,1], density=True)
-    # ax[0].set_title('Sampled based approximation of PDF')
-    # ax[1].pcolormesh(*grid, prob, shading='auto', cmap='viridis')
-    # ax[1].set_title('PDF')
+    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(
+        norm,
+        num_locs=100, 
+        domain=domain
+    )
+
+    optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, optimal_disc_norm)
+    ax = plot_2d_cell(ax, domain)
+    ax = set_axis(ax, xlims=(-10, 1), ylims=(-10, 1))
+    ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
+    plt.show()
+
+    ### --- test discretization of multivariate normal distribution ------------------------------------------------ ###
+    mean = torch.tensor([0., 0.])
+    cov_mat = torch.diag(torch.tensor([1.,5.]))
+    norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
+
+    ## via self constructed grid scheme
+    grid_locs = dd_schemes.Grid(
+        points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)], 
+        rot_mat=norm.eigvecs, 
+        scales=norm.eigvals_sqrt,
+        offset=norm.mean
+    )
+
+    grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
+    grid_scheme = dd_schemes.GridScheme(grid_locs, grid_partition)
+
+    disc_norm, w2 = dd.discretize(norm, grid_scheme)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, disc_norm)
+    ax = set_axis(ax)
+    ax.set_title(f'Self constructed grid (2-Wasserstein distance: {w2:.2f})')
+
+    ## via grid scheme with optimal grid configuration
+    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(norm, num_locs=10)
+
+    optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, optimal_disc_norm)
+    ax = set_axis(ax)
+    ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
+
+    ### --- test mixture distributions ----------------------------------------------------------------------------- ###
+    num_dims = 2
+    num_mix_elems = 2
+    setting = "close"
+    
+    options = dict(
+        overlapping=dict(
+            loc=torch.zeros((num_mix_elems, num_dims)),
+            covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, num_dims)))
+        ),
+        random=dict(
+            loc=torch.randn((num_mix_elems, num_dims)),
+            covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
+        ),
+        close=dict(
+            loc=torch.tensor([[0.1, 0.1], [-0.1,-0.1]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[1., 3.], [3., 1.]]))
+        )
+    )
+
+    component_distribution = dd_dists.MultivariateNormal(**options[setting])
+    mixture_distribution = torch.distributions.Categorical(probs=
+                                                        #    torch.rand((num_mix_elems,))
+                                                           torch.tensor([0.001, 1.])
+                                                           )
+    gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+
+    ## Discretize per component (the old way):
+    grid_schemes = []
+    for i in range(num_mix_elems):
+        grid_schemes.append(dd_gen.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+
+    disc_gmm, w2 = dd.discretize(gmm, grid_schemes)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = set_axis(ax)
+    ax.set_title(f'Per component (2-Wasserstein distance: {w2:.2f})')
+
+    # ## Discretize the whole GMM at once:
+    # disc_gmm, w2 = dd.discretize(gmm, grid_schemes[0])
+
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat_float(ax, disc_gmm)
+    # ax = set_axis(ax)
+    # ax.set_title(f'At once (2-Wasserstein distance: {w2:.2f})')
+
     # plt.show()
 
-    # test wasserstein distances
-    num_locs = 10
-    locs = OPTIMAL_1D_GRIDS['locs'][num_locs]
-    w2 = calculate_w2_disc_uni_stand_normal(locs)
-    w2_formal = OPTIMAL_1D_GRIDS['w2'][num_locs]
+    ### -- Degenerate Gaussians ------------------------------------------------------------------------------------ ###
+    mean = torch.randn(2)
+    cov_mat = torch.ones((2,2))
+    norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
 
-    # test mixture
-    batch_size = torch.Size()
-    num_dims = 2
-    num_mix_elems = 5
-    component_distribution = dd.MultivariateNormal(
-        loc=torch.randn(batch_size + (num_mix_elems, num_dims)),
-        covariance_matrix=torch.diag_embed(torch.rand(batch_size + (num_mix_elems, num_dims))))
-    mixture_distribution = torch.distributions.Categorical(probs=torch.rand(batch_size + (num_mix_elems,)))
-    gmm = dd.MixtureMultivariateNormal(mixture_distribution, component_distribution)
-    first_elem_gmm = gmm[0]
+    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(norm, num_locs=10)
 
-    gmm = dd.compress_mixture_multivariate_normal(gmm, n_max=3)
+    optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
 
-    # -- Create the optimal signature with a grid configuration from a multivariate Normal distribution: ---------------
-    nr_dims = 2
-    batch_size = (2, 1)
-
-    # example 1: identical batches of 2d Gaussians with diagonal covariance matrices
-    mean = torch.zeros(nr_dims).unsqueeze(0).expand(batch_size + (nr_dims,))
-    variance = torch.linspace(1, 3, nr_dims).expand(batch_size + (nr_dims,))
-
-    # diag_mult_norm = dd.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
-    diag_mult_norm = torch.distributions.MultivariateNormal(loc=mean, precision_matrix=torch.diag_embed(variance.reciprocal()))
-    disc_diag_mult_norm = dd.discretization_generator(diag_mult_norm, num_locs=10)
-    print(f'induced 2-wasserstein distance: {disc_diag_mult_norm.w2}')
-
-    # example 2: d gaussians with full covariance matrix
-    sqrt_cov_mat = torch.tensor([[1., 0.5], [0., 1.]])
-    cov_mat = sqrt_cov_mat @ sqrt_cov_mat.swapaxes(-1, -2)
-    cov_mat = cov_mat.unsqueeze(0).expand(batch_size + (nr_dims, nr_dims))
-
-    mult_norm = dd.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
-    disc_mult_norm = dd.discretization_generator(mult_norm, num_locs=10)
-    print(f'induced 2-wasserstein distance: {disc_mult_norm.w2}')
-
-    # example 3: discretization with outer shell
-    disc_diag_mult_norm_outer_shell = dd.discretization_generator(diag_mult_norm, num_locs=10)
-    print(f'induced 2-wasserstein distance: {disc_diag_mult_norm_outer_shell.w2}')
-
-    # example 4: higher dimensions
-    nr_dims = 9
-    mean = torch.zeros(nr_dims).unsqueeze(0).expand(batch_size + (nr_dims,))
-    variance = torch.cat((torch.ones(1), torch.ones(nr_dims - 1) * 0.001)).unsqueeze(0).expand(batch_size + (nr_dims,))
-
-    diag_mult_norm = dd.MultivariateNormal(loc=mean, covariance_matrix=torch.diag_embed(variance))
-    disc_diag_mult_norm = dd.discretization_generator(diag_mult_norm, num_locs=10)
-    print(f'induced 2-wasserstein distance: {disc_diag_mult_norm.w2}')
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax = plot_2d_dist(ax, norm)
+    ax = plot_2d_cat_float(ax, optimal_disc_norm)
+    ax = set_axis(ax)
+    ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
+    plt.show()

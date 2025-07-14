@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="discretize_distributions",
-    version="1.0.1",
+    version="2.1.0.dev",
     author="Steven Adams",
     author_email="stevenjladams@gmail.com",
     description="Signatures of Probability Distributions",
@@ -24,7 +24,6 @@ setuptools.setup(
         'torch>=1.13.1',
         'torch-kmeans>=0.2.0',
         'xitorch>=0.3.0',
-        'numpy',
         'stable-trunc-gaussian>=1.3.9',
         'tqdm'
     ],
