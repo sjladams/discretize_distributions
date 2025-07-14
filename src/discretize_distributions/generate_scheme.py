@@ -146,7 +146,7 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     n_iter: int = 500,
     lr: float = 0.01
 ) -> dd_schemes.MultiGridScheme:
-    if not utils.have_common_eigenbasis(
+    if not utils.have_common_eigenbasis( # TODO use dd_schemes.axes_have_common_eigenbasis
         gmm.component_distribution.covariance_matrix, 
         gmm.component_distribution[0].covariance_matrix.unsqueeze(0).repeat(gmm.num_components, 1, 1),
         atol=TOL
