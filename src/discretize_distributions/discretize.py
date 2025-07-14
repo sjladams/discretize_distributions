@@ -29,6 +29,7 @@ def _discretize(
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         return discretize_multi_norm_using_grid_scheme(dist, scheme)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
+        raise NotImplementedError('Implementation to be checked')
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
         for i in range(len(scheme.grid_schemes)):
             locs_component, probs_component, w2_component = _discretize(dist, scheme.grid_schemes[i])
@@ -48,7 +49,6 @@ def _discretize(
 
         return locs, probs, w2
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
-        raise NotImplementedError('Implementation to be checked')
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):
             _, probs_component, w2_component = _discretize(dist.component_distribution[i], scheme)
