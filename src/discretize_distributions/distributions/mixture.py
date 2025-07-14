@@ -29,14 +29,40 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
             validate_args=validate_args
         )
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index):
         """
-        Get component distribution at index.
+        Get component distribution(s) at index.
+        
+        Args:
+            index: Can be an int or tensor of indices
+                  - int: Returns a single MultivariateNormal component
+                  - tensor: Returns a new MixtureMultivariateNormal with selected components
+        
+        Returns:
+            MultivariateNormal (for int index) or MixtureMultivariateNormal (for tensor index)
         """
-        return MultivariateNormal(
-            loc=self.component_distribution.loc.select(-len(self.event_shape)-1, index),
-            covariance_matrix=self.component_distribution.covariance_matrix.select(-2 * len(self.event_shape)-1, index)
-        )
+        if isinstance(index, int):
+            # Original behavior for single component access
+            return MultivariateNormal(
+                loc=self.component_distribution.loc.select(-len(self.event_shape)-1, index),
+                covariance_matrix=self.component_distribution.covariance_matrix.select(-2 * len(self.event_shape)-1, index)
+            )
+        elif isinstance(index, torch.Tensor) and index.dtype == torch.long:
+            dim = -len(self.event_shape) - 1
+            selected_loc = torch.index_select(self.component_distribution.loc, dim, index)
+            selected_cov = torch.index_select(self.component_distribution.covariance_matrix, 
+                                            -2 * len(self.event_shape) - 1, index)
+            selected_probs = torch.index_select(self.mixture_distribution.probs, -1, index)
+            
+            # Renormalize probabilities
+            selected_probs = selected_probs / selected_probs.sum(dim=-1, keepdim=True)
+            
+            return MixtureMultivariateNormal(
+                mixture_distribution=torch.distributions.Categorical(probs=selected_probs),
+                component_distribution=MultivariateNormal(loc=selected_loc, covariance_matrix=selected_cov)
+            )
+        else:
+            raise TypeError(f"Index must be int or tensor of indices, got {type(index)}")
 
     @property
     def covariance_matrix(self):
@@ -102,7 +128,7 @@ def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max:
 
                 return MixtureMultivariateNormal(
                     mixture_distribution=torch.distributions.Categorical(probs=dist.mixture_distribution.probs.squeeze(-1)),
-                    component_distribution=dist[0]
+                    component_distribution=dist.component_distribution
                 )
             else:
                 return _collapse(dist)
