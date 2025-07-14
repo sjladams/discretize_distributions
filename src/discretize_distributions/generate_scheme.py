@@ -72,7 +72,7 @@ def get_optimal_grid_scheme_for_multivariate_normal(
 
     grid_of_locs = dd_schemes.Grid.from_axes(locs_per_dim, axes=norm_to_axes(norm))
 
-    print(f'Requested grid size: {num_locs}, realized grid size over domain: {len(grid_of_locs)}')
+    # print(f'Requested grid size: {num_locs}, realized grid size over domain: {len(grid_of_locs)}')
 
     partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
 
