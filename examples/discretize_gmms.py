@@ -46,12 +46,11 @@ def get_scheme_from_domain(domain, point):
     return dd_schemes.GridScheme(grid_of_locs, partition)
 
 if __name__ == "__main__":
-
     torch.manual_seed(3)
 
     num_dims = 2
-    num_mix_elems = 2
-    setting = "bimodal"
+    num_mix_elems = 20
+    setting = "random"
     
     options = dict(
         overlapping=dict(
@@ -78,31 +77,48 @@ if __name__ == "__main__":
     mixture_distribution = torch.distributions.Categorical(probs=torch.ones(num_mix_elems) / num_mix_elems)
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    scheme = dd_gen.get_optimal_grid_scheme_for_multivariate_normal_mixture(
+    # # Discretize locally
+    # scheme = dd_gen.get_optimal_grid_scheme_for_multivariate_normal_mixture(
+    #     gmm, 
+    #     num_locs=10, 
+    #     prune_factor=0.01, 
+    #     local_domain_prob=0.999, 
+    #     n_iter=1000,
+    #     lr=0.01
+    # )
+
+    # disc_gmm, w2 = dd.discretize(gmm, scheme)
+
+    # grid_schemes = scheme.grid_schemes
+    # domains = [elem.domain for elem in scheme.grid_schemes]
+
+    # fig, ax = plt.subplots(figsize=(8, 8))
+    # ax = plot_2d_dist(ax, gmm)
+    # ax = plot_2d_cat_float(ax, disc_gmm)
+    # for i in range(len(grid_schemes)):
+    #     ax = plot_2d_cell(ax, grid_schemes[i].domain)
+    # ax.plot(scheme.outer_loc[0], scheme.outer_loc[1], 'co', markersize=10, label='Outer loc')
+    # ax = set_axis(ax)
+    # ax.legend()
+    # ax.set_title(f'(New) 2-Wasserstein distance: {w2:.2f})')
+    # plt.show()
+
+    # Discretize per mode:
+    list_of_schemes = dd_gen.get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
         gmm, 
         num_locs=10, 
         prune_factor=0.01, 
-        local_domain_prob=0.999, 
         n_iter=1000,
         lr=0.01
     )
 
-    disc_gmm, w2 = dd.discretize(gmm, scheme)
-
-    # Plotting
-
-    grid_schemes = scheme.grid_schemes
-    domains = [elem.domain for elem in scheme.grid_schemes]
+    disc_gmm, w2 = dd.discretize(gmm, list_of_schemes)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat_float(ax, disc_gmm)
-    for i in range(len(grid_schemes)):
-        ax = plot_2d_cell(ax, grid_schemes[i].domain)
-    ax.plot(scheme.outer_loc[0], scheme.outer_loc[1], 'co', markersize=10, label='Outer loc')
     ax = set_axis(ax)
-    ax.legend()
-    ax.set_title(f'(New) 2-Wasserstein distance: {w2:.2f})')
+    ax.set_title(f'Mode-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm.num_components})')
     plt.show()
 
     # Discretize per component (the old way):
@@ -116,7 +132,7 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat_float(ax, disc_gmm)
     ax = set_axis(ax)
-    ax.set_title(f'(Old) Component-wise (2-Wasserstein distance: {w2:.2f})')
+    ax.set_title(f'(Old) Component-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm.num_components})')
     plt.show()
 
 
