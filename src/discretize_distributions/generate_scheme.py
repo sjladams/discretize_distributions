@@ -137,6 +137,44 @@ def get_optimal_grid_config(
 
 
 ### --- Mixtures of Multivariate Gaussians ------------------------------------------------------------------------- ###
+def get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
+    gmm: dd_dists.MixtureMultivariateNormal,
+    num_locs: int = 10, 
+    prune_factor: float = 0.5,
+    n_iter: int = 500,
+    lr: float = 0.01, 
+    max_init_points: int = 100
+) -> list[dd_schemes.GridScheme]:
+    modes = find_modes_gradient_ascent(
+        gmm, 
+        init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))], 
+        n_iter=n_iter,
+        lr=lr,
+    )
+
+    prune_tol = default_prune_tol(gmm, factor=prune_factor)
+    modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
+
+    eigenbasis = gmm.component_distribution[0].eigvecs
+    grid_schemes = list()
+    for mode in modes:
+        cov = local_gaussian_covariance(gmm, mode)
+
+        # project to the eigenbasis (to compute the W2 w.r.t the gmm, all local_domains should have: rot_mat = eigenbasis):
+        eigvals = torch.diagonal(torch.einsum('ij,jk,kl->il', eigenbasis.swapaxes(-1, -2), cov, eigenbasis))
+        cov = torch.einsum('ij,j,jk->ik', eigenbasis, eigvals, eigenbasis.swapaxes(-1, -2))
+
+        local_norm = dd_dists.MultivariateNormal(
+            loc=mode, 
+            covariance_matrix=cov, 
+            eigvals=eigvals, 
+            eigvecs=eigenbasis
+        )
+        grid_schemes.append(get_optimal_grid_scheme(local_norm, num_locs=num_locs))
+    
+    return grid_schemes
+
+
 def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     gmm: dd_dists.MixtureMultivariateNormal,
     domain: Optional[dd_schemes.Cell] = None,
@@ -144,7 +182,8 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
     prune_factor: float = 0.5, 
     local_domain_prob : float = 0.99,
     n_iter: int = 500,
-    lr: float = 0.01
+    lr: float = 0.01,
+    max_init_points: int = 100
 ) -> dd_schemes.MultiGridScheme:
     if not utils.have_common_eigenbasis( # TODO use dd_schemes.axes_have_common_eigenbasis
         gmm.component_distribution.covariance_matrix, 
@@ -160,7 +199,7 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
 
     modes = find_modes_gradient_ascent(
         gmm, 
-        init_points=torch.randn(min(gmm.num_components, 20), gmm.event_shape[0]), 
+        init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))],  
         n_iter=n_iter,
         lr=lr,
     )

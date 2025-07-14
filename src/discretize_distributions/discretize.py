@@ -60,21 +60,27 @@ def _discretize(
     elif (isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, list) and 
           len(scheme) > 0 and isinstance(scheme[0], dd_schemes.GridScheme)):
 
-        if not dist.num_components == len(scheme):
+        if not dist.num_components >= len(scheme):
             raise ValueError(
-                f'Number of components {dist.num_components} does not match number of grid schemes {len(scheme)}.'
+                f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
             )
         assert all([elem.partition.domain_spanning_Rn for elem in scheme]), \
-            'All grid schemes must span the full R^n domain.'
+            'All grid schemes must span the full R^n domain.' 
+        
+        scheme_per_gmm_comp = torch.cdist(
+            torch.stack([elem.grid_of_locs.offset for elem in scheme], dim=0),
+            dist.component_distribution.loc, p=2
+        ).argmin(dim=0)
         
         probs, locs, w2_sq = [], [], torch.tensor(0.)
-        for i in range(dist.num_components):
-            disc_component, w2_component = discretize(
-                dist.component_distribution[i], scheme[i]
-            )
-            probs.append(disc_component.probs * dist.mixture_distribution.probs[i])
-            locs.append(disc_component.locs)
-            w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
+        for i in range(len(scheme)):
+            indices = torch.where(scheme_per_gmm_comp==i)[0]
+            prob_scheme = dist.mixture_distribution.probs[indices].sum()
+            disc_scheme, w2_scheme = discretize(dist[indices], scheme[i])
+
+            probs.append(disc_scheme.probs * prob_scheme)
+            locs.append(disc_scheme.locs)
+            w2_sq += w2_scheme.pow(2) * prob_scheme
 
         probs = torch.cat(probs, dim=0)
         locs = torch.cat(locs, dim=0)
