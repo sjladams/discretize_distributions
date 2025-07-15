@@ -469,8 +469,8 @@ if __name__ == "__main__":
 
     seed_everything(3)
     num_dims = 2
-    num_mix_elems = 5
-    setting = "test1"
+    num_mix_elems = 4
+    setting = "test2"
 
     options = dict(
         test1=dict(
@@ -488,8 +488,8 @@ if __name__ == "__main__":
     )
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
-                                                           # torch.tensor([.2, .5, .6, .7])  # test 2
-                                                            torch.tensor([.2, .5, .6, .7, .5])  # test 1
+                                                           torch.tensor([.2, .5, .6, .7])  # test 2
+                                                            # torch.tensor([.2, .5, .6, .7, .5])  # test 1
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
@@ -537,11 +537,18 @@ if __name__ == "__main__":
     # grid_scheme = dd_schemes.GridScheme(grid, new_partition)
 
     # uniform grid
+    # test 1 setup
+    # domain = dd_schemes.Cell(
+    #     lower_vertex=torch.tensor([-5, -5]),
+    #     upper_vertex=torch.tensor([5, 5])
+    # )
+    # shape = torch.Size([10, 10])
+    # test 2
     domain = dd_schemes.Cell(
         lower_vertex=torch.tensor([-10, -10]),
         upper_vertex=torch.tensor([10, 10])
     )
-    shape = torch.Size([10, 10])
+    shape = torch.Size([20, 10])
     grid_uniform = dd_schemes.Grid.from_shape(shape, domain)
     new_partition = dd_schemes.GridPartition.from_grid_of_points(grid_uniform)
     grid_scheme = dd_schemes.GridScheme(grid_uniform, new_partition)
@@ -565,7 +572,7 @@ if __name__ == "__main__":
     plt.show()
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    plot_disc_per_component_contours_2d(ax, disc_gmm, grid_schemes, gmm_params, bounds=bounds)
+    plot_disc_per_component_contours_2d(ax, disc_gmm, grid_schemes, gmm_params)
     plt.legend(fontsize=14)
     # plt.savefig(f'baseline_tests/{setting}/per_component_contours_2d.svg')
     plt.show()
@@ -573,7 +580,7 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(8, 8))
     plot_disc_grid_contours_2d(ax, disc_, gmm_params)
     plt.legend(fontsize=14)
-    plt.savefig(f'baseline_tests/{setting}/one_grid_uniform_contours_2d.svg')
+    # plt.savefig(f'baseline_tests/{setting}/one_grid_uniform_contours_2d.svg')
     plt.show()
 
     print(f'W2 (MultiGridScheme from dbscan_shells): {w2_mix.item()}')

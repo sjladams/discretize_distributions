@@ -140,17 +140,18 @@ def plot_disc_grid_contours_2d(ax, disc, gmm_params, bounds = (-15, 15, -15, 15)
     return ax
 
 
-def plot_alg_shells(ax, clusters, disc_mix, mix_grid, gmm_params, bounds=(-15, 15, -15, 15), shell=True):
+def plot_alg_shells(ax, gmm, clusters, disc_mix, mix_grid, gmm_params, bounds=(-15, 15, -15, 15), shell=True):
     locs = disc_mix.locs.detach().numpy()
     probs = disc_mix.probs.detach().numpy()
     ax_x, bx, ay, by = bounds
     colors = ['green', 'orange']
+    samples = gmm.sample((150,))
+    # clusters
+    # for i, cluster_points in enumerate(clusters):
+    #     cluster_np = cluster_points.detach().cpu().numpy()
+    #     ax.scatter(cluster_np[:, 0], cluster_np[:, 1], color=colors[i % len(colors)], s=10)
 
-    for i, cluster_points in enumerate(clusters):
-        cluster_np = cluster_points.detach().cpu().numpy()
-        # ax.scatter(cluster_np[:, 0], cluster_np[:, 1], color=colors[i % len(colors)], s=10)
-
-
+    # shells
     for i, gs in enumerate(mix_grid.grid_schemes):
         color = colors[i % len(colors)]
         # domain
@@ -166,7 +167,7 @@ def plot_alg_shells(ax, clusters, disc_mix, mix_grid, gmm_params, bounds=(-15, 1
         rect = plt.Rectangle(lower_vertex, width, height, alpha=0.8, facecolor='none', edgecolor=color, linewidth=3)
         # rect = plt.Rectangle(lower_vertex, width, height,
         #                      fill='white', alpha=0.5, edgecolor='blue', linewidth=3, zorder=0)
-        ax.add_patch(rect)
+        # ax.add_patch(rect)
 
     K, pi, mu, Sigma = gmm_params
     n = 200
@@ -177,32 +178,34 @@ def plot_alg_shells(ax, clusters, disc_mix, mix_grid, gmm_params, bounds=(-15, 1
     X, Y = np.meshgrid(x, y)
     grid = np.vstack([X.ravel(), Y.ravel()]).T
 
-    # Z = densite_theorique2d(mu, Sigma, pi, grid).reshape(X.shape)
+    Z = densite_theorique2d(mu, Sigma, pi, grid).reshape(X.shape)
 
-    # ax.contour(X, Y, Z, levels=12, cmap='plasma')
-    # ax.scatter(samples[:, 0], samples[:, 1], c='red', s=10)
+    # full gmm contours
+    ax.contour(X, Y, Z, levels=12, cmap='plasma')
+    ax.scatter(samples[:, 0], samples[:, 1], c='red', s=10)
 
+    # separate contours per component
     for i, (mu_i, Sigma_i, pi_i, color) in enumerate(zip(mu, Sigma, pi, colors)):
         Z_i = densite_theorique2d(mu_i[None], Sigma_i[None], pi_i[None], grid).reshape(X.shape)
         # ax.contour(X, Y, Z_i, levels=12, colors=color)
 
-    offset = 0
-    for i, (gs, color) in enumerate(zip(mix_grid.grid_schemes, colors)):
-        num_points = gs.locs.points.shape[0]
-        ax.scatter(
-            locs[offset:offset + num_points, 0],
-            locs[offset:offset + num_points, 1],
-            c=color,
-            s=probs[offset:offset + num_points] * 1000,
-            alpha=0.8,
-            label=f'Grid points {i + 1}'
-        )
-        offset += num_points
+    # clusters per component
+    # offset = 0
+    # for i, (gs, color) in enumerate(zip(mix_grid.grid_schemes, colors)):
+    #     num_points = gs.locs.points.shape[0]
+    #     ax.scatter(
+    #         locs[offset:offset + num_points, 0],
+    #         locs[offset:offset + num_points, 1],
+    #         c=color,
+    #         s=probs[offset:offset + num_points] * 1000,
+    #         alpha=0.8,
+    #         label=f'Grid points {i + 1}'
+    #     )
+    #     offset += num_points
     # ax.scatter(locs[:-1, 0], locs[:-1, 1],
     #            c='blue', s=probs[:-1] * 1000, alpha=0.8, label='Grid points')
-
-    ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
-               c='red', marker='o', s=probs[-1] * 1000, label='Outer loc (z)')
+    # ax.scatter(locs[-1, 0], locs[-1, 1],  # outer loc is added at the end of locs tensor
+    #            c='red', marker='o', s=probs[-1] * 1000, label='Outer loc (z)')
 
     # ax.legend()
     ax.set_xlim(ax_x, bx)
@@ -479,7 +482,7 @@ if __name__ == "__main__":
 
     seed_everything(3)
     num_dims = 2
-    num_mix_elems = 2
+    num_mix_elems = 3
     setting = "close"
 
     options = dict(
@@ -492,8 +495,8 @@ if __name__ == "__main__":
             covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
         ),
         close=dict(
-            loc=torch.tensor([[5, -3.0], [-3, 4]]),
-            covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [3., 1.]]))
+            loc=torch.tensor([[5, -5.0], [0.0, 6], [-3, 2]]),
+            covariance_matrix=torch.diag_embed(torch.tensor([[3., 1.], [3, 1], [3., 1.]]))
         ),
         #     loc=torch.tensor([[5, -5.0], [0.0, 6], [-3, 2]]),
         #[[5, -3.0], [-3, 4]]
@@ -542,7 +545,7 @@ if __name__ == "__main__":
     component_distribution = dd_dists.MultivariateNormal(**options[setting])
     mixture_distribution = torch.distributions.Categorical(probs=
                                                            # torch.rand((num_mix_elems,))
-                                                           torch.tensor([.5, .5])  # close
+                                                           torch.tensor([.5, .5, .5])  # close
                                                            # torch.tensor([.5, .5, .5, .5])  # spread
                                                            #  torch.tensor([.2, .5, .6, .7])  # test 2
                                                             # torch.tensor([.2, .5, .6, .7, .5])  # test 1
@@ -680,7 +683,7 @@ if __name__ == "__main__":
     # plt.show()
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    plot_alg_shells(ax, clusters, disc_mix, mix_grid, gmm_params, shell=True, bounds=(-10, 12, -10, 10))
-    # plt.savefig(f'visuals/shell_alg_step6.svg')
+    plot_alg_shells(ax, gmm, clusters, disc_mix, mix_grid, gmm_params, shell=True, bounds=(-10, 12, -10, 10))
+    plt.savefig(f'visuals/shell_alg_step1.svg')
     plt.show()
 
