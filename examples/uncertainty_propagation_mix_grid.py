@@ -127,7 +127,8 @@ def multi_step(
             p_samples=samples_store[k-1]['p1_samples'],
             w2_p__q_global_lipschitz=w2_p1__q1_store[k-1]['w2_p1__q1_global_lipschitz'],
             num_samples=num_samples,
-            num_locs=num_locs
+            num_locs=num_locs,
+            run_empirical=True
         )
 
         w2_p1__q1_store[k] = {key: value for key, value in out.items() if 'w2_p1__q1' in key}
@@ -251,7 +252,7 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
 
                 ax.scatter(data[:, 0], data[:, 1], color=color, s=16, alpha=0.5)
                 center_x, center_y = data[:, 0].mean() - 0.05, data[:, 1].mean() + 0.1
-                # ax.text(center_x, center_y, f'$t_{{{k + 1}}}$', fontsize=16, weight='bold', color='black')
+                ax.text(center_x, center_y, f'$t_{{{k + 1}}}$', fontsize=16, weight='bold', color='black')
 
                 # ambiguity_set = Circle(q.mean, w2_p1__q1_store[k]['w2_p1__q1_global_lipschitz'], color=colors[k+1], fill=False, lw=2, alpha=1.0)
                 # ax.add_patch(ambiguity_set)
@@ -264,7 +265,7 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         plt.ylim(ylim) if ylim is not None else None
         plt.tight_layout()
         # plt.title(f'{tag}')
-        plt.savefig(f'{tag}_eps.svg')
+        plt.savefig(f'{tag}.svg')
         plt.show()
 
 @torch.no_grad()
@@ -369,7 +370,7 @@ if __name__== '__main__':
         ),
         num_time_steps=10,
         num_samples=100,
-        num_locs=10
+        num_locs=100
     )
 
     print(f'W2 per time step: {w2_q__sign_q_store}')
@@ -380,33 +381,33 @@ if __name__== '__main__':
 
     # 3D sys
     # Dubins car
-    # dubins_car = dyn.DubinsCar(v=1.5, dt=0.1)
-    # u_fixed = torch.tensor([[0.2]])  # fixed input
-    #
-    # # how to estimate this?
-    # global_lipschitz = 1.5
-    #
-    # dynamics = DubinsDynamicsWrapper(dubins_car, u_fixed, global_lipschitz=global_lipschitz)
-    #
-    # w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store = multi_step(
-    #     dynamics=dynamics,
-    #     noise_dist=dd_dists.MultivariateNormal(
-    #         loc=torch.zeros(3),
-    #         covariance_matrix=0.001 * torch.eye(3)
-    #     ),
-    #     q=dd_dists.MultivariateNormal(
-    #         loc=torch.tensor([0.8, 0.8, 0.0]),  # x, y, theta
-    #         covariance_matrix=0.0001 * torch.eye(3)
-    #     ),
-    #     num_time_steps=10,
-    #     num_samples=100,
-    #     num_locs=10
-    # )
-    #
-    # print(f'W2 per time step: {w2_q__sign_q_store}')
-    #
-    # xlim, ylim = [0.5, 3], [0.5, 1.5]
-    # plot_2d_dynamics_dubins_car(dynamics, xlim=xlim, ylim=ylim)
-    # plot_2d_ambiguity_balls_dubins_car(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
-    #
-    #
+    dubins_car = dyn.DubinsCar(v=1.5, dt=0.1)
+    u_fixed = torch.tensor([[0.2]])  # fixed input
+
+    # how to estimate this?
+    global_lipschitz = 1.5
+
+    dynamics = DubinsDynamicsWrapper(dubins_car, u_fixed, global_lipschitz=global_lipschitz)
+
+    w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store = multi_step(
+        dynamics=dynamics,
+        noise_dist=dd_dists.MultivariateNormal(
+            loc=torch.zeros(3),
+            covariance_matrix=0.001 * torch.eye(3)
+        ),
+        q=dd_dists.MultivariateNormal(
+            loc=torch.tensor([0.8, 0.8, 0.0]),  # x, y, theta
+            covariance_matrix=0.0001 * torch.eye(3)
+        ),
+        num_time_steps=10,
+        num_samples=100,
+        num_locs=100
+    )
+
+    print(f'W2 per time step: {w2_q__sign_q_store}')
+
+    xlim, ylim = [0.5, 3], [0.5, 1.5]
+    plot_2d_dynamics_dubins_car(dynamics, xlim=xlim, ylim=ylim)
+    plot_2d_ambiguity_balls_dubins_car(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
+
+

@@ -54,6 +54,28 @@ plt.legend(fontsize=14)
 # plt.savefig("benchmark_results/gmm_size_M.svg")
 plt.show()
 
+mean = df_sorted["time_mix_mean"]
+std = df_sorted["time_mix_std"]
+plt.plot(df_sorted["num_mix_elems"], mean, label="Multi-Grid", color='blue', linewidth=2)
+plt.plot(df_sorted["num_mix_elems"], mean + std, color='blue', linestyle='--', linewidth=1)
+plt.plot(df_sorted["num_mix_elems"], mean - std, color='blue', linestyle='--', linewidth=1)
+plt.fill_between(df_sorted["num_mix_elems"], mean - std, mean + std, color='blue', alpha=0.2)
+
+mean = df_sorted["time_old_mean"]
+std = df_sorted["time_old_std"]
+plt.plot(df_sorted["num_mix_elems"], mean, label="Per Component", color='red', linewidth=2)
+plt.plot(df_sorted["num_mix_elems"], mean + std, color='red', linestyle='--', linewidth=1)
+plt.plot(df_sorted["num_mix_elems"], mean - std, color='red', linestyle='--', linewidth=1)
+plt.fill_between(df_sorted["num_mix_elems"], mean - std, mean + std, color='red', alpha=0.2)
+
+plt.xlabel("Size GMM $\\overline{M}$", fontsize=14)
+plt.ylabel("Computation time $T$ (sec)", fontsize=14)
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.legend(fontsize=14)
+# plt.savefig("benchmark_results/gmm_size_time.svg")
+plt.show()
 
 
 df = pd.read_excel("benchmark_results/gmm_discretization_results_higher_dims_test_2025-07-08_FINAL.xlsx")
@@ -116,7 +138,7 @@ plt.figure(figsize=(8, 5))
 plt.plot(df_sorted["variance_scale"], df_sorted["w2_mix"], label="Multi-Grid", color='blue', alpha=0.6)
 plt.plot(df_sorted["variance_scale"], df_sorted["w2_old"], label="Per Component", color='red', alpha=0.6)
 # plt.plot(df_sorted["num_mix_elems"], (df_sorted["w2_old"]-df_sorted["w2_mix"]), label="W2 diff * 1e1", color='green', alpha=0.6)
-plt.xlabel("Variance scale")
+plt.xlabel("Variance")
 plt.ylabel("$\overline{W}_2$")
 plt.legend()
 plt.grid(True)
