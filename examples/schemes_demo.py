@@ -95,13 +95,12 @@ if __name__ == '__main__':
     grid2_aligned = grid2.rebase(axes0.rot_mat)
 
     # Initialize GridPartitions using the grids
-    
     partition1 = dd_schemes.GridPartition.from_grid_of_points(grid1)
     partition2 = dd_schemes.GridPartition.from_grid_of_points(grid2)
 
     # Rebase partitions # TODO now we just reinitialize
-    partition1_aligned = dd_schemes.GridPartition.from_grid_of_points(grid1_aligned)
-    partition2_aligned = dd_schemes.GridPartition.from_grid_of_points(grid2_aligned)
+    partition1_aligned = partition1.rebase(axes0.rot_mat)
+    partition2_aligned = partition2.rebase(axes0.rot_mat)
 
     # Plot the results, the blue arrows should be equal per column, red arrows should be equal in bottom row
     fig, axs = plt.subplots(2, 3, figsize=(15, 10))
