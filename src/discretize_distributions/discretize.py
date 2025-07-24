@@ -27,7 +27,7 @@ def _discretize(
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
 
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
-        return discretize_multi_norm_using_grid_scheme(dist, scheme)
+        return _discretize_multi_norm_using_grid_scheme(dist, scheme)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
         raise NotImplementedError('Implementation to be checked')
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
@@ -106,9 +106,19 @@ def wasserstein_at_point(dist: dd_dists.MixtureMultivariateNormal, point: torch.
     return w2
 
 
-def discretize_multi_norm_using_grid_scheme(
+def discretize_multi_norm_using_grid_scheme( # create wrapper functions from these
         dist: dd_dists.MultivariateNormal,
-        grid_scheme: dd_schemes.GridScheme
+        grid_scheme: dd_schemes.GridScheme,
+        use_corollary_10: Optional[bool] = True
+) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
+    locs, probs, w2 = _discretize_multi_norm_using_grid_scheme(dist, grid_scheme, use_corollary_10)
+    return dd_dists.CategoricalFloat(locs, probs), w2
+
+
+def _discretize_multi_norm_using_grid_scheme(
+        dist: dd_dists.MultivariateNormal,
+        grid_scheme: dd_schemes.GridScheme,
+        use_corollary_10: Optional[bool] = True
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     axes = dd_gen.norm_to_axes(dist)
 
@@ -133,24 +143,26 @@ def discretize_multi_norm_using_grid_scheme(
         utils.compute_mean_var_trunc_norm(l, u) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)
     ]
 
-    # Corollary 10, which, in this form only works in case the domain of the grid_scheme is over Rn, so let's use the 
-    # old approach for now
-    # w2_sq_per_dim = torch.stack([
-    #     ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
-    #     in zip(locs_per_dim, trunc_mean_var_per_dim, probs_per_dim, dist.eigvals)
-    # ])
-    # w2 = w2_sq_per_dim.sum().sqrt()
+    if use_corollary_10:
+        domain_prob = torch.as_tensor([p.sum() for p in probs_per_dim]).prod()
+        normalized_probs_per_dim = [p / p.sum() for p in probs_per_dim]
+        
+        w2_sq_per_dim = torch.stack([
+            ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
+            in zip(locs_per_dim, trunc_mean_var_per_dim, normalized_probs_per_dim, dist.eigvals)
+        ])
+        w2 = (w2_sq_per_dim * domain_prob).sum().sqrt()
+    else:
+        # Old alternative computation (kept here for reference):
+        trunc_means = dd_schemes.Grid([m for (m, _) in trunc_mean_var_per_dim])
+        trunc_vars = dd_schemes.Grid([v for (_, v) in trunc_mean_var_per_dim])
+        local_locs = grid_scheme.grid_of_locs.to_local(grid_scheme.locs)
 
-    # Old alternative computation (kept here for reference):
-    trunc_means = dd_schemes.Grid([m for (m, _) in trunc_mean_var_per_dim])
-    trunc_vars = dd_schemes.Grid([v for (_, v) in trunc_mean_var_per_dim])
-    grid_locs_dummy = dd_schemes.Grid([l for l in locs_per_dim])
+        w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - local_locs).pow(2)
+        w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eigvals)
+        w2 = torch.einsum('c,c->', w2_sq_mean_var_alt, probs).sqrt()
 
-    w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - grid_locs_dummy.points).pow(2)
-    w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eigvals)
-    w2 = torch.einsum('c,c->', w2_sq_mean_var_alt, probs).sqrt()
-
-    assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
+        assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
 
     # print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
