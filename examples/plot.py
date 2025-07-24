@@ -29,17 +29,18 @@ def plot_2d_grid(ax, grid, s: float = 10, c: str = 'red', **kwargs):
     return ax
 
 def plot_2d_cell(ax, cell: dd_schemes.Cell, c: str = 'blue', linewidth: float = 2, **kwargs):
-    # If cell.vertices is not ordered, sort them counterclockwise for plotting:
-    verts = cell.vertices
-    centroid = verts.mean(dim=0)
-    angles = torch.atan2(verts[:,1] - centroid[1], verts[:,0] - centroid[0])
-    sorted_idx = torch.argsort(angles)
-    verts = verts[sorted_idx]
+    verts = sort_vertices_counterclockwise(cell.vertices)
 
     # Close the box by repeating the first vertex at the end
     verts = torch.cat([verts, verts[:1]], dim=0)
     ax.plot(verts[:, 0], verts[:, 1], linestyle='-', marker='', c=c, linewidth=linewidth, **kwargs)
     return ax
+
+def sort_vertices_counterclockwise(vertices: torch.Tensor) -> torch.Tensor:
+    centroid = vertices.mean(dim=0)
+    angles = torch.atan2(vertices[:,1] - centroid[1], vertices[:,0] - centroid[0])
+    sorted_idx = torch.argsort(angles)
+    return vertices[sorted_idx]
 
 def plot_2d_partition(ax, partition: dd_schemes.GridPartition, c: str = 'blue', linewidth: float = 2, **kwargs):
     for i in range(partition.shape[0]):
@@ -54,26 +55,16 @@ def plot_2d_partition(ax, partition: dd_schemes.GridPartition, c: str = 'blue', 
                 ax = plot_2d_cell(ax, cell.domain, c=c, linewidth=linewidth, **kwargs)
     return ax
 
-def plot_2d_axes(ax, axes: dd_schemes.Axes, xlim, ylim, title: str = ""):
-    ax.set_title(title)
+
+def plot_2d_basis(ax, offset: torch.Tensor, mat: torch.Tensor, color: str = 'blue', linewidth: float = 3.):
     style = ['solid', 'dashed']
-    for i in range(axes.rot_mat.shape[1]):
+    for i in range(2):
         ax.arrow(
-            *axes.offset, axes.rot_mat[0, i], axes.rot_mat[1, i],
-            head_width=0.1, head_length=0.1, fc='red', ec='red',
+            *offset, mat[0, i], mat[1, i],
+            head_width=0.1, head_length=0.1, fc=color, ec=color,
             length_includes_head=True,
-            linewidth=3, linestyle=style[i]  
+            linewidth=linewidth, linestyle=style[i]
         )
-    for i in range(axes.rot_mat.shape[1]):
-        ax.arrow(
-            *axes.offset, axes.transform_mat[0, i], axes.transform_mat[1, i],
-            head_width=0.1, head_length=0.1, fc='blue', ec='blue',
-            length_includes_head=True,
-            linestyle=style[i]
-        )
-    ax.plot(0, 0, 'ko', markersize=5)  # origin point
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
     ax.set_aspect('equal')
     return ax
 
