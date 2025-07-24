@@ -129,9 +129,9 @@ def _discretize_multi_norm_using_grid_scheme(
     grid_scheme_proj = grid_scheme.rebase(axes.rot_mat)
     relative_scales = grid_scheme_proj.partition.descale(dist.eigvals_sqrt).reciprocal()
 
-    locs_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.grid_of_locs.points_per_dim)]
-    lower_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.partition.lower_vertices_per_dim)]
-    upper_vertices_per_dim = [(elem + delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.partition.upper_vertices_per_dim)]
+    locs_per_dim = [(elem - delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.grid_of_locs.points_per_dim)]
+    lower_vertices_per_dim = [(elem - delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.partition.lower_vertices_per_dim)]
+    upper_vertices_per_dim = [(elem - delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.partition.upper_vertices_per_dim)]
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
@@ -144,15 +144,16 @@ def _discretize_multi_norm_using_grid_scheme(
 
     if use_corollary_10:
         domain_prob = torch.as_tensor([p.sum() for p in probs_per_dim]).prod()
-        normalized_probs_per_dim = [p / p.sum() for p in probs_per_dim]
-        
-        w2_sq_per_dim = torch.stack([
-            ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
-            in zip(locs_per_dim, trunc_mean_var_per_dim, normalized_probs_per_dim, dist.eigvals)
-        ])
-        w2 = (w2_sq_per_dim * domain_prob).sum().sqrt()
+        if domain_prob <= TOL:
+            w2 = torch.tensor(0.)
+        else:
+            normalized_probs_per_dim = [p / p.sum() for p in probs_per_dim]
+            w2_sq_per_dim = torch.stack([
+                ((v + (m - l).pow(2)) * p).sum() * e for (l, (m, v), p, e)
+                in zip(locs_per_dim, trunc_mean_var_per_dim, normalized_probs_per_dim, dist.eigvals)
+            ])
+            w2 = (w2_sq_per_dim * domain_prob).sum().sqrt()
     else:
-        # Old alternative computation (kept here for reference):
         trunc_means = dd_schemes.Grid([m for (m, _) in trunc_mean_var_per_dim])
         trunc_vars = dd_schemes.Grid([v for (_, v) in trunc_mean_var_per_dim])
         local_locs = grid_scheme.grid_of_locs.to_local(grid_scheme.locs)
