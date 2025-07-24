@@ -27,7 +27,7 @@ def _discretize(
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
 
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
-        return _discretize_multi_norm_using_grid_scheme(dist, scheme)
+        locs, probs, w2 = _discretize_multi_norm_using_grid_scheme(dist, scheme)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
         raise NotImplementedError('Implementation to be checked')
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
@@ -46,8 +46,6 @@ def _discretize(
         assert w2_sq_outer >= 0, (f'Negative Wasserstein distance for the outer loc: {w2_sq_outer}.' 
                                   f'Check if domains of GridScheme overlap.')
         w2 = w2_sq.sqrt() + w2_sq_outer.sqrt()
-
-        return locs, probs, w2
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):
@@ -56,8 +54,8 @@ def _discretize(
             w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
 
         probs = torch.stack(probs, dim=-1).sum(-1)
-
-        return scheme.locs, probs, w2_sq.sqrt()
+        locs = scheme.locs
+        w2 = w2_sq.sqrt()
     elif (isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, list) and 
           len(scheme) > 0 and isinstance(scheme[0], dd_schemes.GridScheme)):
 
@@ -85,12 +83,13 @@ def _discretize(
 
         probs = torch.cat(probs, dim=0)
         locs = torch.cat(locs, dim=0)
-
-        return locs, probs, w2_sq.sqrt()
+        w2 = w2_sq.sqrt()
     else:
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
                                   f"and scheme {type(scheme).__name__} is not implemented yet.")
-
+    
+    # assert not torch.isnan(w2).any(), (f'Wasserstein distance is NaN')
+    return locs, probs, w2
 
 def wasserstein_at_point(dist: dd_dists.MixtureMultivariateNormal, point: torch.Tensor, domain: dd_schemes.Cell) -> torch.Tensor:
     grid_of_locs = dd_schemes.Grid.from_axes(
