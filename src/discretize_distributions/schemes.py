@@ -515,6 +515,9 @@ class MultiGridScheme(Scheme):
 def create_cell_spanning_Rn(n: int, **kwargs) -> Cell:
     return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), **kwargs)
 
+def create_cell_spanning_Rn_from_axes(n: int, axes: Optional[Axes] = None):
+    return Cell.from_axes(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), axes=axes)
+
 def check_grid_in_domain(
     grid: Grid, 
     domain: Cell
