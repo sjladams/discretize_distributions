@@ -19,13 +19,11 @@ class Axes:
         self,
         ndim_support: int,
         rot_mat: Optional[torch.Tensor] = None, 
-        permute_mat: Optional[torch.Tensor] = None,
         scales: Optional[torch.Tensor] = None,
         offset: Optional[torch.Tensor] = None
     ):
         scales = torch.ones(ndim_support) if scales is None else scales
         rot_mat = torch.eye(ndim_support) if rot_mat is None else rot_mat
-        permute_mat = torch.eye(ndim_support) if permute_mat is None else permute_mat
         ndim = rot_mat.shape[-2]
         offset = torch.zeros(ndim) if offset is None else offset
 
@@ -38,10 +36,8 @@ class Axes:
             raise ValueError("Rotation matrix must have the same number of input dimensions as the points per dimension.")
         if scales.shape[-1] != ndim_support:
             raise ValueError("Scales must have the same number of dimensions as the points per dimension.")
-        # if not (scales > 0).all(): # TODO check where I need this assumption!
-        #     raise ValueError("Scales must be positive.")
-        if not utils.is_permuted_eye(permute_mat) or not permute_mat.shape[-1] == ndim_support:
-            raise ValueError("Permute matrix must be a permutation matrix in the space of the support.")
+        if not (scales > 0).all():
+            raise ValueError("Scales must be positive.")
 
         batch_shape = torch.broadcast_shapes(rot_mat.shape[:-2], scales.shape[:-1], offset.shape[:-1])
         if not batch_shape == torch.Size([]):
@@ -53,17 +49,16 @@ class Axes:
         self.ndim_support = ndim_support
         self.ndim = ndim
         self.rot_mat = rot_mat
-        self.permute_mat = permute_mat
         self.scales = scales
         self.offset = offset
     
     @property
     def transform_mat(self): # TODO rename trans_mat
-        return torch.einsum('ij,j,jk->ik', self.rot_mat, self.scales, self.permute_mat)
+        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
     
     @property
     def inv_transform_mat(self): # TODO rename inv_trans_mat
-        return torch.einsum('kj, j, ji->ki', self.permute_mat.T, self.scales.reciprocal(),  self.rot_mat.T)
+        return torch.einsum('j, ji->ji',self.scales.reciprocal(),  self.rot_mat.T)
 
     @property
     def local_offset(self):
@@ -76,10 +71,10 @@ class Axes:
         return torch.einsum('ij,...j->...i', self.inv_transform_mat, points - self.offset)
     
     def scale(self, points: torch.Tensor):
-        return torch.einsum('i,ij,...j->...i', self.scales, self.permute_mat, points)
+        return torch.einsum('i,...i->...i', self.scales, points)
 
     def descale(self, points: torch.Tensor):
-        return torch.einsum('ji,i,...i->...i', self.permute_mat.T, self.scales.reciprocal(), points)
+        return torch.einsum('i,...i->...i', self.scales.reciprocal(), points)
 
 
 class Cell(Axes):
@@ -93,7 +88,6 @@ class Cell(Axes):
             lower_vertex: torch.Tensor,
             upper_vertex: torch.Tensor, 
             rot_mat: Optional[torch.Tensor] = None, 
-            permute_mat: Optional[torch.Tensor] = None,
             scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
     ):
@@ -112,7 +106,6 @@ class Cell(Axes):
         super().__init__(
             ndim_support=lower_vertex.shape[-1], 
             rot_mat=rot_mat, 
-            permute_mat=permute_mat,
             scales=scales,
             offset=offset
         )
@@ -130,7 +123,6 @@ class Cell(Axes):
             lower_vertex=lower_vertex,
             upper_vertex=upper_vertex,
             rot_mat=axes.rot_mat,
-            permute_mat=axes.permute_mat,
             scales=axes.scales,
             offset=axes.offset
         )
@@ -184,7 +176,6 @@ class Grid(Axes):
             self, 
             points_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
             rot_mat: Optional[torch.Tensor] = None, 
-            permute_mat: Optional[torch.Tensor] = None,
             scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
     ):
@@ -196,7 +187,6 @@ class Grid(Axes):
         super().__init__(
             ndim_support=len(points_per_dim), 
             rot_mat=rot_mat, 
-            permute_mat=permute_mat,
             scales=scales,
             offset=offset
         )
@@ -212,7 +202,6 @@ class Grid(Axes):
         return Grid(
             points_per_dim, 
             rot_mat=axes.rot_mat,
-            permute_mat=axes.permute_mat,
             scales=axes.scales,
             offset=axes.offset
         )
@@ -322,7 +311,6 @@ class GridPartition(Axes):
         super().__init__(
             ndim_support=grid_of_lower_vertices.ndim_support,
             rot_mat=grid_of_lower_vertices.rot_mat,
-            permute_mat=grid_of_lower_vertices.permute_mat,
             scales=grid_of_lower_vertices.scales,
             offset=grid_of_lower_vertices.offset
         )
@@ -355,7 +343,6 @@ class GridPartition(Axes):
             domain = create_cell_spanning_Rn(
                 grid_of_points.ndim_support, 
                 rot_mat=grid_of_points.rot_mat, 
-                permute_mat=grid_of_points.permute_mat,
                 scales=grid_of_points.scales,
                 offset=grid_of_points.offset
             )
@@ -631,8 +618,6 @@ def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6):
 def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
     if not torch.allclose(axes0.rot_mat, axes1.rot_mat, atol=atol):
         raise ValueError("Domain rotation matrix must match the grid rotation matrix")
-    elif not torch.allclose(axes0.permute_mat, axes1.permute_mat, atol=atol):
-        raise ValueError("Domain permute matrix must match the grid permute matrix")
     elif not torch.allclose(axes0.scales, axes1.scales, atol=atol):
         raise ValueError("Domain scale matrix must match the grid scale matrix")
     elif not torch.allclose(axes0.offset, axes1.offset, atol=atol):
