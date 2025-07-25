@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional, Sequence, Tuple
+from typing import Union, Optional, Sequence, Tuple, List
 
 import discretize_distributions.utils as utils
 
@@ -462,6 +462,19 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
 
         self.grid_of_locs = grid_of_locs
         self.partition = partition
+
+    @staticmethod
+    def from_point(point: torch.Tensor, domain: Cell):
+        grid_of_locs = Grid.from_axes(
+            points_per_dim=domain.to_local(point).unsqueeze(-1), 
+            axes=domain
+        )
+        partition = GridPartition.from_vertices_per_dim(
+                                lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
+                                upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
+                                axes=domain
+        )
+        return GridScheme(grid_of_locs, partition)
 
     @property
     def ndim(self):
