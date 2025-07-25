@@ -25,20 +25,20 @@ def get_scheme_from_domain(domain, point):
     return dd_schemes.GridScheme(grid_of_locs, partition)
 
 
-def test(num_dims: int = 5, apply_domain: bool = False, plot: bool = False):
+def test(ndims: int = 5, apply_domain: bool = False, plot: bool = False):
     no_problems = True
     for _ in range(100):
-        # loc=torch.zeros((num_dims,))
+        # loc=torch.zeros((ndims,))
         # covariance_matrix=torch.diag_embed(torch.tensor([1., 3.]))
 
-        loc=torch.randn((num_dims, ))
-        covariance_matrix=torch.diag_embed(torch.rand((num_dims, )))
+        loc=torch.randn((ndims, ))
+        covariance_matrix=torch.diag_embed(torch.rand((ndims, )))
         
         dist = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=covariance_matrix)
         if apply_domain:
             domain = dd_schemes.Cell.from_axes(
-                lower_vertex=-torch.ones(num_dims), 
-                upper_vertex=torch.ones(num_dims),
+                lower_vertex=-torch.ones(ndims), 
+                upper_vertex=torch.ones(ndims),
                 axes=dd_gen.norm_to_axes(dist)
             )
         else:
@@ -52,7 +52,7 @@ def test(num_dims: int = 5, apply_domain: bool = False, plot: bool = False):
             disc_dist, w2 = discretize_multi_norm_using_grid_scheme(dist, grid_scheme, use_corollary_10=option)
             w2s.append(w2)
 
-            if plot and num_dims == 2:
+            if plot and ndims == 2:
                 fig, ax = plt.subplots(figsize=(8, 8))
                 ax = plot_2d_dist(ax, dist)
                 ax = plot_2d_cat_float(ax, disc_dist)

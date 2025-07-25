@@ -14,7 +14,7 @@ with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').
 
 def generate_feasible_grid_configs(
         max_num_locs: int, 
-        num_dims: int, 
+        ndims: int, 
         max_num_locs_per_dim: int = None
     ) -> Tuple:
     """
@@ -30,14 +30,14 @@ def generate_feasible_grid_configs(
     Args:
         max_num_locs (int): The upper limit on the total number of locations in any configuration (product of 
                             locations per dimension).
-        num_dims (int): The number of dimensions of the grid.
+        ndims (int): The number of dimensions of the grid.
         max_num_locs_per_dim (int, optional): The maximum number of locations allowed per dimension. If None, defaults 
                                               to `max_num_locs`.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-            - configs: 2D tensor of shape (num_configs, num_dims) with all non-dominated grid configurations.
-            - w2: 2D tensor of shape (num_configs, num_dims) with the corresponding W2 costs for each configuration.
+            - configs: 2D tensor of shape (num_configs, ndims) with all non-dominated grid configurations.
+            - w2: 2D tensor of shape (num_configs, ndims) with the corresponding W2 costs for each configuration.
     """
 
     max_num_locs_per_dim = max_num_locs if max_num_locs_per_dim is None else min(max_num_locs_per_dim, max_num_locs)
@@ -55,7 +55,7 @@ def generate_feasible_grid_configs(
                                     non-increasing order).
             current_product (int): The product of the locations in the current configuration (total grid size so far).
         """
-        if len(current_config) == num_dims:  # Base case: configuration is complete
+        if len(current_config) == ndims:  # Base case: configuration is complete
             if current_product <= max_num_locs:
                 configs.append(tuple(current_config[::-1]))  # Store reversed config for consistency
             return
@@ -102,12 +102,12 @@ def generate_grid_configs(num_locs_options: List):
         print(f'num_locs: {num_locs}')
 
         # Set the number of dimensions so that if each dimension had 2 locations, their product would 
-        # equal num_locs (i.e., 2**num_dims = num_locs):
-        num_dims = max(1, int(math.log2(num_locs)))
+        # equal num_locs (i.e., 2**ndims = num_locs):
+        ndims = max(1, int(math.log2(num_locs)))
 
         configs, w2s = generate_feasible_grid_configs(
             max_num_locs=num_locs, 
-            num_dims=num_dims,   
+            ndims=ndims,   
             max_num_locs_per_dim=max_num_locs_per_dim
         )
         table[num_locs] = dict(configs=configs, w2=w2s)

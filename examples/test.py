@@ -75,18 +75,18 @@ if __name__ == "__main__":
     ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
 
     ### --- test mixture distributions ----------------------------------------------------------------------------- ###
-    num_dims = 2
+    ndims = 2
     num_mix_elems = 2
     setting = "close"
     
     options = dict(
         overlapping=dict(
-            loc=torch.zeros((num_mix_elems, num_dims)),
-            covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, num_dims)))
+            loc=torch.zeros((num_mix_elems, ndims)),
+            covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, ndims)))
         ),
         random=dict(
-            loc=torch.randn((num_mix_elems, num_dims)),
-            covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
+            loc=torch.randn((num_mix_elems, ndims)),
+            covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, ndims)))
         ),
         close=dict(
             loc=torch.tensor([[0.1, 0.1], [-0.1,-0.1]]),

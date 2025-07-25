@@ -16,19 +16,19 @@ from plot import *
 if __name__ == "__main__":
     torch.manual_seed(3)
 
-    num_dims = 2
+    ndims = 2
     num_mix_elems = 20
     setting = "random"
     
     options = dict(
         overlapping=dict(
-            loc=torch.zeros((num_mix_elems, num_dims)),
-            covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, num_dims)))
+            loc=torch.zeros((num_mix_elems, ndims)),
+            covariance_matrix=torch.diag_embed(torch.ones((num_mix_elems, ndims)))
             # covariance_matrix=torch.diag_embed(torch.tensor([[1., 0.5], [1., 0.5]]))
         ),
         random=dict(
-            loc=torch.randn((num_mix_elems, num_dims)),
-            covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, num_dims)))
+            loc=torch.randn((num_mix_elems, ndims)),
+            covariance_matrix=torch.diag_embed(torch.rand((num_mix_elems, ndims)))
         ),
         close=dict(
             loc=torch.tensor([[0.1, 0.1], [-0.1,-0.1]]),
