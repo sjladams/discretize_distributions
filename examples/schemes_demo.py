@@ -41,7 +41,7 @@ if __name__ == '__main__':
     )   
 
     points_per_dim = [torch.linspace(-0.6, 0.6, 3), torch.linspace(-0.5, 0.5, 4)]
-    grid0 = dd_schemes.Grid.from_axes(points_per_dim=points_per_dim, axes=axes0)
+    grid0 = dd_schemes.Grid(points_per_dim=points_per_dim, axes=axes0)
     partition0 = dd_schemes.GridPartition.from_grid_of_points(grid0)
 
 
@@ -86,8 +86,8 @@ if __name__ == '__main__':
           dd_schemes.axes_have_common_eigenbasis(axes0, axes2))
 
     # Initialize Grids using the axes
-    grid1 = dd_schemes.Grid.from_axes(points_per_dim=points_per_dim, axes=axes1)
-    grid2 = dd_schemes.Grid.from_axes(points_per_dim=points_per_dim, axes=axes2)
+    grid1 = dd_schemes.Grid(points_per_dim=points_per_dim, axes=axes1)
+    grid2 = dd_schemes.Grid(points_per_dim=points_per_dim, axes=axes2)
 
     # Initialize GridPartitions using the grids
     partition1 = dd_schemes.GridPartition.from_grid_of_points(grid1)

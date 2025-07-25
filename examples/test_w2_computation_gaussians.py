@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from plot import *
 
 def get_scheme_from_domain(domain, point):
-    grid_of_locs = dd_schemes.Grid.from_axes(
+    grid_of_locs = dd_schemes.Grid(
         points_per_dim=domain.to_local(point).unsqueeze(-1),
         axes=domain
     )

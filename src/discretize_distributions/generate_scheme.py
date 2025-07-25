@@ -70,7 +70,7 @@ def get_optimal_grid_scheme_for_multivariate_normal(
             zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
         ]
 
-    grid_of_locs = dd_schemes.Grid.from_axes(locs_per_dim, axes=norm_to_axes(norm))
+    grid_of_locs = dd_schemes.Grid(locs_per_dim, axes=norm_to_axes(norm))
 
     # print(f'Requested grid size: {num_locs}, realized grid size over domain: {len(grid_of_locs)}')
 

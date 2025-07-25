@@ -47,9 +47,7 @@ if __name__ == "__main__":
     ## via self constructed grid scheme
     grid_locs = dd_schemes.Grid(
         points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)], 
-        rot_mat=norm.eigvecs, 
-        scales=norm.eigvals_sqrt,
-        offset=norm.mean
+        axes=dd_gen.norm_to_axes(norm)
     )
 
     grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)

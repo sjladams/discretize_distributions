@@ -175,32 +175,19 @@ class Grid(Axes):
     def __init__(
             self, 
             points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            rot_mat: Optional[torch.Tensor] = None, 
-            scales: Optional[torch.Tensor] = None,
-            offset: Optional[torch.Tensor] = None
+            axes: Optional[Axes] = None
     ):
         """
         points_per_dim: list of 1D torch tensors, each of shape (n_i,)
         example: [torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])]
         """
         self.points_per_dim = points_per_dim
-        super().__init__(
-            ndim_support=len(points_per_dim), 
-            rot_mat=rot_mat, 
-            scales=scales,
-            offset=offset
-        )
-    
-    @staticmethod
-    def from_axes(
-        points_per_dim: Union[List[torch.Tensor], torch.Tensor],
-        axes: Optional[Axes] = None
-    ):
+
         if axes is None:
             axes = Axes(ndim_support=len(points_per_dim))
 
-        return Grid(
-            points_per_dim, 
+        super().__init__(
+            ndim_support=len(points_per_dim), 
             rot_mat=axes.rot_mat,
             scales=axes.scales,
             offset=axes.offset
@@ -218,7 +205,7 @@ class Grid(Axes):
             torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], shape[dim]) 
             for dim in range(len(shape))
         ]
-        return Grid.from_axes(points_per_dim, axes=domain)
+        return Grid(points_per_dim, axes=domain)
     
     @property
     def shape(self):
@@ -273,7 +260,7 @@ class Grid(Axes):
         
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
-        return Grid.from_axes(self._select_axes(idx), axes=self)
+        return Grid(self._select_axes(idx), axes=self)
     
     def rebase(self, axes: Axes): # TODO should this be an inplace operation?
         # Compute projected transform in source basis
@@ -294,7 +281,7 @@ class Grid(Axes):
         axes = copy(axes)
         axes.offset = self.offset.clone()
 
-        return Grid.from_axes(points_per_dim, axes)
+        return Grid(points_per_dim, axes)
 
 
 class GridPartition(Axes):
@@ -328,8 +315,8 @@ class GridPartition(Axes):
                 raise ValueError(f"Upper vertices at index {idx} must be greater than or equal to lower vertices.")
 
         return GridPartition(
-            Grid.from_axes(lower_vertices_per_dim, axes=axes),
-            Grid.from_axes(upper_vertices_per_dim, axes=axes)
+            Grid(lower_vertices_per_dim, axes=axes),
+            Grid(upper_vertices_per_dim, axes=axes)
         )
 
     @staticmethod
@@ -421,8 +408,8 @@ class GridPartition(Axes):
         from copy import copy
         axes = copy(axes)
         axes.offset = self.grid_of_lower_vertices.offset.clone()
-        grid_of_lower_vertices = Grid.from_axes(lower_vertices_per_dim, axes=axes)
-        grid_of_upper_vertices = Grid.from_axes(upper_vertices_per_dim, axes=axes)
+        grid_of_lower_vertices = Grid(lower_vertices_per_dim, axes=axes)
+        grid_of_upper_vertices = Grid(upper_vertices_per_dim, axes=axes)
 
         return GridPartition(
             grid_of_lower_vertices=grid_of_lower_vertices,
@@ -452,7 +439,7 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
 
     @staticmethod
     def from_point(point: torch.Tensor, domain: Cell):
-        grid_of_locs = Grid.from_axes(
+        grid_of_locs = Grid(
             points_per_dim=domain.to_local(point).unsqueeze(-1), 
             axes=domain
         )
