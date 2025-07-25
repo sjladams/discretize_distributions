@@ -11,7 +11,7 @@ TOL = 1e-8
 __all__ = ['discretize']
 
 
-# TODO for input GridScheme or MultiGridScheme output dd_dists.CategoricalGrid or mixture dd_dists.CategoricalGrid
+# TODO for input GridScheme output dd_dists.CategoricalGrid
 def discretize(
         dist: torch.distributions.Distribution,
         scheme: Union[dd_schemes.Scheme,  List[dd_schemes.GridScheme]]
@@ -77,10 +77,10 @@ def _discretize(
         for i in range(len(scheme)):
             indices = torch.where(scheme_per_gmm_comp==i)[0]
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            disc_scheme, w2_scheme = discretize(dist[indices], scheme[i])
+            locs_scheme, probs_scheme, w2_scheme = _discretize(dist[indices], scheme[i])
 
-            probs.append(disc_scheme.probs * prob_scheme)
-            locs.append(disc_scheme.locs)
+            probs.append(probs_scheme * prob_scheme)
+            locs.append(locs_scheme)
             w2_sq += w2_scheme.pow(2) * prob_scheme
 
         probs = torch.cat(probs, dim=0)
@@ -94,7 +94,7 @@ def _discretize(
     return locs, probs, w2
 
 
-def discretize_multi_norm_using_grid_scheme( # create wrapper functions from these
+def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
         grid_scheme: dd_schemes.GridScheme,
         use_corollary_10: Optional[bool] = True
@@ -149,7 +149,7 @@ def _discretize_multi_norm_using_grid_scheme(
         w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eigvals)
         w2 = torch.einsum('c,c->', w2_sq_mean_var_alt, probs).sqrt()
 
-        assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
+    assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
 
     # print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
