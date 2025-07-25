@@ -217,11 +217,8 @@ class Grid(Axes):
             points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
         elif isinstance(idx, slice):
             mesh = torch.meshgrid(*self.points_per_dim, indexing='ij')
-            points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+            points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)[idx]
         else:
-            # if isinstance(idx, slice):
-            #     idx = torch.arange(self.__len__())[idx]
-
             idx = torch.as_tensor(idx)
             if idx.dim() == 0:
                 idx = idx.unsqueeze(0)
