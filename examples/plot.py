@@ -68,9 +68,10 @@ def plot_2d_basis(ax, offset: torch.Tensor, mat: torch.Tensor, color: str = 'blu
     ax.set_aspect('equal')
     return ax
 
-def set_axis(ax, xlims=None, ylims=None):
-    xlims = ax.get_xlim() if xlims is None else xlims
-    ylims = ax.get_ylim() if ylims is None else ylims
+
+def set_axis(ax, xlim=None, ylim=None):
+    xlims = ax.get_xlim() if xlim is None else xlim
+    ylims = ax.get_ylim() if ylim is None else ylim
     min_lim = min(xlims[0], ylims[0])
     max_lim = max(xlims[1], ylims[1])
     ax.set_xlim(min_lim, max_lim)

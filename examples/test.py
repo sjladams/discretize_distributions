@@ -17,12 +17,10 @@ if __name__ == "__main__":
     mean = torch.tensor([-5., -5.])
     cov_mat = torch.diag(torch.tensor([3.,1.]))
     norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
-    domain = dd_schemes.Cell(
+    domain = dd_schemes.Cell.from_axes(
         lower_vertex=torch.tensor([-1.0, -1.0]),
         upper_vertex=torch.tensor([1.0, 1.0]),
-        offset=norm.loc,
-        rot_mat=norm.eigvecs,
-        scales=norm.eigvals_sqrt
+        axes=dd_gen.norm_to_axes(norm)
     )
 
     optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(
@@ -37,7 +35,7 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, norm)
     ax = plot_2d_cat_float(ax, optimal_disc_norm)
     ax = plot_2d_cell(ax, domain)
-    ax = set_axis(ax, xlims=(-10, 1), ylims=(-10, 1))
+    ax = set_axis(ax, xlim=(-10, 1), ylim=(-10, 1))
     ax.set_title(f'Optimal grid scheme (2-Wasserstein distance: {w2:.2f})')
     plt.show()
 
