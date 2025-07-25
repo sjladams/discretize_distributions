@@ -270,38 +270,30 @@ class Grid(Axes):
 
 class GridPartition(Axes):
     def __init__(
-            self, 
-            grid_of_lower_vertices: Grid,
-            grid_of_upper_vertices: Grid,
-    ):
-        if not equal_axes(grid_of_lower_vertices, grid_of_upper_vertices):
-            raise ValueError("Lower and upper vertices must have the same axes.")
-        
-        self.grid_of_lower_vertices = grid_of_lower_vertices
-        self.grid_of_upper_vertices = grid_of_upper_vertices
-        super().__init__(
-            ndim_support=grid_of_lower_vertices.ndim_support,
-            rot_mat=grid_of_lower_vertices.rot_mat,
-            scales=grid_of_lower_vertices.scales,
-            offset=grid_of_lower_vertices.offset
-        )
-    
-    @staticmethod
-    def from_vertices_per_dim(
+            self,
             lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
     ):
+        if not len(lower_vertices_per_dim) == len(upper_vertices_per_dim):
+            raise ValueError("Lower and upper vertices must have the same number of dimensions.")
+
         for idx, (l, u) in enumerate(zip(lower_vertices_per_dim, upper_vertices_per_dim)):
             if l.shape != u.shape:
                 raise ValueError(f"Lower and upper vertices at index {idx} must have the same shape.")
             if (u < l).any():
                 raise ValueError(f"Upper vertices at index {idx} must be greater than or equal to lower vertices.")
+        
+        self._grid_of_lower_vertices = Grid(lower_vertices_per_dim, axes=axes)
+        self._grid_of_upper_vertices = Grid(upper_vertices_per_dim, axes=axes)
 
-        return GridPartition(
-            Grid(lower_vertices_per_dim, axes=axes),
-            Grid(upper_vertices_per_dim, axes=axes)
+        super().__init__(
+            ndim_support=len(lower_vertices_per_dim), 
+            rot_mat=self._grid_of_lower_vertices.rot_mat,
+            scales=self._grid_of_lower_vertices.scales,
+            offset=self._grid_of_lower_vertices.offset
         )
+    
 
     @staticmethod
     def from_grid_of_points(
@@ -329,7 +321,7 @@ class GridPartition(Axes):
                 (vertices, domain.upper_vertex[idx].unsqueeze(0))
                 ))
 
-        return GridPartition.from_vertices_per_dim(
+        return GridPartition(
             lower_vertices_per_dim, 
             upper_vertices_per_dim, 
             axes=domain
@@ -337,32 +329,32 @@ class GridPartition(Axes):
     
     @property
     def shape(self):
-        return self.grid_of_lower_vertices.shape
+        return self._grid_of_lower_vertices.shape
     
     @property
     def lower_vertices_per_dim(self):
-        return self.grid_of_lower_vertices.points_per_dim
+        return self._grid_of_lower_vertices.points_per_dim
     
     @property
     def upper_vertices_per_dim(self):
-        return self.grid_of_upper_vertices.points_per_dim
+        return self._grid_of_upper_vertices.points_per_dim
     
     @property
     def lower_vertices(self):
-        return self.grid_of_lower_vertices.points
+        return self._grid_of_lower_vertices.points
     
     @property
     def upper_vertices(self):
-        return self.grid_of_upper_vertices.points
+        return self._grid_of_upper_vertices.points
     
     def __len__(self):
-        return len(self.grid_of_lower_vertices)
+        return len(self._grid_of_lower_vertices)
 
     @property
     def domain(self):
         return Cell(
-            self.grid_of_lower_vertices.domain.lower_vertex,
-            self.grid_of_upper_vertices.domain.upper_vertex,
+            self._grid_of_lower_vertices.domain.lower_vertex,
+            self._grid_of_upper_vertices.domain.upper_vertex,
             axes=self
         )
 
@@ -372,28 +364,28 @@ class GridPartition(Axes):
     
     def __getitem__(self, idx):
         return GridPartition(
-            grid_of_lower_vertices=self.grid_of_lower_vertices[idx],
-            grid_of_upper_vertices=self.grid_of_upper_vertices[idx]
+            lower_vertices_per_dim=self._grid_of_lower_vertices[idx].points_per_dim,
+            upper_vertices_per_dim=self._grid_of_upper_vertices[idx].points_per_dim, 
+            axes=self
         )
 
     def rebase(self, axes: Axes): # TODO improve, after making changes to parent class
-        assert equal_axes(self.grid_of_lower_vertices, self.grid_of_upper_vertices), "Lower and upper vertices must have the same axes." # TODO this includes offset!! which is curcial here
-        lower_vertices_per_dim_dummy = self.grid_of_lower_vertices.rebase(axes).points_per_dim
-        upper_vertices_per_dim_dummy = self.grid_of_upper_vertices.rebase(axes).points_per_dim
+        assert equal_axes(self._grid_of_lower_vertices, self._grid_of_upper_vertices), "Lower and upper vertices must have the same axes." # TODO this includes offset!! which is curcial here
+        lower_vertices_per_dim_dummy = self._grid_of_lower_vertices.rebase(axes).points_per_dim
+        upper_vertices_per_dim_dummy = self._grid_of_upper_vertices.rebase(axes).points_per_dim
 
         lower_vertices_per_dim = [torch.stack([l, u]).min(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
         upper_vertices_per_dim = [torch.stack([l, u]).max(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
 
-        from copy import copy
-        axes = copy(axes)
-        axes.offset = self.grid_of_lower_vertices.offset.clone()
-        grid_of_lower_vertices = Grid(lower_vertices_per_dim, axes=axes)
-        grid_of_upper_vertices = Grid(upper_vertices_per_dim, axes=axes)
+        from copy import copy  # TODO just initialize new Axes object
+        axes = copy(axes) 
+        axes.offset = self._grid_of_lower_vertices.offset.clone()
 
         return GridPartition(
-            grid_of_lower_vertices=grid_of_lower_vertices,
-            grid_of_upper_vertices=grid_of_upper_vertices
-        )   
+            lower_vertices_per_dim=lower_vertices_per_dim, 
+            upper_vertices_per_dim=upper_vertices_per_dim, 
+            axes=axes
+        )
 
 
 class Scheme:
@@ -422,10 +414,10 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
             points_per_dim=domain.to_local(point).unsqueeze(-1), 
             axes=domain
         )
-        partition = GridPartition.from_vertices_per_dim(
-                                lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
-                                upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
-                                axes=domain
+        partition = GridPartition(
+            lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
+            upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
+            axes=domain
         )
         return GridScheme(grid_of_locs, partition)
 

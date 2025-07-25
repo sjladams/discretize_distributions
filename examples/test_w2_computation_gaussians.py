@@ -17,7 +17,7 @@ def get_scheme_from_domain(domain, point):
         points_per_dim=domain.to_local(point).unsqueeze(-1),
         axes=domain
     )
-    partition = dd_schemes.GridPartition.from_vertices_per_dim(
+    partition = dd_schemes.GridPartition(
         lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
         upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
         axes=domain
