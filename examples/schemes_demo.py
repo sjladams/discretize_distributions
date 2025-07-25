@@ -22,7 +22,7 @@ def plot_2d(ax, grid, partition, xlim, ylim, title=""):
     ax.set_title(title)
     ax.set_aspect('equal')
     ax = plot_2d_basis(ax, offset=grid.offset, mat=grid.rot_mat, color='red', linewidth=3)
-    ax = plot_2d_basis(ax, offset=grid.offset, mat=grid.transform_mat, color='blue', linewidth=1)
+    ax = plot_2d_basis(ax, offset=grid.offset, mat=grid.trans_mat, color='blue', linewidth=1)
     ax = plot_2d_grid(ax, grid, c='black')
     if partition is not None:
         ax = plot_2d_partition(ax, partition, linewidth=1)

@@ -53,22 +53,22 @@ class Axes:
         self.offset = offset
     
     @property
-    def transform_mat(self): # TODO rename trans_mat
+    def trans_mat(self):
         return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
     
     @property
-    def inv_transform_mat(self): # TODO rename inv_trans_mat
+    def inv_trans_mat(self):
         return torch.einsum('j, ji->ji',self.scales.reciprocal(),  self.rot_mat.T)
 
     @property
     def local_offset(self):
-        return torch.einsum('ij,j->i', self.inv_transform_mat, self.offset)
+        return torch.einsum('ij,j->i', self.inv_trans_mat, self.offset)
     
     def to_global(self, points: torch.Tensor):
-        return torch.einsum('ij,...j->...i', self.transform_mat, points) + self.offset
+        return torch.einsum('ij,...j->...i', self.trans_mat, points) + self.offset
     
     def to_local(self, points: torch.Tensor):
-        return torch.einsum('ij,...j->...i', self.inv_transform_mat, points - self.offset)
+        return torch.einsum('ij,...j->...i', self.inv_trans_mat, points - self.offset)
     
     def scale(self, points: torch.Tensor):
         return torch.einsum('i,...i->...i', self.scales, points)
@@ -610,8 +610,8 @@ def equal_rot_mats(cells: Sequence[Cell]) -> bool:
 
 def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6):
     return utils.mats_commute(
-        axes0.transform_mat @ axes0.transform_mat.T, 
-        axes1.transform_mat @ axes1.transform_mat.T, 
+        axes0.trans_mat @ axes0.trans_mat.T, 
+        axes1.trans_mat @ axes1.trans_mat.T, 
         atol=atol
     )
 

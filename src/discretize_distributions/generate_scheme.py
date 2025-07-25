@@ -59,7 +59,7 @@ def get_optimal_grid_scheme_for_multivariate_normal(
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
 
     if domain is not None:
-        if not torch.allclose(norm.inv_mahalanobis_mat, domain.transform_mat, atol=TOL):
+        if not torch.allclose(norm.inv_mahalanobis_mat, domain.trans_mat, atol=TOL):
             raise ValueError('The domain transform matrix does not match the inverse mahalanobis matrix of the ' \
             'distribution.')
         if not torch.allclose(norm.loc, domain.offset, atol=TOL):
