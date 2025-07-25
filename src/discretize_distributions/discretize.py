@@ -119,19 +119,17 @@ def _discretize_multi_norm_using_grid_scheme(
         grid_scheme: dd_schemes.GridScheme,
         use_corollary_10: Optional[bool] = True
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    axes = dd_gen.norm_to_axes(dist)
+    dist_axes = dd_gen.norm_to_axes(dist)
 
-    if not dd_schemes.axes_have_common_eigenbasis(axes, grid_scheme.partition, atol=TOL):
+    if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       
 
-    # set the grid scheme to the distribution reference frame:
-    delta = grid_scheme.partition.to_local(dist.loc)
-    grid_scheme_proj = grid_scheme.rebase(axes.rot_mat)
-    relative_scales = grid_scheme_proj.partition.descale(dist.eigvals_sqrt).reciprocal()
+    grid_scheme_in_dist_axes = grid_scheme.rebase(dist_axes)
+    delta = dist_axes.to_local(grid_scheme_in_dist_axes.grid_of_locs.offset)
 
-    locs_per_dim = [(elem - delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.grid_of_locs.points_per_dim)]
-    lower_vertices_per_dim = [(elem - delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.partition.lower_vertices_per_dim)]
-    upper_vertices_per_dim = [(elem - delta[idx]) * relative_scales[idx] for idx, elem in enumerate(grid_scheme_proj.partition.upper_vertices_per_dim)]
+    locs_per_dim = [l + d for l, d in zip(grid_scheme_in_dist_axes.grid_of_locs.points_per_dim, delta)]
+    lower_vertices_per_dim = [l + d for l, d in zip(grid_scheme_in_dist_axes.partition.lower_vertices_per_dim, delta)]
+    upper_vertices_per_dim = [u + d for u, d in zip(grid_scheme_in_dist_axes.partition.upper_vertices_per_dim, delta)]
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]

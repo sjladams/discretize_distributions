@@ -81,22 +81,6 @@ class Axes:
     def descale(self, points: torch.Tensor):
         return torch.einsum('ji,i,...i->...i', self.permute_mat.T, self.scales.reciprocal(), points)
 
-    def rebase(self, rot_mat: torch.Tensor):
-        # Compute projected transform in source basis
-        new_scale_mat = torch.einsum('ij, jk, k->ik', rot_mat.T, self.rot_mat, self.scales)
-
-        # Extract scales in the source eigenbasis
-        permute_mat = (new_scale_mat != 0).to(new_scale_mat.dtype)
-        if not utils.is_permuted_eye(permute_mat):
-            raise ValueError("Can only rebase axes to a rotation matrix that has the same eigenbasis.")
-
-        return Axes(
-            ndim_support=self.ndim_support,
-            rot_mat=rot_mat,
-            scales=new_scale_mat.sum(-1),
-            offset=self.offset.clone(),
-            permute_mat=permute_mat
-        )
 
 class Cell(Axes):
     """
@@ -302,8 +286,26 @@ class Grid(Axes):
 
         return Grid.from_axes(self._select_axes(idx), axes=self)
     
-    def rebase(self, rot_mat: torch.Tensor):
-        return Grid.from_axes(self.points_per_dim, axes=super().rebase(rot_mat))
+    def rebase(self, axes: Axes): # TODO should this be an inplace operation?
+        # Compute projected transform in source basis
+        new_scale_mat = torch.einsum('ij, jk, k->ik', axes.rot_mat.T, self.rot_mat, self.scales)
+
+        # Extract scales in the source eigenbasis
+        permute_mat = (new_scale_mat != 0).to(new_scale_mat.dtype)
+        if not utils.is_permuted_eye(permute_mat):
+            raise ValueError("Can only rebase axes to an axes (i.e. rotation matrix) that has the same eigenbasis.")
+
+        indices = permute_mat.argmax(dim=-1)
+        points_per_dim = [self.points_per_dim[i] for i in indices]
+
+        rel_scaling_diff = new_scale_mat.sum(-1) / axes.scales
+        points_per_dim = [p * rel_scaling_diff[i] for i, p in enumerate(points_per_dim)]
+
+        from copy import copy
+        axes = copy(axes)
+        axes.offset = self.offset.clone()
+
+        return Grid.from_axes(points_per_dim, axes)
 
 
 class GridPartition(Axes):
@@ -421,11 +423,24 @@ class GridPartition(Axes):
             grid_of_upper_vertices=self.grid_of_upper_vertices[idx]
         )
 
-    def rebase(self, rot_mat: torch.Tensor):
+    def rebase(self, axes: Axes): # TODO improve, after making changes to parent class
+        assert equal_axes(self.grid_of_lower_vertices, self.grid_of_upper_vertices), "Lower and upper vertices must have the same axes." # TODO this includes offset!! which is curcial here
+        lower_vertices_per_dim_dummy = self.grid_of_lower_vertices.rebase(axes).points_per_dim
+        upper_vertices_per_dim_dummy = self.grid_of_upper_vertices.rebase(axes).points_per_dim
+
+        lower_vertices_per_dim = [torch.stack([l, u]).min(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
+        upper_vertices_per_dim = [torch.stack([l, u]).max(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
+
+        from copy import copy
+        axes = copy(axes)
+        axes.offset = self.grid_of_lower_vertices.offset.clone()
+        grid_of_lower_vertices = Grid.from_axes(lower_vertices_per_dim, axes=axes)
+        grid_of_upper_vertices = Grid.from_axes(upper_vertices_per_dim, axes=axes)
+
         return GridPartition(
-            grid_of_lower_vertices=self.grid_of_lower_vertices.rebase(rot_mat),
-            grid_of_upper_vertices=self.grid_of_upper_vertices.rebase(rot_mat)
-        )
+            grid_of_lower_vertices=grid_of_lower_vertices,
+            grid_of_upper_vertices=grid_of_upper_vertices
+        )   
 
 
 class Scheme:
@@ -485,10 +500,10 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
     def __len__(self):
         return len(self.grid_of_locs)
     
-    def rebase(self, rot_mat: torch.Tensor):
+    def rebase(self, axes: Axes):
         return GridScheme(
-            grid_of_locs=self.grid_of_locs.rebase(rot_mat),
-            partition=self.partition.rebase(rot_mat)
+            grid_of_locs=self.grid_of_locs.rebase(axes),
+            partition=self.partition.rebase(axes)
         )
 
 
