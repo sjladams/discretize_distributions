@@ -221,9 +221,12 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
         local_domains.append(dd_schemes.Cell(
             lower_vertex=-torch.ones(gmm.event_shape) * percentile,   
             upper_vertex=torch.ones(gmm.event_shape) * percentile,
-            rot_mat=eigenbasis,
-            scales=eigvals.sqrt(),
-            offset=mode
+            axes=dd_schemes.Axes(
+                ndim_support=eigenbasis.shape[-1],
+                rot_mat=eigenbasis,
+                scales=eigvals.sqrt(),
+                offset=mode
+            )
         ))
 
     overlap = dd_schemes.cells_overlap(local_domains)

@@ -36,7 +36,7 @@ def test(ndims: int = 5, apply_domain: bool = False, plot: bool = False):
         
         dist = dd_dists.MultivariateNormal(loc=loc, covariance_matrix=covariance_matrix)
         if apply_domain:
-            domain = dd_schemes.Cell.from_axes(
+            domain = dd_schemes.Cell(
                 lower_vertex=-torch.ones(ndims), 
                 upper_vertex=torch.ones(ndims),
                 axes=dd_gen.norm_to_axes(dist)
@@ -79,10 +79,10 @@ def debug(local_domain_prob: float = 0.99):
 
     axes = dd_gen.norm_to_axes(dist)
     if local_domain_prob == 1.:
-        domain = dd_schemes.create_cell_spanning_Rn_from_axes(ndims, axes)
+        domain = dd_schemes.create_cell_spanning_Rn(ndims, axes)
     else:
         percentile = utils.inv_cdf(1 - (1 - local_domain_prob) / 2)
-        domain = dd_schemes.Cell.from_axes(
+        domain = dd_schemes.Cell(
             lower_vertex=torch.ones(ndims) * -percentile,
             upper_vertex=torch.ones(ndims) * percentile,
             axes=axes
@@ -96,8 +96,8 @@ def debug(local_domain_prob: float = 0.99):
     upper_vertex[0] = mid_point
     lower_vertex[0] = mid_point
         
-    domain0 = dd_schemes.Cell.from_axes(lower_vertex=domain.lower_vertex, upper_vertex=upper_vertex, axes=axes)
-    domain1 = dd_schemes.Cell.from_axes(lower_vertex=lower_vertex, upper_vertex=domain.upper_vertex, axes=axes)
+    domain0 = dd_schemes.Cell(lower_vertex=domain.lower_vertex, upper_vertex=upper_vertex, axes=axes)
+    domain1 = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=domain.upper_vertex, axes=axes)
 
     _, w2 = dd.discretize(dist, get_scheme_from_domain(domain, point))
     _, w2_0 = dd.discretize(dist, get_scheme_from_domain(domain0, point))

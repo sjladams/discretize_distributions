@@ -87,14 +87,15 @@ class Cell(Axes):
             self, 
             lower_vertex: torch.Tensor,
             upper_vertex: torch.Tensor, 
-            rot_mat: Optional[torch.Tensor] = None, 
-            scales: Optional[torch.Tensor] = None,
-            offset: Optional[torch.Tensor] = None
+            axes: Optional[Axes] = None
     ):
         if upper_vertex.shape != lower_vertex.shape:
             raise ValueError("Lower and upper vertices must have the same shape.")
         if (upper_vertex < lower_vertex).any():
             raise ValueError("Upper vertices must be greater than or equal to lower vertices.")
+        
+        if axes is None:
+            axes = Axes(ndim_support=lower_vertex.shape[-1])
         
         self.batch_shape = lower_vertex.shape[:-1]
         if len(self.batch_shape) > 1:
@@ -105,23 +106,6 @@ class Cell(Axes):
 
         super().__init__(
             ndim_support=lower_vertex.shape[-1], 
-            rot_mat=rot_mat, 
-            scales=scales,
-            offset=offset
-        )
-
-    @staticmethod
-    def from_axes(
-            lower_vertex: torch.Tensor,
-            upper_vertex: torch.Tensor,
-            axes: Optional[Axes] = None
-    ):
-        if axes is None:
-            axes = Axes(ndim_support=lower_vertex.shape[-1])
-
-        return Cell(
-            lower_vertex=lower_vertex,
-            upper_vertex=upper_vertex,
             rot_mat=axes.rot_mat,
             scales=axes.scales,
             offset=axes.offset
@@ -131,7 +115,7 @@ class Cell(Axes):
         return 1 if self.lower_vertex.ndim == 1 else self.lower_vertex.shape[0]
 
     def __getitem__(self, idx):
-        return Cell.from_axes(
+        return Cell(
             self.lower_vertex[idx], 
             self.upper_vertex[idx], 
             axes=self
@@ -220,7 +204,7 @@ class Grid(Axes):
     
     @property
     def domain(self):
-        return Cell.from_axes(
+        return Cell(
             torch.stack([p.min() for p in self.points_per_dim]),
             torch.stack([p.max() for p in self.points_per_dim]),
             axes=self
@@ -327,12 +311,7 @@ class GridPartition(Axes):
         """Computes (lower, upper) vertices of axis-aligned Voronoi cells w.r.t. grid over domain."""
 
         if domain is None:
-            domain = create_cell_spanning_Rn(
-                grid_of_points.ndim_support, 
-                rot_mat=grid_of_points.rot_mat, 
-                scales=grid_of_points.scales,
-                offset=grid_of_points.offset
-            )
+            domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
         elif not equal_axes(domain, grid_of_points):
             raise ValueError("Domain axes must match the grid axes.")
             
@@ -381,7 +360,7 @@ class GridPartition(Axes):
 
     @property
     def domain(self):
-        return Cell.from_axes(
+        return Cell(
             self.grid_of_lower_vertices.domain.lower_vertex,
             self.grid_of_upper_vertices.domain.upper_vertex,
             axes=self
@@ -514,11 +493,8 @@ class MultiGridScheme(Scheme):
 
 
 ### --- Utility Functions --- ###
-def create_cell_spanning_Rn(n: int, **kwargs) -> Cell:
-    return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), **kwargs)
-
-def create_cell_spanning_Rn_from_axes(n: int, axes: Optional[Axes] = None):
-    return Cell.from_axes(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), axes=axes)
+def create_cell_spanning_Rn(n: int, axes: Optional[Axes] = None):
+    return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), axes=axes)
 
 def check_grid_in_domain(
     grid: Grid, 
@@ -585,9 +561,12 @@ def merge_cells(cells: List[Cell]) -> Cell:
     return Cell(
         lower_vertex=(scaled_lower_vertex - scaled_local_offset) * scales.reciprocal(),
         upper_vertex=(scaled_upper_vertex - scaled_local_offset) * scales.reciprocal(),
-        rot_mat=cells[0].rot_mat, 
-        scales=scales,
-        offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
+        axes=Axes(
+            ndim_support=cells[0].ndim_support,
+            rot_mat=cells[0].rot_mat,
+            scales=scales,
+            offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
+        )
     )
 
 def equal_rot_mats(cells: List[Cell]) -> bool:

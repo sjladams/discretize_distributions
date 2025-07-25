@@ -17,7 +17,7 @@ if __name__ == "__main__":
     mean = torch.tensor([-5., -5.])
     cov_mat = torch.diag(torch.tensor([3.,1.]))
     norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
-    domain = dd_schemes.Cell.from_axes(
+    domain = dd_schemes.Cell(
         lower_vertex=torch.tensor([-1.0, -1.0]),
         upper_vertex=torch.tensor([1.0, 1.0]),
         axes=dd_gen.norm_to_axes(norm)
