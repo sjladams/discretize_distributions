@@ -179,24 +179,24 @@ class Grid(Axes):
     
     @staticmethod
     def from_shape(
-        shape: torch.Size, 
+        grid_shape: torch.Size, 
         domain: Cell
     ): # TODO if shape = 1 place in the middle of the domain
-        if len(shape) != domain.ndim:
+        if len(grid_shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
 
         points_per_dim = [
-            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], shape[dim]) 
-            for dim in range(len(shape))
+            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) 
+            for dim in range(len(grid_shape))
         ]
         return Grid(points_per_dim, axes=domain)
     
     @property
-    def shape(self):
+    def grid_shape(self):
         return torch.Size(tuple(len(p) for p in self.points_per_dim))
     
     def __len__(self):
-        return int(torch.prod(torch.as_tensor(self.shape)).item())
+        return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
     
     @property
     def points(self):
@@ -226,7 +226,7 @@ class Grid(Axes):
             if idx.dim() == 0:
                 idx = idx.unsqueeze(0)
             
-            unravelled = torch.unravel_index(idx, self.shape)
+            unravelled = torch.unravel_index(idx, self.grid_shape)
             points = [self.points_per_dim[d][unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
@@ -337,7 +337,7 @@ class GridPartition(Axes):
     
     @property
     def shape(self):
-        return self._grid_of_lower_vertices.shape
+        return self._grid_of_lower_vertices.grid_shape
     
     @property
     def lower_vertices_per_dim(self):
@@ -441,7 +441,7 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
 
     @property
     def shape(self):
-        return self.grid_of_locs.shape
+        return self.grid_of_locs.grid_shape
     
     @property
     def domain(self):
