@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional, Sequence, Tuple, List
+from typing import Union, Optional,  List
 
 import discretize_distributions.utils as utils
 
@@ -174,7 +174,7 @@ class Cell(Axes):
 class Grid(Axes):
     def __init__(
             self, 
-            points_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
+            points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             rot_mat: Optional[torch.Tensor] = None, 
             scales: Optional[torch.Tensor] = None,
             offset: Optional[torch.Tensor] = None
@@ -193,7 +193,7 @@ class Grid(Axes):
     
     @staticmethod
     def from_axes(
-        points_per_dim: Union[Sequence[torch.Tensor], torch.Tensor],
+        points_per_dim: Union[List[torch.Tensor], torch.Tensor],
         axes: Optional[Axes] = None
     ):
         if axes is None:
@@ -317,8 +317,8 @@ class GridPartition(Axes):
     
     @staticmethod
     def from_vertices_per_dim(
-            lower_vertices_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
-            upper_vertices_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
+            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
     ):
         for idx, (l, u) in enumerate(zip(lower_vertices_per_dim, upper_vertices_per_dim)):
@@ -510,7 +510,7 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
 class MultiGridScheme(Scheme):
     def __init__(
             self,
-            grid_schemes: Sequence[GridScheme],
+            grid_schemes: List[GridScheme],
             outer_loc: torch.Tensor,
             domain: Optional[Cell] = None 
     ):
@@ -553,7 +553,7 @@ def check_grid_in_domain(
             return False
     return True
 
-def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor: 
+def cells_overlap(cells: List[Cell]) -> torch.Tensor: 
     """
     Returns an [N, N] boolean tensor where entry (i, j) is True if cells i and j overlap.
     Only supports non-batched Cells with the same rotation matrix
@@ -570,7 +570,7 @@ def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor:
     overlap = ~separated
     return overlap
 
-def any_cells_overlap(cells: Sequence[Cell]) -> bool:
+def any_cells_overlap(cells: List[Cell]) -> bool:
     """
     Returns True if any pair of cells overlap.
     """
@@ -578,7 +578,7 @@ def any_cells_overlap(cells: Sequence[Cell]) -> bool:
     overlap.fill_diagonal_(False)  # ignore self-overlap
     return overlap.any().item()
 
-def merge_cells(cells: Sequence[Cell]) -> Cell:
+def merge_cells(cells: List[Cell]) -> Cell:
     if not equal_rot_mats(cells):
         raise ValueError("All cells must have the same rotation matrix (rot_mat).")
     
@@ -603,7 +603,7 @@ def merge_cells(cells: Sequence[Cell]) -> Cell:
         offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
     )
 
-def equal_rot_mats(cells: Sequence[Cell]) -> bool:
+def equal_rot_mats(cells: List[Cell]) -> bool:
     rot_mats = torch.stack([cell.rot_mat for cell in cells])
     return torch.allclose(rot_mats, rot_mats[0].expand_as(rot_mats), atol=TOL)
 
