@@ -561,8 +561,8 @@ def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor:
     if not equal_rot_mats(cells):
         raise ValueError("All cells must have the same rotation matrix (rot_mat).")
 
-    scaled_lowers = torch.stack([cell.scale(cell.lower_vertex) - cell.local_offset for cell in cells])
-    scaled_uppers = torch.stack([cell.scale(cell.upper_vertex) - cell.local_offset for cell in cells])
+    scaled_lowers = torch.stack([cell.scale(cell.lower_vertex - cell.local_offset) for cell in cells])
+    scaled_uppers = torch.stack([cell.scale(cell.upper_vertex - cell.local_offset) for cell in cells])
 
     # [N, 1, d] vs [1, N, d] for broadcasting
     separated = (scaled_uppers.unsqueeze(1) < scaled_lowers.unsqueeze(0)).any(-1) | \
