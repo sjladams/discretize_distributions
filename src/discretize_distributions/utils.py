@@ -192,6 +192,18 @@ def compute_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
     w2_sq = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
     return w2_sq.sqrt()
 
+def batched_cartesian_product(points_per_dim):
+    batch_shape = points_per_dim[0].shape[:-1]
+    if len(batch_shape) == 0:
+        mesh = torch.meshgrid(*points_per_dim, indexing='ij')
+        points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+        return points
+    else:
+        batch_of_points = []
+        for i in range(batch_shape[0]):
+            batch_of_points.append(batched_cartesian_product([p[i] for p in points_per_dim]))
+        return torch.stack(batch_of_points, dim=0)
+
 def pickle_load(tag):
     if not (".pickle" in tag or ".pkl" in tag):
         tag = f"{tag}.pickle"

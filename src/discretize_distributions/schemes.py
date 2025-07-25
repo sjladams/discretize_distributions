@@ -162,13 +162,20 @@ class Grid(Axes):
             axes: Optional[Axes] = None
     ):
         """
-        points_per_dim: list of 1D torch tensors, each of shape (n_i,)
+        points_per_dim: list of torch tensors, each of shape (batch_shape, n_i,)
         example: [torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])]
         """
-        self.points_per_dim = points_per_dim
+
+        # Check if all batch shapes are equal
+        batch_shapes = [p.shape[:-1] for p in points_per_dim]
+        if len(set(batch_shapes)) != 1:
+            raise ValueError("the points per dimension must have the same batch shape.")
 
         if axes is None:
             axes = Axes(ndim_support=len(points_per_dim))
+
+        self.batch_shape = batch_shapes[0]
+        self.points_per_dim = points_per_dim
 
         super().__init__(
             ndim_support=len(points_per_dim), 
@@ -193,7 +200,7 @@ class Grid(Axes):
     
     @property
     def grid_shape(self):
-        return torch.Size(tuple(len(p) for p in self.points_per_dim))
+        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
     
     def __len__(self):
         return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
@@ -205,26 +212,24 @@ class Grid(Axes):
     @property
     def domain(self):
         return Cell(
-            torch.stack([p.min() for p in self.points_per_dim]),
-            torch.stack([p.max() for p in self.points_per_dim]),
+            torch.stack([p.min(dim=-1).values for p in self.points_per_dim], dim=-1),
+            torch.stack([p.max(dim=-1).values for p in self.points_per_dim], dim=-1),
             axes=self
         )
     
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if isinstance(idx, tuple):
             selected_axes = self._select_axes(idx)
-            mesh = torch.meshgrid(*selected_axes, indexing='ij')
-            points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+            points = utils.batched_cartesian_product(selected_axes)
         elif isinstance(idx, slice):
-            mesh = torch.meshgrid(*self.points_per_dim, indexing='ij')
-            points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)[idx]
+            points = utils.batched_cartesian_product(self.points_per_dim)[..., idx, :]
         else:
             idx = torch.as_tensor(idx)
             if idx.dim() == 0:
                 idx = idx.unsqueeze(0)
             
             unravelled = torch.unravel_index(idx, self.grid_shape)
-            points = [self.points_per_dim[d][unravelled[d]] for d in range(self.ndim_support)]
+            points = [self.points_per_dim[d][..., unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
         return self.to_global(points)
@@ -232,10 +237,10 @@ class Grid(Axes):
     def _select_axes(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
-        indexed_points = [self.points_per_dim[d][i] for d, i in enumerate(idx)]
+        indexed_points = [self.points_per_dim[d][..., i].unsqueeze(-1) for d, i in enumerate(idx)]
         return indexed_points
     
-    def __getitem__(self, idx: tuple):
+    def __getitem__(self, idx: Union[int, tuple]):
         if not isinstance(idx, tuple):
             idx = (idx,)
         
