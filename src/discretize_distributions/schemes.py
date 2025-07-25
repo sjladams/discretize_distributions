@@ -246,7 +246,11 @@ class Grid(Axes):
 
         return Grid(self._select_axes(idx), axes=self)
     
-    def rebase(self, axes: Axes): # TODO should this be an inplace operation?
+    def rebase(self, axes: Axes):
+        """
+        Aligns the reference-frame (axes) the current grid to the given `axes`, WITHOUT modifying the offset. The 
+        rebasing is only possible if the new axes share the same eigenbasis as the current axes
+        """
         # Compute projected transform in source basis
         new_scale_mat = torch.einsum('ij, jk, k->ik', axes.rot_mat.T, self.rot_mat, self.scales)
 
@@ -261,11 +265,15 @@ class Grid(Axes):
         rel_scaling_diff = new_scale_mat.sum(-1) / axes.scales
         points_per_dim = [p * rel_scaling_diff[i] for i, p in enumerate(points_per_dim)]
 
-        from copy import copy
-        axes = copy(axes)
-        axes.offset = self.offset.clone()
-
-        return Grid(points_per_dim, axes)
+        return Grid(
+            points_per_dim=points_per_dim, 
+            axes=Axes(
+                ndim_support=len(points_per_dim), 
+                rot_mat=axes.rot_mat.clone(), 
+                scales=axes.scales.clone(), 
+                offset=self.offset.clone()
+            )
+        )
 
 
 class GridPartition(Axes):
@@ -369,22 +377,28 @@ class GridPartition(Axes):
             axes=self
         )
 
-    def rebase(self, axes: Axes): # TODO improve, after making changes to parent class
-        assert equal_axes(self._grid_of_lower_vertices, self._grid_of_upper_vertices), "Lower and upper vertices must have the same axes." # TODO this includes offset!! which is curcial here
+    def rebase(self, axes: Axes):
+        """
+        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
+        rebasing is only possible if the new axes share the same eigenbasis as the current axes
+        """
+        assert equal_axes(self._grid_of_lower_vertices, self._grid_of_upper_vertices), (
+            "Lower and upper vertices must have the same axes.")
         lower_vertices_per_dim_dummy = self._grid_of_lower_vertices.rebase(axes).points_per_dim
         upper_vertices_per_dim_dummy = self._grid_of_upper_vertices.rebase(axes).points_per_dim
 
         lower_vertices_per_dim = [torch.stack([l, u]).min(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
         upper_vertices_per_dim = [torch.stack([l, u]).max(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
 
-        from copy import copy  # TODO just initialize new Axes object
-        axes = copy(axes) 
-        axes.offset = self._grid_of_lower_vertices.offset.clone()
-
         return GridPartition(
             lower_vertices_per_dim=lower_vertices_per_dim, 
             upper_vertices_per_dim=upper_vertices_per_dim, 
-            axes=axes
+            axes=Axes(
+                ndim_support=len(lower_vertices_per_dim), 
+                rot_mat=axes.rot_mat.clone(), 
+                scales=axes.scales.clone(), 
+                offset=self._grid_of_lower_vertices.offset.clone()
+            )
         )
 
 
