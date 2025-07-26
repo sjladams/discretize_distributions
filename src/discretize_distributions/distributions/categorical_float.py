@@ -3,7 +3,7 @@ from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 
 from discretize_distributions.utils import kmean_clustering_batches
-from discretize_distributions.schemes import Grid
+import discretize_distributions.schemes as dd_schemes
 
 TOL = 1e-8
 
@@ -88,23 +88,22 @@ class CategoricalGrid(Distribution):
 
     def __init__(
             self, 
-            grid_of_locs: Grid,
-            grid_of_probs: Grid,
+            grid_of_locs: dd_schemes.Grid,
+            grid_of_probs: dd_schemes.Grid,
             validate_args=None
     ):
-        if grid_of_probs.shape != grid_of_locs.shape:
-            raise ValueError("probs grid shape must match locs grid shape (excluding event dim)")
-        if grid_of_probs.ndim_support != grid_of_locs.ndim_support:
-            raise ValueError("probs and locs must have the same number of dimensions")
-        
-        assert torch.allclose(grid_of_probs.rot_mat, torch.eye(grid_of_probs.ndim), atol=TOL), "probs grid should have no rotation"
+        if len(grid_of_probs) != len(grid_of_locs):
+            raise ValueError("probs and locs must have the same number of points")
+        if grid_of_probs.batch_shape != grid_of_locs.batch_shape:
+            raise ValueError("probs and locs must have the same batch shape")
+        if not dd_schemes.equal_axes(grid_of_probs, dd_schemes.Axes(ndim_support=grid_of_probs.ndim_support)): # TODO use identity axes
+            raise ValueError("probs should have an identity axes")
 
         self.grid_of_probs = grid_of_probs
         self.grid_of_locs = grid_of_locs
 
-        # event_shape is the last dimension of locs
         event_shape = torch.Size((grid_of_probs.ndim,))
-        batch_shape = torch.Size()  # No explicit batch for now
+        batch_shape = grid_of_locs.batch_shape
 
         super().__init__(
             batch_shape=batch_shape,
@@ -136,11 +135,11 @@ class CategoricalGrid(Distribution):
 
     @property
     def probs(self):
-        return self.grid_of_probs.query(slice(None)).prod(dim=-1)  
+        return self.grid_of_probs.points.prod(-1) 
     
     @property
     def locs(self):
-        return self.grid_of_locs.query(slice(None))
+        return self.grid_of_locs.points
 
 
 ### Utility functions for CategoricalFloat distributions --------------------------- ###

@@ -11,7 +11,6 @@ TOL = 1e-8
 __all__ = ['discretize']
 
 
-# TODO for input GridScheme output dd_dists.CategoricalGrid
 def discretize(
         dist: torch.distributions.Distribution,
         scheme: Union[dd_schemes.Scheme,  List[dd_schemes.GridScheme]]
@@ -27,7 +26,8 @@ def _discretize(
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
 
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
-        locs, probs, w2 = _discretize_multi_norm_using_grid_scheme(dist, scheme)
+        categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
+        locs, probs = categorical_grid.locs, categorical_grid.probs
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
         for grid_scheme in scheme.grid_schemes:
@@ -98,16 +98,7 @@ def discretize_multi_norm_using_grid_scheme(
         dist: dd_dists.MultivariateNormal,
         grid_scheme: dd_schemes.GridScheme,
         use_corollary_10: Optional[bool] = True
-) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
-    locs, probs, w2 = _discretize_multi_norm_using_grid_scheme(dist, grid_scheme, use_corollary_10)
-    return dd_dists.CategoricalFloat(locs, probs), w2
-
-
-def _discretize_multi_norm_using_grid_scheme(
-        dist: dd_dists.MultivariateNormal,
-        grid_scheme: dd_schemes.GridScheme,
-        use_corollary_10: Optional[bool] = True
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[dd_dists.CategoricalGrid, torch.Tensor]:
     dist_axes = dd_gen.norm_to_axes(dist)
 
     if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
@@ -123,7 +114,11 @@ def _discretize_multi_norm_using_grid_scheme(
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
-    probs = dd_schemes.Grid(probs_per_dim).points.prod(-1)
+
+    disc_dist = dd_dists.CategoricalGrid(
+        grid_of_locs=grid_scheme.grid_of_locs,
+        grid_of_probs=dd_schemes.Grid(probs_per_dim)
+    )
 
     # Wasserstein distance error computation:
     trunc_mean_var_per_dim = [
@@ -148,10 +143,10 @@ def _discretize_multi_norm_using_grid_scheme(
 
         w2_sq_mean_var_alt = trunc_vars.points + (trunc_means.points - local_locs).pow(2)
         w2_sq_mean_var_alt = torch.einsum('...n, n->...', w2_sq_mean_var_alt, dist.eigvals)
-        w2 = torch.einsum('c,c->', w2_sq_mean_var_alt, probs).sqrt()
+        w2 = torch.einsum('c,c->', w2_sq_mean_var_alt, disc_dist.probs).sqrt()
 
     assert not torch.isnan(w2) and not torch.isinf(w2), f'Wasserstein distance is NaN or Inf: {w2}'
 
     # print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
-    return grid_scheme.locs, probs, w2
+    return disc_dist, w2
