@@ -228,13 +228,17 @@ class Grid(Axes):
     def from_shape(
         grid_shape: torch.Size, 
         domain: Cell
-    ): # TODO if shape = 1 place in the middle of the domain
+    ):
         if len(grid_shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
+        if torch.isinf(domain.lower_vertex).any() or torch.isinf(domain.upper_vertex).any():
+            raise ValueError("Domain must be finite.")
+        
+        center = 0.5 * (domain.lower_vertex + domain.upper_vertex)
 
         points_per_dim = [
-            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) 
-            for dim in range(len(grid_shape))
+            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
+            else center[dim] for dim in range(len(grid_shape))
         ]
         return Grid(points_per_dim, axes=domain)
     
