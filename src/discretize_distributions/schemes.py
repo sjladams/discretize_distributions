@@ -505,9 +505,9 @@ class MultiGridScheme(Scheme):
         if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
             raise ValueError("All grid schemes must have the same number of dimensions.")
 
-        # domains = [gq.domain for gq in grid_schemes]
-        # if any_cells_overlap(domains):
-        #     raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
+        domains = [gq.domain for gq in grid_schemes]
+        if any_cells_overlap(domains):
+            raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
 
         self.grid_schemes = grid_schemes
         self.outer_loc = outer_loc

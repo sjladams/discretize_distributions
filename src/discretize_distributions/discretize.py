@@ -29,6 +29,8 @@ def _discretize(
         categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
         locs, probs = categorical_grid.locs, categorical_grid.probs
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
+        assert dd_schemes.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
+
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
         for grid_scheme in scheme.grid_schemes:
             locs_component, probs_component, w2_component = _discretize(dist, grid_scheme)
