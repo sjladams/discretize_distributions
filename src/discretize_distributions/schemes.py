@@ -615,5 +615,5 @@ def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
 def identity_axes(axes: Axes, atol=TOL) -> bool:
     return equal_axes(axes, IdentityAxes(ndim_support=axes.ndim_support), atol=atol)
 
-def domain_spanning_Rn(domain) -> bool:
+def domain_spans_Rn(domain) -> bool:
     return bool(domain.lower_vertex.eq(-torch.inf).all().item() and domain.upper_vertex.eq(torch.inf).all().item())
