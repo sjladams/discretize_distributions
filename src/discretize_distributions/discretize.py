@@ -65,9 +65,9 @@ def _discretize(
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
             )
-        assert all([elem.partition.domain_spanning_Rn for elem in scheme]), \
-            'All grid schemes must span the full R^n domain.' 
-        
+        assert all([dd_schemes.domain_spanning_Rn(elem.partition.domain) for elem in scheme]), \
+            'All grid schemes must span the full R^n domain.'
+
         scheme_per_gmm_comp = torch.cdist(
             torch.stack([elem.grid_of_locs.offset for elem in scheme], dim=0),
             dist.component_distribution.loc, p=2

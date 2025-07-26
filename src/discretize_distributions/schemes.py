@@ -236,9 +236,13 @@ class Grid(Axes):
     
     def _select_axes(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
-
-        indexed_points = [self.points_per_dim[d][..., i].unsqueeze(-1) for d, i in enumerate(idx)]
+        indexed_points = [self.points_per_dim[d][..., i].view(self.batch_shape + (-1,)) for d, i in enumerate(idx)]
         return indexed_points
+    
+    def _select_batch(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
+        if isinstance(idx, tuple) and len(idx) > len(self.batch_shape):
+            raise ValueError("Indexing tuple must not exceed the batch shape dimensions.")
+        return [p[idx] for p in self.points_per_dim]
     
     def __getitem__(self, idx: Union[int, tuple]):
         if not isinstance(idx, tuple):
@@ -278,7 +282,7 @@ class Grid(Axes):
         )
 
 
-class GridPartition(Axes):
+class GridPartition(Grid):
     def __init__(
             self,
             lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
@@ -293,17 +297,11 @@ class GridPartition(Axes):
                 raise ValueError(f"Lower and upper vertices at index {idx} must have the same shape.")
             if (u < l).any():
                 raise ValueError(f"Upper vertices at index {idx} must be greater than or equal to lower vertices.")
-        
-        self._grid_of_lower_vertices = Grid(lower_vertices_per_dim, axes=axes)
-        self._grid_of_upper_vertices = Grid(upper_vertices_per_dim, axes=axes)
 
         super().__init__(
-            ndim_support=len(lower_vertices_per_dim), 
-            rot_mat=self._grid_of_lower_vertices.rot_mat,
-            scales=self._grid_of_lower_vertices.scales,
-            offset=self._grid_of_lower_vertices.offset
+            points_per_dim=[torch.stack([l, u], dim=0) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)], 
+            axes=axes
         )
-    
 
     @staticmethod
     def from_grid_of_points(
@@ -338,45 +336,35 @@ class GridPartition(Axes):
         )
     
     @property
-    def shape(self):
-        return self._grid_of_lower_vertices.grid_shape
-    
-    @property
     def lower_vertices_per_dim(self):
-        return self._grid_of_lower_vertices.points_per_dim
+        return self._select_batch(0)
     
     @property
     def upper_vertices_per_dim(self):
-        return self._grid_of_upper_vertices.points_per_dim
+        return self._select_batch(1)
     
     @property
     def lower_vertices(self):
-        return self._grid_of_lower_vertices.points
+        return self.points[0]
     
     @property
     def upper_vertices(self):
-        return self._grid_of_upper_vertices.points
-    
-    def __len__(self):
-        return len(self._grid_of_lower_vertices)
+        return self.points[1]
 
     @property
     def domain(self):
         return Cell(
-            self._grid_of_lower_vertices.domain.lower_vertex,
-            self._grid_of_upper_vertices.domain.upper_vertex,
+            super().domain.lower_vertex[0],
+            super().domain.upper_vertex[1],
             axes=self
         )
 
-    @property
-    def domain_spanning_Rn(self) -> bool:
-        return bool(self.domain.lower_vertex.eq(-torch.inf).all().item() and self.domain.upper_vertex.eq(torch.inf).all().item())
-    
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: Union[int, tuple]):
+        grid = super().__getitem__(idx)
         return GridPartition(
-            lower_vertices_per_dim=self._grid_of_lower_vertices[idx].points_per_dim,
-            upper_vertices_per_dim=self._grid_of_upper_vertices[idx].points_per_dim, 
-            axes=self
+            lower_vertices_per_dim=grid._select_batch(0),
+            upper_vertices_per_dim=grid._select_batch(1),
+            axes=grid
         )
 
     def rebase(self, axes: Axes):
@@ -384,23 +372,12 @@ class GridPartition(Axes):
         Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
         rebasing is only possible if the new axes share the same eigenbasis as the current axes
         """
-        assert equal_axes(self._grid_of_lower_vertices, self._grid_of_upper_vertices), (
-            "Lower and upper vertices must have the same axes.")
-        lower_vertices_per_dim_dummy = self._grid_of_lower_vertices.rebase(axes).points_per_dim
-        upper_vertices_per_dim_dummy = self._grid_of_upper_vertices.rebase(axes).points_per_dim
-
-        lower_vertices_per_dim = [torch.stack([l, u]).min(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
-        upper_vertices_per_dim = [torch.stack([l, u]).max(dim=0).values for l, u in zip(lower_vertices_per_dim_dummy, upper_vertices_per_dim_dummy)]
+        rebased_grid = super().rebase(axes)
 
         return GridPartition(
-            lower_vertices_per_dim=lower_vertices_per_dim, 
-            upper_vertices_per_dim=upper_vertices_per_dim, 
-            axes=Axes(
-                ndim_support=len(lower_vertices_per_dim), 
-                rot_mat=axes.rot_mat.clone(), 
-                scales=axes.scales.clone(), 
-                offset=self._grid_of_lower_vertices.offset.clone()
-            )
+            lower_vertices_per_dim=[p.min(dim=0).values for p in rebased_grid.points_per_dim],
+            upper_vertices_per_dim=[p.max(dim=0).values for p in rebased_grid.points_per_dim],
+            axes=rebased_grid
         )
 
 
@@ -598,4 +575,6 @@ def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
         raise ValueError("Domain offset must match the grid offset.")
     else:
         return True
-    
+
+def domain_spanning_Rn(domain) -> bool:
+    return bool(domain.lower_vertex.eq(-torch.inf).all().item() and domain.upper_vertex.eq(torch.inf).all().item())
