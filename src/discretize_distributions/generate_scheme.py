@@ -70,7 +70,7 @@ def get_optimal_grid_scheme_for_multivariate_normal(
             zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
         ]
 
-    grid_of_locs = dd_schemes.Grid(locs_per_dim, axes=norm_to_axes(norm))
+    grid_of_locs = dd_schemes.Grid(locs_per_dim, axes=axes_from_norm(norm))
 
     # print(f'Requested grid size: {num_locs}, realized grid size over domain: {len(grid_of_locs)}')
 
@@ -79,7 +79,7 @@ def get_optimal_grid_scheme_for_multivariate_normal(
     return dd_schemes.GridScheme(grid_of_locs, grid_partition)
 
 
-def norm_to_axes(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
+def axes_from_norm(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
     """
     Converts a MultivariateNormal distribution to a discretization Axes object.
     The Axes object contains the grid of locations, rotation matrix, scales, and offset.

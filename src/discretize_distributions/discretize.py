@@ -99,7 +99,7 @@ def discretize_multi_norm_using_grid_scheme(
         grid_scheme: dd_schemes.GridScheme,
         use_corollary_10: Optional[bool] = True
 ) -> Tuple[dd_dists.CategoricalGrid, torch.Tensor]:
-    dist_axes = dd_gen.norm_to_axes(dist)
+    dist_axes = dd_gen.axes_from_norm(dist)
 
     if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       

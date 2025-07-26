@@ -27,7 +27,7 @@ def test(ndims: int = 5, apply_domain: bool = False, plot: bool = False):
             domain = dd_schemes.Cell(
                 lower_vertex=-torch.ones(ndims), 
                 upper_vertex=torch.ones(ndims),
-                axes=dd_gen.norm_to_axes(dist)
+                axes=dd_gen.axes_from_norm(dist)
             )
         else:
             domain = None
@@ -65,7 +65,7 @@ def debug(local_domain_prob: float = 0.99):
         # covariance_matrix=torch.diag(torch.tensor([0.5, 2.0]))
     )
 
-    axes = dd_gen.norm_to_axes(dist)
+    axes = dd_gen.axes_from_norm(dist)
     if local_domain_prob == 1.:
         domain = dd_schemes.create_cell_spanning_Rn(ndims, axes)
     else:

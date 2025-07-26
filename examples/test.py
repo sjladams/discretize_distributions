@@ -20,7 +20,7 @@ if __name__ == "__main__":
     domain = dd_schemes.Cell(
         lower_vertex=torch.tensor([-1.0, -1.0]),
         upper_vertex=torch.tensor([1.0, 1.0]),
-        axes=dd_gen.norm_to_axes(norm)
+        axes=dd_gen.axes_from_norm(norm)
     )
 
     optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     ## via self constructed grid scheme
     grid_locs = dd_schemes.Grid(
         points_per_dim=[torch.linspace(-1, 1, 2), torch.linspace(-1., 1., 4)], 
-        axes=dd_gen.norm_to_axes(norm)
+        axes=dd_gen.axes_from_norm(norm)
     )
 
     grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_locs)
