@@ -96,7 +96,7 @@ class CategoricalGrid(Distribution):
             raise ValueError("probs and locs must have the same number of points")
         if grid_of_probs.batch_shape != grid_of_locs.batch_shape:
             raise ValueError("probs and locs must have the same batch shape")
-        if not dd_schemes.equal_axes(grid_of_probs, dd_schemes.Axes(ndim_support=grid_of_probs.ndim_support)): # TODO use identity axes
+        if not dd_schemes.identity_axes(grid_of_probs):
             raise ValueError("probs should have an identity axes")
 
         self.grid_of_probs = grid_of_probs

@@ -85,7 +85,6 @@ def norm_to_axes(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
     The Axes object contains the grid of locations, rotation matrix, scales, and offset.
     """
     return dd_schemes.Axes(
-        ndim_support=norm.event_shape_support[-1],
         rot_mat=norm.eigvecs,
         scales=norm.eigvals_sqrt,
         offset=norm.loc
@@ -222,7 +221,6 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
             lower_vertex=-torch.ones(gmm.event_shape) * percentile,   
             upper_vertex=torch.ones(gmm.event_shape) * percentile,
             axes=dd_schemes.Axes(
-                ndim_support=eigenbasis.shape[-1],
                 rot_mat=eigenbasis,
                 scales=eigvals.sqrt(),
                 offset=mode

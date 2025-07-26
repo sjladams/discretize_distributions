@@ -34,7 +34,6 @@ if __name__ == '__main__':
     ## Intro to Axes, Grids and Partitions -----------------------------------------------------------------------------
     rot_mat = rotation_matrix(math.pi / 4)  # 45 degrees rotation
     axes0 = dd_schemes.Axes(
-        ndim_support=2,
         rot_mat=rot_mat,
         scales=torch.tensor([1., 1.]),
         offset=torch.tensor([0.2, 0.3])
@@ -66,14 +65,12 @@ if __name__ == '__main__':
     ## Rebase: change reference frame for GridScheme -------------------------------------------------------------------
     # Initialize Axes with different rotations, scales and offsets, but with a common eigenbasis
     axes1 = dd_schemes.Axes(
-        ndim_support=2,
         rot_mat=torch.stack((rot_mat[:,1], -rot_mat[:,0]), dim=1), #   torch.tensor([[0., -1.], [1., 0.]]),  # 90 degrees rotation
         scales=torch.tensor([0.5, 1.3]),
         offset=torch.tensor([-0.2, 0.2])
     )
 
     axes2 = dd_schemes.Axes(
-        ndim_support=2,
         rot_mat=torch.stack((rot_mat[:,1], rot_mat[:,0]), dim=-1), #  torch.tensor([[0., 1.], [1., 0.]]), 
         scales=torch.tensor([0.5, 1.3]),
         offset=torch.tensor([-0.2, -0.2])

@@ -17,23 +17,16 @@ TOL = 1e-8
 class Axes:
     def __init__(
         self,
-        ndim_support: int,
-        rot_mat: Optional[torch.Tensor] = None, 
-        scales: Optional[torch.Tensor] = None,
-        offset: Optional[torch.Tensor] = None
+        rot_mat: torch.Tensor, 
+        scales: torch.Tensor,
+        offset: torch.Tensor
     ):
-        scales = torch.ones(ndim_support) if scales is None else scales
-        rot_mat = torch.eye(ndim_support) if rot_mat is None else rot_mat
-        ndim = rot_mat.shape[-2]
-        offset = torch.zeros(ndim) if offset is None else offset
+        ndim, ndim_support = rot_mat.shape[-2], rot_mat.shape[-1]
 
         if not ndim_support <= ndim:
             raise ValueError("rot_mat must be injective.")
-    
         if rot_mat.shape[-2] != offset.shape[-1]:
             raise ValueError("Rotation matrix should have the same number of output dimensions as the offset.")
-        if rot_mat.shape[-1] != ndim_support:
-            raise ValueError("Rotation matrix must have the same number of input dimensions as the points per dimension.")
         if scales.shape[-1] != ndim_support:
             raise ValueError("Scales must have the same number of dimensions as the points per dimension.")
         if not (scales > 0).all():
@@ -77,6 +70,15 @@ class Axes:
         return torch.einsum('i,...i->...i', self.scales.reciprocal(), points)
 
 
+class IdentityAxes(Axes):
+    def __init__(self, ndim_support: int):
+        super().__init__(
+            rot_mat=torch.eye(ndim_support),
+            scales=torch.ones(ndim_support),
+            offset=torch.zeros(ndim_support)
+        )
+
+
 class Cell(Axes):
     """
     A (batched) hyperrectangular cell in ℝⁿ, defined by lower and upper vertices.
@@ -95,7 +97,7 @@ class Cell(Axes):
             raise ValueError("Upper vertices must be greater than or equal to lower vertices.")
         
         if axes is None:
-            axes = Axes(ndim_support=lower_vertex.shape[-1])
+            axes = IdentityAxes(ndim_support=lower_vertex.shape[-1])
         
         self.batch_shape = lower_vertex.shape[:-1]
         if len(self.batch_shape) > 1:
@@ -105,7 +107,6 @@ class Cell(Axes):
         self.upper_vertex = upper_vertex
 
         super().__init__(
-            ndim_support=lower_vertex.shape[-1], 
             rot_mat=axes.rot_mat,
             scales=axes.scales,
             offset=axes.offset
@@ -172,13 +173,12 @@ class Grid(Axes):
             raise ValueError("the points per dimension must have the same batch shape.")
 
         if axes is None:
-            axes = Axes(ndim_support=len(points_per_dim))
+            axes = IdentityAxes(ndim_support=len(points_per_dim))
 
         self.batch_shape = batch_shapes[0]
         self.points_per_dim = points_per_dim
 
         super().__init__(
-            ndim_support=len(points_per_dim), 
             rot_mat=axes.rot_mat,
             scales=axes.scales,
             offset=axes.offset
@@ -274,7 +274,6 @@ class Grid(Axes):
         return Grid(
             points_per_dim=points_per_dim, 
             axes=Axes(
-                ndim_support=len(points_per_dim), 
                 rot_mat=axes.rot_mat.clone(), 
                 scales=axes.scales.clone(), 
                 offset=self.offset.clone()
@@ -529,7 +528,6 @@ def merge_cells(cells: List[Cell]) -> Cell:
         lower_vertex=(scaled_lower_vertex - scaled_local_offset) * scales.reciprocal(),
         upper_vertex=(scaled_upper_vertex - scaled_local_offset) * scales.reciprocal(),
         axes=Axes(
-            ndim_support=cells[0].ndim_support,
             rot_mat=cells[0].rot_mat,
             scales=scales,
             offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
@@ -557,6 +555,9 @@ def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
         raise ValueError("Domain offset must match the grid offset.")
     else:
         return True
+
+def identity_axes(axes: Axes, atol=TOL) -> bool:
+    return equal_axes(axes, IdentityAxes(ndim_support=axes.ndim_support), atol=atol)
 
 def domain_spanning_Rn(domain) -> bool:
     return bool(domain.lower_vertex.eq(-torch.inf).all().item() and domain.upper_vertex.eq(torch.inf).all().item())
