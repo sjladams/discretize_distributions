@@ -3,7 +3,6 @@ from typing import Union, Optional,  List
 
 import discretize_distributions.utils as utils
 
-# TODO: batchify, robustify, add test, doctring
 # TODO: create toch.nn.Modules from Cell, Grid, GridPartition, GridQuantization
 # for i, axis in enumerate(points_per_dim):
 #     self.register_parameter(f"axis_{i}", torch.nn.Parameter(axis, requires_grad=False))
@@ -39,12 +38,32 @@ class Axes:
         if not torch.allclose(rot_mat.swapaxes(-2, -1) @ rot_mat, torch.eye(ndim_support), atol=TOL):
             raise ValueError("Rotation matrix must be orthogonal.")
 
-        self.ndim_support = ndim_support
-        self.ndim = ndim
-        self.rot_mat = rot_mat
-        self.scales = scales
-        self.offset = offset
-    
+        self._ndim_support = ndim_support
+        self._ndim = ndim
+        self._rot_mat = rot_mat
+        self._scales = scales
+        self._offset = offset
+
+    @property
+    def ndim_support(self):
+        return self._ndim_support
+
+    @property
+    def ndim(self):
+        return self._ndim
+
+    @property
+    def rot_mat(self):
+        return self._rot_mat
+
+    @property
+    def scales(self):
+        return self._scales
+
+    @property
+    def offset(self):
+        return self._offset
+
     @property
     def trans_mat(self):
         return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
@@ -99,18 +118,31 @@ class Cell(Axes):
         if axes is None:
             axes = IdentityAxes(ndim_support=lower_vertex.shape[-1])
         
-        self.batch_shape = lower_vertex.shape[:-1]
-        if len(self.batch_shape) > 1:
+        batch_shape = lower_vertex.shape[:-1]
+        if len(batch_shape) > 1:
             raise ValueError("Only 1-dimensional batch-sizes are supported.")
 
-        self.lower_vertex = lower_vertex
-        self.upper_vertex = upper_vertex
+        self._batch_shape = batch_shape
+        self._lower_vertex = lower_vertex
+        self._upper_vertex = upper_vertex
 
         super().__init__(
             rot_mat=axes.rot_mat,
             scales=axes.scales,
             offset=axes.offset
         )
+
+    @property
+    def lower_vertex(self):
+        return self._lower_vertex
+    
+    @property
+    def upper_vertex(self):
+        return self._upper_vertex
+    
+    @property
+    def batch_shape(self):
+        return self._batch_shape
 
     def __len__(self):
         return 1 if self.lower_vertex.ndim == 1 else self.lower_vertex.shape[0]
@@ -175,14 +207,22 @@ class Grid(Axes):
         if axes is None:
             axes = IdentityAxes(ndim_support=len(points_per_dim))
 
-        self.batch_shape = batch_shapes[0]
-        self.points_per_dim = points_per_dim
+        self._batch_shape = batch_shapes[0]
+        self._points_per_dim = points_per_dim
 
         super().__init__(
             rot_mat=axes.rot_mat,
             scales=axes.scales,
             offset=axes.offset
         )
+
+    @property
+    def batch_shape(self):
+        return self._batch_shape
+    
+    @property
+    def points_per_dim(self):
+        return self._points_per_dim
     
     @staticmethod
     def from_shape(
@@ -395,8 +435,16 @@ class GridScheme(Scheme):
         if grid_of_locs.ndim != grid_partition.ndim:
             raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
 
-        self.grid_of_locs = grid_of_locs
-        self.grid_partition = grid_partition
+        self._grid_of_locs = grid_of_locs
+        self._grid_partition = grid_partition
+
+    @property
+    def grid_of_locs(self):
+        return self._grid_of_locs
+    
+    @property
+    def grid_partition(self):
+        return self._grid_partition
 
     @staticmethod
     def from_point(point: torch.Tensor, domain: Cell):
