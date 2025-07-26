@@ -12,18 +12,6 @@ from matplotlib import pyplot as plt
 
 from plot import *
 
-def get_scheme_from_domain(domain, point):
-    grid_of_locs = dd_schemes.Grid(
-        points_per_dim=domain.to_local(point).unsqueeze(-1),
-        axes=domain
-    )
-    partition = dd_schemes.GridPartition(
-        lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
-        upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
-        axes=domain
-    )
-    return dd_schemes.GridScheme(grid_of_locs, partition)
-
 
 def test(ndims: int = 5, apply_domain: bool = False, plot: bool = False):
     no_problems = True
@@ -99,9 +87,9 @@ def debug(local_domain_prob: float = 0.99):
     domain0 = dd_schemes.Cell(lower_vertex=domain.lower_vertex, upper_vertex=upper_vertex, axes=axes)
     domain1 = dd_schemes.Cell(lower_vertex=lower_vertex, upper_vertex=domain.upper_vertex, axes=axes)
 
-    _, w2 = dd.discretize(dist, get_scheme_from_domain(domain, point))
-    _, w2_0 = dd.discretize(dist, get_scheme_from_domain(domain0, point))
-    _, w2_1 = dd.discretize(dist, get_scheme_from_domain(domain1, point))
+    _, w2 = dd.discretize(dist, dd_schemes.GridScheme.from_point(point, domain))
+    _, w2_0 = dd.discretize(dist, dd_schemes.GridScheme.from_point(point, domain0))
+    _, w2_1 = dd.discretize(dist, dd_schemes.GridScheme.from_point(point, domain1))
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, dist)
@@ -117,6 +105,6 @@ def debug(local_domain_prob: float = 0.99):
         print(f"2-wasserstein != sum of variances (for diagonal covariance): {w2:.4f} != {dist.variance.sum().sqrt():.4f}")
     
 if __name__ == "__main__":
-    # test()
-    debug()
+    test()
+    # debug()
 
