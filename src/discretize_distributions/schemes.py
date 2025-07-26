@@ -120,7 +120,7 @@ class Cell(Axes):
         
         batch_shape = lower_vertex.shape[:-1]
         if len(batch_shape) > 1:
-            raise ValueError("Only 1-dimensional batch-sizes are supported.")
+            raise ValueError("Only 1-dimensional batch-sizes are supported.") # TODO address (requires extending vertices method)
 
         self._batch_shape = batch_shape
         self._lower_vertex = lower_vertex
