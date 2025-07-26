@@ -3,7 +3,7 @@ import torch
 from typing import List, Optional, Tuple
 from importlib.resources import files
 
-from utils import pickle_dump, pickle_load
+import discretize_distributions.utils as utils
 import argparse
 import pickle
 
@@ -15,7 +15,7 @@ with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').
 def generate_feasible_grid_configs(
         max_num_locs: int, 
         ndims: int, 
-        max_num_locs_per_dim: int = None
+        max_num_locs_per_dim: Optional[int] = None
     ) -> Tuple:
     """
     Generate all non-dominated grid configurations for a given number of dimensions and a maximum total number of locations.
@@ -97,7 +97,7 @@ def generate_grid_configs(num_locs_options: List):
     max_num_locs_per_dim = max(list(OPTIMAL_1D_GRIDS['w2'].keys()))
 
     table = dict()
-    for num_locs in num_locs_options: # TODO fix strange behaviro at num_locs=1
+    for num_locs in num_locs_options:
         table[num_locs] = dict()
         print(f'num_locs: {num_locs}')
 
@@ -126,5 +126,5 @@ if __name__ == '__main__':
 
     path = str(files('discretize_distributions.data').joinpath(f'grid_configs{args.tag}.pickle'))
 
-    pickle_dump(lookup_table, path)
+    utils.pickle_dump(lookup_table, path)
 
