@@ -65,7 +65,7 @@ def _discretize(
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
             )
-        assert all([dd_schemes.domain_spanning_Rn(elem.partition.domain) for elem in scheme]), \
+        assert all([dd_schemes.domain_spanning_Rn(elem.grid_partition.domain) for elem in scheme]), \
             'All grid schemes must span the full R^n domain.'
 
         scheme_per_gmm_comp = torch.cdist(
@@ -110,15 +110,16 @@ def _discretize_multi_norm_using_grid_scheme(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     dist_axes = dd_gen.norm_to_axes(dist)
 
-    if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.partition, atol=TOL):
+    if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       
 
     grid_scheme_in_dist_axes = grid_scheme.rebase(dist_axes)
-    delta = dist_axes.to_local(grid_scheme_in_dist_axes.grid_of_locs.offset)
+    delta_locs = dist_axes.to_local(grid_scheme_in_dist_axes.grid_of_locs.offset)
+    delta_vertices = dist_axes.to_local(grid_scheme_in_dist_axes.grid_partition.offset)
 
-    locs_per_dim = [l + d for l, d in zip(grid_scheme_in_dist_axes.grid_of_locs.points_per_dim, delta)]
-    lower_vertices_per_dim = [l + d for l, d in zip(grid_scheme_in_dist_axes.partition.lower_vertices_per_dim, delta)]
-    upper_vertices_per_dim = [u + d for u, d in zip(grid_scheme_in_dist_axes.partition.upper_vertices_per_dim, delta)]
+    locs_per_dim = [l + d for l, d in zip(grid_scheme_in_dist_axes.grid_of_locs.points_per_dim, delta_locs)]
+    lower_vertices_per_dim = [l + d for l, d in zip(grid_scheme_in_dist_axes.grid_partition.lower_vertices_per_dim, delta_vertices)]
+    upper_vertices_per_dim = [u + d for u, d in zip(grid_scheme_in_dist_axes.grid_partition.upper_vertices_per_dim, delta_vertices)]
 
     # construct the discretized distribution:
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]

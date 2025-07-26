@@ -385,21 +385,19 @@ class Scheme:
     pass 
 
 
-class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_locs and partition to share the same axes?
+class GridScheme(Scheme):
     def __init__(
             self, 
             grid_of_locs: Grid,
-            partition: GridPartition
+            grid_partition: GridPartition 
     ):
-        if len(grid_of_locs) != len(partition):
+        if len(grid_of_locs) != len(grid_partition):
             raise ValueError("Number of locations must match the number of partitions.")
-        if grid_of_locs.ndim != partition.ndim:
+        if grid_of_locs.ndim != grid_partition.ndim:
             raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
-        if not equal_axes(grid_of_locs, partition):
-            raise ValueError("Grid of locations and partition must have the same axes (rot_mat, scales, offset).") # TODO this simplifies the implementation of the discretization operations, but could be relaxed
 
         self.grid_of_locs = grid_of_locs
-        self.partition = partition
+        self.grid_partition = grid_partition
 
     @staticmethod
     def from_point(point: torch.Tensor, domain: Cell):
@@ -407,45 +405,29 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
             points_per_dim=domain.to_local(point).unsqueeze(-1), 
             axes=domain
         )
-        partition = GridPartition(
+        grid_partition = GridPartition(
             lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
             upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
             axes=domain
         )
-        return GridScheme(grid_of_locs, partition)
+        return GridScheme(grid_of_locs, grid_partition)
 
     @property
     def ndim(self):
         return self.grid_of_locs.ndim
-
-    @property
-    def shape(self):
-        return self.grid_of_locs.grid_shape
     
     @property
     def domain(self):
-        return self.partition.domain
-    
-    @property
-    def locs_per_dim(self):
-        return self.grid_of_locs.points_per_dim
+        return self.grid_partition.domain
     
     @property
     def locs(self):
         return self.grid_of_locs.points
     
-    @property
-    def lower_vertices_per_dim(self):
-        return self.partition.lower_vertices_per_dim
-    
-    @property
-    def upper_vertices_per_dim(self):
-        return self.partition.upper_vertices_per_dim
-    
     def __getitem__(self, idx):
         return GridScheme(
             grid_of_locs=self.grid_of_locs[idx],
-            partition=self.partition[idx]
+            grid_partition=self.grid_partition[idx]
         )
 
     def __len__(self):
@@ -454,7 +436,7 @@ class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_loc
     def rebase(self, axes: Axes):
         return GridScheme(
             grid_of_locs=self.grid_of_locs.rebase(axes),
-            partition=self.partition.rebase(axes)
+            grid_partition=self.grid_partition.rebase(axes)
         )
 
 
