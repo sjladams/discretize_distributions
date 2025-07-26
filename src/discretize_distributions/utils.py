@@ -21,7 +21,10 @@ PRECISION = torch.finfo(torch.float32).eps
 
 
 def eigh(mat: torch.Tensor):
-    neigh = torch.linalg.matrix_rank(mat).min() # TODO use  hermitian=True ?
+    """
+    Computes the eigenvalues and eigenvectors of a Hermitian matrix.
+    """
+    neigh = torch.linalg.matrix_rank(mat, hermitian=True).min()
     if neigh == mat.shape[-1]:
         eigvals, eigvectors = torch.linalg.eigh(mat)
     else:
