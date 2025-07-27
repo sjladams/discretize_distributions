@@ -102,6 +102,8 @@ class CategoricalGrid(Distribution):
         self.grid_of_probs = grid_of_probs
         self.grid_of_locs = grid_of_locs
 
+        self.num_components = len(grid_of_probs)
+
         event_shape = torch.Size((grid_of_probs.ndim,))
         batch_shape = grid_of_locs.batch_shape
 
