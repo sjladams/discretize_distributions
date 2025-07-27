@@ -3,13 +3,6 @@ from typing import Union, Optional,  List
 
 import discretize_distributions.utils as utils
 
-# TODO: create toch.nn.Modules from Cell, Grid, GridPartition, GridQuantization
-# for i, axis in enumerate(points_per_dim):
-#     self.register_parameter(f"axis_{i}", torch.nn.Parameter(axis, requires_grad=False))
-# self.register_buffer("rot_mat", rot_mat)
-# self.register_buffer("offset", offset)
-# return [getattr(self, f"axis_{i}") for i in range(self.ndim)]
-
 TOL = 1e-8
 
 
@@ -120,7 +113,7 @@ class Cell(Axes):
         
         batch_shape = lower_vertex.shape[:-1]
         if len(batch_shape) > 1:
-            raise ValueError("Only 1-dimensional batch-sizes are supported.") # TODO address (requires extending vertices method)
+            raise ValueError("Only 1-dimensional batch-sizes are supported.")
 
         self._batch_shape = batch_shape
         self._lower_vertex = lower_vertex
