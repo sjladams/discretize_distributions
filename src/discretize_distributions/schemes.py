@@ -506,6 +506,33 @@ class MultiGridScheme(Scheme):
         self.outer_loc = outer_loc
         self.domain = domain if domain is not None else create_cell_spanning_Rn(grid_schemes[0].ndim)
 
+    def __len__(self):
+        return len(self.grid_schemes)
+    
+    def __iter__(self):
+        return iter(self.grid_schemes)
+    
+    def __getitem__(self, idx: int):
+        return self.grid_schemes[idx]
+
+class LayeredGridScheme(Scheme):
+    def __init__(
+            self, 
+            grid_schemes: List[GridScheme]
+    ):
+        if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
+            raise ValueError("All grid schemes must have the same number of dimensions.")
+
+        self.grid_schemes = grid_schemes
+
+    def __len__(self):
+        return len(self.grid_schemes)
+    
+    def __iter__(self):
+        return iter(self.grid_schemes)
+    
+    def __getitem__(self, idx: int):
+        return self.grid_schemes[idx]
 
 ### --- Utility Functions --- ###
 def create_cell_spanning_Rn(n: int, axes: Optional[Axes] = None):
