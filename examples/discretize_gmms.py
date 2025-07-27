@@ -47,15 +47,16 @@ if __name__ == "__main__":
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     # Discretize per mode:
-    list_of_schemes = dd_gen.get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
+    layerd_grid_scheme_per_mode = dd_gen.generate_scheme(
         gmm, 
+        per_mode=True,
         num_locs=10, 
         prune_factor=0.01, 
         n_iter=1000,
         lr=0.01
     )
 
-    disc_gmm, w2 = dd.discretize(gmm, list_of_schemes)
+    disc_gmm, w2 = dd.discretize(gmm, layerd_grid_scheme_per_mode)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
@@ -64,12 +65,10 @@ if __name__ == "__main__":
     ax.set_title(f'Mode-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm.num_components})')
     plt.show()
 
-    # Discretize per component (the old way):
-    grid_schemes = []
-    for i in range(num_mix_elems):
-        grid_schemes.append(dd_gen.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+    # Discretize per component:
+    layered_grid_scheme_per_component = dd_gen.generate_scheme(gmm, num_locs=10, per_mode=False)
 
-    disc_gmm, w2 = dd.discretize(gmm, grid_schemes)
+    disc_gmm, w2 = dd.discretize(gmm, layered_grid_scheme_per_component)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
@@ -79,7 +78,7 @@ if __name__ == "__main__":
     plt.show()
 
     # Discretize locally
-    scheme = dd_gen.get_optimal_grid_scheme_for_multivariate_normal_mixture(
+    multi_grid_scheme = dd_gen.generate_multi_grid_scheme_for_mixture_multivariate_normal(
         gmm, 
         num_locs=10, 
         prune_factor=0.01, 
@@ -88,16 +87,15 @@ if __name__ == "__main__":
         lr=0.01
     )
     
-    disc_gmm, w2 = dd.discretize(gmm, scheme)
+    disc_gmm, w2 = dd.discretize(gmm, multi_grid_scheme)
 
-    grid_schemes = scheme.grid_schemes
-    domains = [elem.domain for elem in scheme.grid_schemes]
+    domains = [elem.domain for elem in multi_grid_scheme]
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat_float(ax, disc_gmm)
-    for i in range(len(grid_schemes)):
-        ax = plot_2d_cell(ax, grid_schemes[i].domain)
+    for i in range(len(multi_grid_scheme)):
+        ax = plot_2d_cell(ax, multi_grid_scheme[i].domain)
     ax = set_axis(ax)
     ax.legend()
     ax.set_title(f'(New) 2-Wasserstein distance: {w2:.2f})')

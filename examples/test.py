@@ -23,7 +23,7 @@ if __name__ == "__main__":
         axes=dd_gen.axes_from_norm(norm)
     )
 
-    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(
+    optimal_grid_scheme = dd_gen.generate_grid_scheme_for_multivariate_normal(
         norm,
         num_locs=100, 
         domain=domain
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     ax.set_title(f'Self constructed grid (2-Wasserstein distance: {w2:.2f})')
 
     ## via grid scheme with optimal grid configuration
-    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(norm, num_locs=10)
+    optimal_grid_scheme = dd_gen.generate_scheme(norm, num_locs=10)
 
     optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
 
@@ -99,12 +99,10 @@ if __name__ == "__main__":
                                                            )
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    ## Discretize per component (the old way):
-    grid_schemes = []
-    for i in range(num_mix_elems):
-        grid_schemes.append(dd_gen.get_optimal_grid_scheme(gmm.component_distribution[i], num_locs=10))
+    ## Discretize per component:
+    layered_grid_scheme_per_component = dd_gen.generate_scheme(gmm, num_locs=10, per_mode=False)
 
-    disc_gmm, w2 = dd.discretize(gmm, grid_schemes)
+    disc_gmm, w2 = dd.discretize(gmm, layered_grid_scheme_per_component)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
@@ -128,7 +126,7 @@ if __name__ == "__main__":
     cov_mat = torch.ones((2,2))
     norm = dd_dists.MultivariateNormal(loc=mean, covariance_matrix=cov_mat)
 
-    optimal_grid_scheme = dd_gen.get_optimal_grid_scheme(norm, num_locs=10)
+    optimal_grid_scheme = dd_gen.generate_scheme(norm, num_locs=10)
 
     optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)
 

@@ -5,7 +5,6 @@ import pickle
 
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
-
 import discretize_distributions.utils as utils
 
 with files('discretize_distributions.data').joinpath('grid_configs.pickle').open('rb') as f:
@@ -15,6 +14,7 @@ with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').
 
 TOL = 1e-8
 
+__all__ = ['generate_scheme']
 
 class Info:
     def __init__(self, grid_configs, optimal_1d_grids):
@@ -30,18 +30,22 @@ class Info:
 info = Info(GRID_CONFIGS, OPTIMAL_1D_GRIDS)
 
 
-def get_optimal_grid_scheme(
+def generate_scheme(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-    domain: Optional[dd_schemes.Cell] = None,
+    num_locs: int,
+    per_mode: bool = True,
     **kwargs
-) -> Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme]:
+) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme]:
     if not dist.batch_shape == torch.Size([]):
         raise ValueError('batching not supported yet')
 
     if isinstance(dist, dd_dists.MultivariateNormal):
-        return get_optimal_grid_scheme_for_multivariate_normal(dist, domain, **kwargs)
+        return generate_grid_scheme_for_multivariate_normal(dist, num_locs=num_locs, domain=None)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
-        return get_optimal_grid_scheme_for_multivariate_normal_mixture(dist, domain, **kwargs)
+        if per_mode:
+            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, num_locs=num_locs, **kwargs)
+        else:
+            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, num_locs=num_locs, **kwargs)
     else:
         raise NotImplementedError(
             f'Discretization of {dist.__class__.__name__} is not implemented yet. '
@@ -49,11 +53,10 @@ def get_optimal_grid_scheme(
         )
 
 
-### --- Multivariate Gaussians ------------------------------------------------------------------------------------- ###
-def get_optimal_grid_scheme_for_multivariate_normal(
+def generate_grid_scheme_for_multivariate_normal(
     norm: dd_dists.MultivariateNormal,
+    num_locs: int,
     domain: Optional[dd_schemes.Cell] = None,
-    num_locs: int = 10
 ) -> dd_schemes.GridScheme:
     grid_config = get_optimal_grid_config(eigvals=norm.eigvals, num_locs=num_locs)
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
@@ -77,7 +80,6 @@ def get_optimal_grid_scheme_for_multivariate_normal(
     grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
 
     return dd_schemes.GridScheme(grid_of_locs, grid_partition)
-
 
 def axes_from_norm(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
     """
@@ -135,15 +137,25 @@ def get_optimal_grid_config(
     return opt_config[sort_idxs]
 
 
-### --- Mixtures of Multivariate Gaussians ------------------------------------------------------------------------- ###
-def get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
+def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(
     gmm: dd_dists.MixtureMultivariateNormal,
-    num_locs: int = 10, 
+    num_locs: int
+) -> dd_schemes.LayeredGridScheme:
+    grid_schemes = list()
+    for i in range(gmm.num_components):
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(gmm.component_distribution[i], num_locs=num_locs))
+
+    return dd_schemes.LayeredGridScheme(grid_schemes)
+
+
+def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
+    gmm: dd_dists.MixtureMultivariateNormal,
+    num_locs: int, 
     prune_factor: float = 0.5,
     n_iter: int = 500,
     lr: float = 0.01, 
     max_init_points: int = 100
-) -> list[dd_schemes.GridScheme]:
+) -> dd_schemes.LayeredGridScheme:
     modes = find_modes_gradient_ascent(
         gmm, 
         init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))], 
@@ -169,15 +181,14 @@ def get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
             eigvals=eigvals, 
             eigvecs=eigenbasis
         )
-        grid_schemes.append(get_optimal_grid_scheme(local_norm, num_locs=num_locs))
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, num_locs=num_locs))
     
-    return grid_schemes
+    return dd_schemes.LayeredGridScheme(grid_schemes)
 
 
-def get_optimal_grid_scheme_for_multivariate_normal_mixture(
+def generate_multi_grid_scheme_for_mixture_multivariate_normal(
     gmm: dd_dists.MixtureMultivariateNormal,
-    domain: Optional[dd_schemes.Cell] = None,
-    num_locs: int = 10, 
+    num_locs: int, 
     prune_factor: float = 0.5, 
     local_domain_prob : float = 0.99,
     n_iter: int = 500,
@@ -190,9 +201,6 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
         atol=TOL
     ):
         raise ValueError('The components of the GMM do not share a common eigenbasis.')
-
-    if domain is not None:
-        raise NotImplementedError('Domain-aware discretization for GMMs is not implemented yet.')
 
     eigenbasis = gmm.component_distribution[0].eigvecs
 
@@ -256,9 +264,12 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
             eigvals=eigvals, 
             eigvecs=eigvecs
         )
-        grid_schemes.append(get_optimal_grid_scheme(local_norm, num_locs=num_locs, domain=local_domain))
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, num_locs=num_locs, domain=local_domain))
 
-    return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean, domain=domain)
+    return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean)
+
+
+## --- Utils -----------------------------------------------------------------------------------------------------------
 
 def default_prune_tol(gmm: dd_dists.MixtureMultivariateNormal, factor: float = 0.5):
     stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]

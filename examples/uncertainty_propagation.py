@@ -50,24 +50,14 @@ def single_step(
         p_samples: Optional[torch.Tensor] = None,
 ):
     # Approximate the state distribution
-    if isinstance(q, dd_dists.MultivariateNormal):
-        grid_scheme = dd_gen.get_optimal_grid_scheme(q, num_locs=num_locs)
-        sign_q, w2_q__disc_q = dd.discretize(q, grid_scheme)
-    else:
-        # Discretize per component (the old way):
-        # grid_schemes = []
-        # for i in range(q.num_components):
-        #     grid_schemes.append(dd_gen.get_optimal_grid_scheme(q.component_distribution[i], num_locs=num_locs))
-
-        grid_schemes = dd_gen.get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
-            q, 
-            num_locs=num_locs, 
-            prune_factor=0.01, 
-            n_iter=1000,
-            lr=0.01
-        )
-
-        sign_q, w2_q__disc_q = dd.discretize(q, grid_schemes)
+    scheme = dd_gen.generate_scheme(
+        q, 
+        num_locs=num_locs, 
+        prune_factor=0.01, 
+        n_iter=1000,
+        lr=0.01
+    )
+    sign_q, w2_q__disc_q = dd.discretize(q, scheme)
 
     if isinstance(sign_q, dd_dists.CategoricalGrid):
         sign_q = sign_q.to_categorical_float()

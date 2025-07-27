@@ -12,15 +12,15 @@ __all__ = ['discretize']
 
 
 def discretize(
-        dist: torch.distributions.Distribution,
-        scheme: Union[dd_schemes.Scheme,  List[dd_schemes.GridScheme]]
+        dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
+        scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     locs, probs, w2 = _discretize(dist, scheme)
     return dd_dists.CategoricalFloat(locs, probs), w2
 
 def _discretize(
-        dist: torch.distributions.Distribution,
-        scheme: Union[dd_schemes.Scheme,  List[dd_schemes.GridScheme]]
+        dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
+        scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if not dist.batch_shape == torch.Size([]):
         raise NotImplementedError('Discretization of batched distributions is not supported yet.')
@@ -28,11 +28,13 @@ def _discretize(
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
         locs, probs = categorical_grid.locs, categorical_grid.probs
-    elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.MultiGridScheme):
+    elif (isinstance(dist, (dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal)) and 
+          isinstance(scheme, dd_schemes.MultiGridScheme)):
+        
         assert dd_schemes.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
 
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
-        for grid_scheme in scheme.grid_schemes:
+        for grid_scheme in scheme:
             locs_component, probs_component, w2_component = _discretize(dist, grid_scheme)
             locs.append(locs_component)
             probs.append(probs_component)
@@ -60,8 +62,7 @@ def _discretize(
         probs = torch.stack(probs, dim=-1).sum(-1)
         locs = scheme.locs
         w2 = w2_sq.sqrt()
-    elif (isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, list) and 
-          len(scheme) > 0 and isinstance(scheme[0], dd_schemes.GridScheme)):
+    elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.LayeredGridScheme):
 
         if not dist.num_components >= len(scheme):
             raise ValueError(
