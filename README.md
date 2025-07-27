@@ -15,12 +15,12 @@ To discretize a general multivariate normal distribution:
 
 ### Axis-Aligned Grid Construction
 
-The axis-aligned grid is constructed by taking the cross-product of the optimal grid for each dimension, as specified in `lookup_opt_grid_uni_stand_normal`. The number of grid points in each dimension is determined by the covariance matrix of the original distribution, particularly the eigenvalues. Possible grid configurations for various grid sizes and dimensions are provided in `lookup_grid_config`. The optimal grid is chosen by evaluating all these options against the eigenvalues of the covariance matrix.
+The axis-aligned grid is constructed by taking the cross-product of the optimal grid for each dimension, as specified in `lookup_opt_grid_uni_stand_normal`. The number of grid points in each dimension is determined by the covariance matrix of the original distribution, particularly the eigenvalues. Possible grid shapes for various grid sizes and dimensions are provided in `lookup_grid_shape`. The optimal grid is chosen by evaluating all these options against the eigenvalues of the covariance matrix.
 
 
 ### Lookup Tables
 
-Lookup tables are generated using `generate_lookup_opt_grid_uni_stand_normal.py` and `generate_lookup_grid_config.py`, and stored in the `data` folder. Refer to these files if you need to generate lookup tables for different grid sizes or dimensions.
+Lookup tables are generated using `generate_lookup_opt_grid_uni_stand_normal.py` and `generate_lookup_grid_shape.py`, and stored in the `data` folder. Refer to these files if you need to generate lookup tables for different grid sizes or dimensions.
 
 
 ## Discretization of Mixtures of Multivariate Normal Distributions

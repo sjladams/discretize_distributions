@@ -12,23 +12,23 @@ with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').
     OPTIMAL_1D_GRIDS = pickle.load(f)
 
 
-def generate_feasible_grid_configs(
+def generate_feasible_grid_shapes(
         max_num_locs: int, 
         ndims: int, 
         max_num_locs_per_dim: Optional[int] = None
     ) -> Tuple:
     """
-    Generate all non-dominated grid configurations for a given number of dimensions and a maximum total number of locations.
+    Generate all non-dominated grid shapes for a given number of dimensions and a maximum total number of locations.
 
-    Each configuration is a tuple of integers, where each integer represents the number of locations in a dimension.
+    Each shape is a tuple of integers, where each integer represents the number of locations in a dimension.
     The function finds all combinations such that:
       - The product of the locations per dimension does not exceed `max_num_locs`.
       - Each dimension has at least as many locations as the previous (non-increasing order).
-      - No configuration is strictly dominated by another (i.e., there is no other configuration with all dimensions 
+      - No shape is strictly dominated by another (i.e., there is no other shape with all dimensions 
         greater than or equal and at least one strictly greater).
 
     Args:
-        max_num_locs (int): The upper limit on the total number of locations in any configuration (product of 
+        max_num_locs (int): The upper limit on the total number of locations in any shape (product of 
                             locations per dimension).
         ndims (int): The number of dimensions of the grid.
         max_num_locs_per_dim (int, optional): The maximum number of locations allowed per dimension. If None, defaults 
@@ -36,28 +36,28 @@ def generate_feasible_grid_configs(
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-            - configs: 2D tensor of shape (num_configs, ndims) with all non-dominated grid configurations.
-            - w2: 2D tensor of shape (num_configs, ndims) with the corresponding W2 costs for each configuration.
+            - shapes: 2D tensor of shape (num_shapes, ndims) with all non-dominated grid shapes.
+            - w2: 2D tensor of shape (num_shapes, ndims) with the corresponding W2 costs for each shape.
     """
 
     max_num_locs_per_dim = max_num_locs if max_num_locs_per_dim is None else min(max_num_locs_per_dim, max_num_locs)
 
-    configs = []
-    def backtrack(current_config: list, min_locs_per_dim: int, current_product: int):
+    shapes = []
+    def backtrack(current_shape: list, min_locs_per_dim: int, current_product: int):
         """
-        Recursively generate all possible grid configurations for the given number of dimensions,
+        Recursively generate all possible grid shapes for the given number of dimensions,
         ensuring non-increasing order of locations per dimension and that the total number of locations
         does not exceed max_num_locs.
 
         Args:
-            current_config (list): The current partial grid configuration (number of locations per dimension).
+            current_shape (list): The current partial grid shape (number of locations per dimension).
             min_locs_per_dim (int): The minimum number of locations to consider for the next dimension (to enforce 
                                     non-increasing order).
-            current_product (int): The product of the locations in the current configuration (total grid size so far).
+            current_product (int): The product of the locations in the current shape (total grid size so far).
         """
-        if len(current_config) == ndims:  # Base case: configuration is complete
+        if len(current_shape) == ndims:  # Base case: shape is complete
             if current_product <= max_num_locs:
-                configs.append(tuple(current_config[::-1]))  # Store reversed config for consistency
+                shapes.append(tuple(current_shape[::-1]))  # Store reversed shape for consistency
             return
 
         if current_product > max_num_locs:  # Prune branches that exceed the total allowed locations
@@ -67,33 +67,33 @@ def generate_feasible_grid_configs(
         for locs in range(min_locs_per_dim, max_num_locs_per_dim + 1):
             if current_product * locs > max_num_locs:
                 break  # Further increases will only exceed the limit
-            backtrack(current_config + [locs], locs, current_product * locs)
+            backtrack(current_shape + [locs], locs, current_product * locs)
 
     backtrack([], 1, 1)
 
-    filtered_configs = []
+    filtered_shapes = []
     w2s = []
-    for comb in configs:
+    for comb in shapes:
         is_dominated = False
-        for other in configs:
+        for other in shapes:
             if all(o >= c for o, c in zip(other, comb)) and any(o > c for o, c in zip(other, comb)):
                 is_dominated = True  # Check if 'comb' is dominated by 'other'
                 break
         if not is_dominated:
-            filtered_configs.append(comb)  # Include only non-dominated combinations
-            w2s.append(get_w2_config(comb))  # Store the corresponding W2 config
+            filtered_shapes.append(comb)  # Include only non-dominated combinations
+            w2s.append(get_w2_shape(comb))  # Store the corresponding W2 shape
 
-    filtered_configs = torch.tensor(filtered_configs, dtype=torch.long)
+    filtered_shapes = torch.tensor(filtered_shapes, dtype=torch.long)
     w2s = torch.tensor(w2s, dtype=torch.float)
 
-    return filtered_configs, w2s
+    return filtered_shapes, w2s
 
 
-def get_w2_config(config: Tuple):
-    return tuple([OPTIMAL_1D_GRIDS['w2'][int(num_locs_per_dim)] for num_locs_per_dim in config])
+def get_w2_shape(shape: Tuple):
+    return tuple([OPTIMAL_1D_GRIDS['w2'][int(num_locs_per_dim)] for num_locs_per_dim in shape])
 
 
-def generate_grid_configs(num_locs_options: List):
+def generate_grid_shapes(num_locs_options: List):
     max_num_locs_per_dim = max(list(OPTIMAL_1D_GRIDS['w2'].keys()))
 
     table = dict()
@@ -105,26 +105,26 @@ def generate_grid_configs(num_locs_options: List):
         # equal num_locs (i.e., 2**ndims = num_locs):
         ndims = max(1, int(math.log2(num_locs)))
 
-        configs, w2s = generate_feasible_grid_configs(
+        shapes, w2s = generate_feasible_grid_shapes(
             max_num_locs=num_locs, 
             ndims=ndims,   
             max_num_locs_per_dim=max_num_locs_per_dim
         )
-        table[num_locs] = dict(configs=configs, w2=w2s)
+        table[num_locs] = dict(configs=shapes, w2=w2s)  # TODO change configs to shapes (left like this to preserve backwards compatibility)
 
     return table
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Generate lookup grid configuration.")
+    parser = argparse.ArgumentParser(description="Generate lookup grid shape.")
     parser.add_argument('--num_locs_options', type=int, nargs='+', default=[1, 10, 100, 1000],
                         help='List of location options (e.g., --num_locs_options 1 10 100)')
     parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
     args = parser.parse_args()
 
-    lookup_table = generate_grid_configs(num_locs_options=args.num_locs_options)
+    lookup_table = generate_grid_shapes(num_locs_options=args.num_locs_options)
 
-    path = str(files('discretize_distributions.data').joinpath(f'grid_configs{args.tag}.pickle'))
+    path = str(files('discretize_distributions.data').joinpath(f'grid_shapes{args.tag}.pickle'))
 
     utils.pickle_dump(lookup_table, path)
 

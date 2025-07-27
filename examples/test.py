@@ -61,7 +61,7 @@ if __name__ == "__main__":
     ax = set_axis(ax)
     ax.set_title(f'Self constructed grid (2-Wasserstein distance: {w2:.2f})')
 
-    ## via grid scheme with optimal grid configuration
+    ## via grid scheme with optimal grid shape
     optimal_grid_scheme = dd_gen.generate_scheme(norm, num_locs=10)
 
     optimal_disc_norm, w2 = dd.discretize(norm, optimal_grid_scheme)

@@ -10,7 +10,7 @@ from utils import pickle_dump, compute_w2_disc_uni_stand_normal, symmetrize_vect
 
 def compute_locs(
         num_locs: int, 
-        locs_init: torch.Tensor = None,
+        locs_init: Optional[torch.Tensor] = None,
         nr_iterations: int = 1000, 
         lr: float = 0.001, 
         early_stop: bool = True,
@@ -114,7 +114,7 @@ def generate_opt_grid_uni_std_normal(
 if __name__ == "__main__":
     torch.manual_seed(1)
 
-    parser = argparse.ArgumentParser(description="Generate lookup table for optimal grid configurations.")
+    parser = argparse.ArgumentParser(description="Generate lookup table for optimal grid shapes.")
     parser.add_argument('--max_num_locs', type=int, default=10, help='Maximum number of locations in the grid.')
     parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
     parser.add_argument('--random_init', type=eval, default=True, help='Whether to use random initialization for ' \
