@@ -50,7 +50,7 @@ if __name__ == "__main__":
     layerd_grid_scheme_per_mode = dd_gen.generate_scheme(
         gmm, 
         per_mode=True,
-        num_locs=10, 
+        grid_size=10, 
         prune_factor=0.01, 
         n_iter=1000,
         lr=0.01
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     plt.show()
 
     # Discretize per component:
-    layered_grid_scheme_per_component = dd_gen.generate_scheme(gmm, num_locs=10, per_mode=False)
+    layered_grid_scheme_per_component = dd_gen.generate_scheme(gmm, grid_size=10, per_mode=False)
 
     disc_gmm, w2 = dd.discretize(gmm, layered_grid_scheme_per_component)
 
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     # Discretize locally
     multi_grid_scheme = dd_gen.generate_multi_grid_scheme_for_mixture_multivariate_normal(
         gmm, 
-        num_locs=10, 
+        grid_size=10, 
         prune_factor=0.01, 
         local_domain_prob=0.9, 
         n_iter=1000,

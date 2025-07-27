@@ -178,8 +178,8 @@ def compute_mean_var_trunc_norm(
 def get_vertices(centers: torch.Tensor) -> torch.Tensor:
     """
     Find the vertices of the 1D Voronoi partition w.r.t. the points
-    :param locs: centers of Voronoi partition; Size(num_locs,)
-    :return: vertices of the Voronoi partition; Size(num_locs + 1, ) 
+    :param locs: centers of Voronoi partition; Size(grid_size,)
+    :return: vertices of the Voronoi partition; Size(grid_size + 1, ) 
     """
     return torch.cat((
         torch.ones(1).fill_(-torch.inf), 

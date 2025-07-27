@@ -32,7 +32,7 @@ def test(ndims: int = 5, apply_domain: bool = False, plot: bool = False):
         else:
             domain = None
 
-        grid_scheme = dd_gen.generate_grid_scheme_for_multivariate_normal(dist, num_locs=10, domain=domain)
+        grid_scheme = dd_gen.generate_grid_scheme_for_multivariate_normal(dist, grid_size=10, domain=domain)
 
         options = [True, False]
         w2s = list()
