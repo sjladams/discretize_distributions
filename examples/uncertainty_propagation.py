@@ -82,14 +82,11 @@ def single_step(
     else:
         w2_p1__q1_empirical = torch.nan
 
-    return dict(
-        w2_q__sign_q=w2_q__disc_q,
-        w2_p1__q1_empirical=w2_p1__q1_empirical,
-        w2_p1__q1_global_lipschitz=w2_p1__q1_global_lipschitz,
-        q1=q1,
-        q=q,
-        q1_samples=q1_samples,
-        p1_samples=p1_samples
+    return (
+        w2_q__disc_q, 
+        dict(w2_p1__q1_empirical=w2_p1__q1_empirical, w2_p1__q1_global_lipschitz=w2_p1__q1_global_lipschitz),  
+        dict(q1=q1, q=q), 
+        dict(q1_samples=q1_samples, p1_samples=p1_samples)
     )
 
 
@@ -104,16 +101,14 @@ def multi_step(
 ):
     w2_p1__q1_store = {-1: dict(w2_p1__q1_global_lipschitz=0.)}
     w2_q__sign_q_store = dict()
-    q_store = {-1: {'q1': q}}
-
-    # initialize empirical distributions
     samples_store = {-1: {'p1_samples': q.sample(torch.Size((num_samples,))), 
                           'q1_samples': q.sample(torch.Size((num_samples,)))}}
+    q_store = {-1: {'q1': q}}
 
     # loop over time steps
     for k in range(num_time_steps):
         print(f'---- TIME STEP {k} ----')
-        out = single_step(
+        w2_q__sign_q_store[k], w2_p1__q1_store[k], q_store[k], samples_store[k] = single_step(
             dynamics=dynamics,
             noise_dist=noise_dist,
             q=q_store[k-1]['q1'],
@@ -124,15 +119,9 @@ def multi_step(
             run_empirical=run_empirical
         )
 
-        w2_p1__q1_store[k] = {key: value for key, value in out.items() if 'w2_p1__q1' in key}
-        w2_q__sign_q_store[k] = out['w2_q__sign_q']
-        samples_store[k] = {key: value for key, value in out.items() if 'samples' in key}
-        q_store[k] = dict(q1=out['q1'], q=out['q'])
-
         print(
-            f"Bounds on W_2(p_{k+1}, q_{k+1}) with len(sup(q_{k+1}))={out['q1'].num_components} via:\n"
-            f"\t Global Lipschitz: {out['w2_p1__q1_global_lipschitz']:.4f}\n"
-            f"\t Empirical: {out['w2_p1__q1_empirical']:.4f}\n"
+            f"Bounds on W_2(p_{k+1}, q_{k+1}) with approximation of size: {q_store[k]['q1'].num_components} via:\n"
+            f"\t Global Lipschitz: {w2_p1__q1_store[k]['w2_p1__q1_global_lipschitz']:.4f}\n"
         )
 
     return w2_q__sign_q_store, w2_p1__q1_store, samples_store, q_store
@@ -153,7 +142,7 @@ def plot_2d_dynamics(dynamics,  xlim: Optional[list] = None, ylim: Optional[list
         next_states = dynamics(grid_points)
         deltas = next_states - grid_points
 
-    plt.figure(figsize=(6 * (xlim[1] - xlim[0]), 6 * (ylim[1] - ylim[0])))
+    plt.figure(figsize=(6, 6))
     plt.quiver(
         grid_points[:, 0].numpy(),  # X coordinates
         grid_points[:, 1].numpy(),  # Y coordinates
@@ -172,7 +161,7 @@ def plot_2d_dynamics(dynamics,  xlim: Optional[list] = None, ylim: Optional[list
     plt.xlabel(r'$x_1$')
     plt.ylabel(r'$x_2$')
 
-    plt.tight_layout()
+    plt.title('Vector Plot Dynamics')
     plt.show()
 
 
@@ -189,9 +178,8 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         samples_options, w2_p1__q1_store_options, q_store_options = [samples], [w2_p1__q1_store], [q_store]
 
 
-    for tag in ['p1_samples', 'q1_samples']:
-        fig, ax = plt.subplots(figsize=(6 * (xlim[1] - xlim[0]), 6 * (ylim[1] - ylim[0])))
-
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    for i, tag in enumerate(['p1_samples', 'q1_samples']):
         for samples, w2_p1__q1_store, q_store in zip(samples_options, w2_p1__q1_store_options, q_store_options):
             time_steps = list(q_store.keys())[::step_size][:-1]
             cmap = plt.cm.coolwarm
@@ -199,19 +187,20 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
 
             for k in time_steps:
                 q = q_store[k+1]['q']
-                ax.scatter(samples[k][tag][:, 0], samples[k][tag][:, 1], color=colors[k + 1], s=16, alpha=0.5)
+                ax[i].scatter(samples[k][tag][:, 0], samples[k][tag][:, 1], color=colors[k + 1], s=16, alpha=0.5)
 
                 ambiguity_set = Circle(q.mean, w2_p1__q1_store[k]['w2_p1__q1_global_lipschitz'], color=colors[k+1], fill=False, lw=2, alpha=1.0)
-                ax.add_patch(ambiguity_set)
+                ax[i].add_patch(ambiguity_set)
 
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-        ax.set_xlabel(r'$x_1$')
-        ax.set_ylabel(r'$x_2$')
-        plt.xlim(xlim) if xlim is not None else None
-        plt.ylim(ylim) if ylim is not None else None
-        plt.tight_layout()
-        plt.show()
+        ax[i].xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax[i].yaxis.set_major_locator(MaxNLocator(integer=True))
+        ax[i].set_xlabel(r'$x_1$')
+        ax[i].set_ylabel(r'$x_2$')
+        ax[i].set_title(f"{'Approximation' if tag == 'q1_samples' else 'Empirical'} samples and ambiguity sets over time steps")
+        ax[i].set_xlim(xlim) if xlim is not None else None
+        ax[i].set_ylim(ylim) if ylim is not None else None
+    plt.tight_layout()
+    plt.show()
 
             
 
@@ -244,7 +233,7 @@ if __name__== '__main__':
             loc=torch.ones(2) * 0.8,
             covariance_matrix=torch.eye(2) * 0.0001
         ),
-        num_time_steps=3,
+        num_time_steps=6,
         num_samples=100,
         grid_size=10, 
         run_empirical=False
