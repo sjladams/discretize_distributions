@@ -21,7 +21,10 @@ PRECISION = torch.finfo(torch.float32).eps
 
 
 def eigh(mat: torch.Tensor):
-    neigh = torch.linalg.matrix_rank(mat).min() # TODO use  hermitian=True ?
+    """
+    Computes the eigenvalues and eigenvectors of a Hermitian matrix.
+    """
+    neigh = torch.linalg.matrix_rank(mat, hermitian=True).min()
     if neigh == mat.shape[-1]:
         eigvals, eigvectors = torch.linalg.eigh(mat)
     else:
@@ -88,19 +91,13 @@ def is_mat_diag(mat: torch.Tensor) -> bool:
     """
     return not (mat - torch.diag_embed(mat.diagonal(dim1=-2,dim2=-1), dim1=-2, dim2=-1)> PRECISION).any()
 
-
-def have_common_eigenbasis(Sigma1, Sigma2, atol=1e-6):
-    """Check whether two symmetric matrices share an eigenbasis by testing if they commute."""
-    comm = torch.einsum('...ij,...jk->...ik', Sigma1, Sigma2) - torch.einsum('...ij,...jk->...ik', Sigma2, Sigma1)
-    return torch.allclose(comm, torch.zeros_like(comm), atol=atol)
-
 def mats_commute(mat1: torch.Tensor, mat2: torch.Tensor, atol: float = 1e-6) -> bool:
     """
     Checks whether two square matrices (or batches of matrices) commute, i.e.,
     whether mat1 @ mat2 == mat2 @ mat1 within a given numerical tolerance.
 
     This is a sufficient condition for the matrices to be simultaneously diagonalizable 
-    provided both matrices are diagonalizable.
+    provided both matrices are diagonalizable. That is, if two symmetric matrices commute, they share a common eigenbasis.
     """
     commutator = mat1 @ mat2 - mat2 @ mat1
     return torch.allclose(commutator, torch.zeros_like(commutator), atol=atol)
@@ -175,8 +172,8 @@ def compute_mean_var_trunc_norm(
 def get_vertices(centers: torch.Tensor) -> torch.Tensor:
     """
     Find the vertices of the 1D Voronoi partition w.r.t. the points
-    :param locs: centers of Voronoi partition; Size(num_locs,)
-    :return: vertices of the Voronoi partition; Size(num_locs + 1, ) 
+    :param locs: centers of Voronoi partition; Size(grid_size,)
+    :return: vertices of the Voronoi partition; Size(grid_size + 1, ) 
     """
     return torch.cat((
         torch.ones(1).fill_(-torch.inf), 
@@ -191,6 +188,18 @@ def compute_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
     trunc_mean, trunc_var = compute_mean_var_trunc_norm(loc=0., scale=1., l=vertices[:-1], u=vertices[1:])
     w2_sq = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
     return w2_sq.sqrt()
+
+def batched_cartesian_product(points_per_dim):
+    batch_shape = points_per_dim[0].shape[:-1]
+    if len(batch_shape) == 0:
+        mesh = torch.meshgrid(*points_per_dim, indexing='ij')
+        points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+        return points
+    else:
+        batch_of_points = []
+        for i in range(batch_shape[0]):
+            batch_of_points.append(batched_cartesian_product([p[i] for p in points_per_dim]))
+        return torch.stack(batch_of_points, dim=0)
 
 def pickle_load(tag):
     if not (".pickle" in tag or ".pkl" in tag):

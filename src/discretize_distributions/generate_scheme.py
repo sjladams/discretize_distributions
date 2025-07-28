@@ -5,43 +5,47 @@ import pickle
 
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
-
 import discretize_distributions.utils as utils
 
-with files('discretize_distributions.data').joinpath('grid_configs.pickle').open('rb') as f:
-    GRID_CONFIGS = pickle.load(f)
+with files('discretize_distributions.data').joinpath('grid_shapes.pickle').open('rb') as f:
+    GRID_SHAPES = pickle.load(f)
 with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').open('rb') as f:
     OPTIMAL_1D_GRIDS = pickle.load(f)
 
 TOL = 1e-8
 
+__all__ = ['generate_scheme']
 
 class Info:
-    def __init__(self, grid_configs, optimal_1d_grids):
-        self.num_locs_options = torch.tensor(list(grid_configs.keys()), dtype=torch.int)
-        self.max_num_locs_per_dim = torch.tensor(list(optimal_1d_grids['locs'].keys()), dtype=torch.int).max()
+    def __init__(self, grid_shapes, optimal_1d_grids):
+        self.grid_size_options = torch.tensor(list(grid_shapes.keys()), dtype=torch.int)
+        self.max_grid_size_per_dim = torch.tensor(list(optimal_1d_grids['locs'].keys()), dtype=torch.int).max()
 
     def __str__(self):
         return (
-            f"Available grid sizes (num_locs_options): {self.num_locs_options.tolist()}\n"
-            f"Maximum number of locations per dimension (max_num_locs_per_dim): {int(self.max_num_locs_per_dim)}"
+            f"Available grid sizes (grid_size_options): {self.grid_size_options.tolist()}\n"
+            f"Maximum number of locations per dimension (max_grid_size_per_dim): {int(self.max_grid_size_per_dim)}"
         )
     
-info = Info(GRID_CONFIGS, OPTIMAL_1D_GRIDS)
+info = Info(GRID_SHAPES, OPTIMAL_1D_GRIDS)
 
 
-def get_optimal_grid_scheme(
+def generate_scheme(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-    domain: Optional[dd_schemes.Cell] = None,
+    grid_size: int,
+    per_mode: bool = True,
     **kwargs
-) -> Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme]:
+) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme]:
     if not dist.batch_shape == torch.Size([]):
         raise ValueError('batching not supported yet')
 
     if isinstance(dist, dd_dists.MultivariateNormal):
-        return get_optimal_grid_scheme_for_multivariate_normal(dist, domain, **kwargs)
+        return generate_grid_scheme_for_multivariate_normal(dist, grid_size=grid_size, domain=None)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
-        return get_optimal_grid_scheme_for_multivariate_normal_mixture(dist, domain, **kwargs)
+        if per_mode:
+            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, grid_size=grid_size, **kwargs)
+        else:
+            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, grid_size=grid_size, **kwargs)
     else:
         raise NotImplementedError(
             f'Discretization of {dist.__class__.__name__} is not implemented yet. '
@@ -49,17 +53,16 @@ def get_optimal_grid_scheme(
         )
 
 
-### --- Multivariate Gaussians ------------------------------------------------------------------------------------- ###
-def get_optimal_grid_scheme_for_multivariate_normal(
+def generate_grid_scheme_for_multivariate_normal(
     norm: dd_dists.MultivariateNormal,
+    grid_size: int,
     domain: Optional[dd_schemes.Cell] = None,
-    num_locs: int = 10
 ) -> dd_schemes.GridScheme:
-    grid_config = get_optimal_grid_config(eigvals=norm.eigvals, num_locs=num_locs)
-    locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_config]
+    grid_shape = get_optimal_grid_shape(eigvals=norm.eigvals, grid_size=grid_size)
+    locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_shape]
 
     if domain is not None:
-        if not torch.allclose(norm.inv_mahalanobis_mat, domain.transform_mat, atol=TOL):
+        if not torch.allclose(norm.inv_mahalanobis_mat, domain.trans_mat, atol=TOL):
             raise ValueError('The domain transform matrix does not match the inverse mahalanobis matrix of the ' \
             'distribution.')
         if not torch.allclose(norm.loc, domain.offset, atol=TOL):
@@ -70,81 +73,40 @@ def get_optimal_grid_scheme_for_multivariate_normal(
             zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
         ]
 
-    grid_of_locs = dd_schemes.Grid.from_axes(locs_per_dim, axes=norm_to_axes(norm))
+    grid_of_locs = dd_schemes.Grid(locs_per_dim, axes=axes_from_norm(norm))
 
-    # print(f'Requested grid size: {num_locs}, realized grid size over domain: {len(grid_of_locs)}')
+    # print(f'Requested grid size: {grid_size}, realized grid size over domain: {len(grid_of_locs)}')
 
-    partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
+    grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
 
-    return dd_schemes.GridScheme(grid_of_locs, partition)
-
-
-def norm_to_axes(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
-    """
-    Converts a MultivariateNormal distribution to a discretization Axes object.
-    The Axes object contains the grid of locations, rotation matrix, scales, and offset.
-    """
-    return dd_schemes.Axes(
-        ndim_support=norm.event_shape_support[-1],
-        rot_mat=norm.eigvecs,
-        scales=norm.eigvals_sqrt,
-        offset=norm.loc
-    )
-
-def get_optimal_grid_config(
-        eigvals: torch.Tensor,
-        num_locs: int
-    ) -> torch.Tensor:
-    """
-    GRID_CONFIGS provides all non-dominated configs for a number of signature points. The order of the configs match
-    an decrease of eigenvalue over the dimensions, i.e., config (d0, d1, .., dn) assumes eig(do)>=eig(d1)>=eig(dn).
-    The total number of dimensions included per configuration, equals the maximum number dimensions that can create a
-    grid of size signature_points, i.e., equals log2(nr_signature_points).
-    :param eigvals:
-    :param num_locs: number of discretization points, i.e., size of grid.  per discretized Gaussian.
-    :return:
-    """
-    batch_shape = eigvals.shape[:-1]
-    neigh = eigvals.shape[-1]
-    eigvals_sorted, sort_idxs = eigvals.sort(descending=True)    
-
-    if num_locs not in GRID_CONFIGS:
-        if eigvals_sorted.unique().numel() == 1:
-            opt_config = (torch.ones(batch_shape + (neigh,)) * int(num_locs ** (1 / neigh))).to(torch.int64)
-            return opt_config
-
-        num_locs_options = torch.tensor(list(GRID_CONFIGS.keys()), dtype=torch.int)
-        idx_closest_option = torch.where(num_locs_options <= num_locs)[0][-1]
-        num_locs = int(num_locs_options[idx_closest_option])
-        print(f'Grid optimized for size: {num_locs}, requested grid size not available in lookuptables')
-
-    if num_locs == 1:
-        opt_config = torch.empty(batch_shape + (0,)).to(torch.int64)
-    else:
-        costs = GRID_CONFIGS[num_locs]['w2'][..., :neigh] # only select the grids that are relevant for the number of dimensions
-        dims_configs = costs.shape[-1]
-
-        objective = torch.einsum('ij,...j->...i', costs, eigvals_sorted[..., :dims_configs])
-        opt_config_idxs = objective.argmin(dim=-1)
-
-        opt_config = [GRID_CONFIGS[num_locs]['configs'][int(idx)] for idx in opt_config_idxs.flatten()]
-        opt_config = torch.stack(opt_config).reshape(batch_shape + (-1,))
-        opt_config = opt_config[..., :neigh]
-
-    # append grid of size 1 to dimensions that are not yet included in the optimal grid.
-    opt_config = torch.cat((opt_config, torch.ones(batch_shape + (neigh - opt_config.shape[-1],)).to(opt_config.dtype)), dim=-1)
-    return opt_config[sort_idxs]
+    return dd_schemes.GridScheme(grid_of_locs, grid_partition)
 
 
-### --- Mixtures of Multivariate Gaussians ------------------------------------------------------------------------- ###
-def get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
+def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(
     gmm: dd_dists.MixtureMultivariateNormal,
-    num_locs: int = 10, 
+    grid_size: int
+) -> dd_schemes.LayeredGridScheme:
+    grid_schemes = list()
+    for i in range(gmm.num_components):
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(gmm.component_distribution[i], grid_size=grid_size))
+
+    return dd_schemes.LayeredGridScheme(grid_schemes)
+
+
+def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
+    gmm: dd_dists.MixtureMultivariateNormal,
+    grid_size: int, 
     prune_factor: float = 0.5,
     n_iter: int = 500,
     lr: float = 0.01, 
     max_init_points: int = 100
-) -> list[dd_schemes.GridScheme]:
+) -> dd_schemes.LayeredGridScheme:
+    if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
+        raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
+        "per_component method")
+
+    eigenbasis = gmm.component_distribution[0].eigvecs
+
     modes = find_modes_gradient_ascent(
         gmm, 
         init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))], 
@@ -155,7 +117,7 @@ def get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
 
-    eigenbasis = gmm.component_distribution[0].eigvecs
+    
     grid_schemes = list()
     for mode in modes:
         cov = local_gaussian_covariance(gmm, mode)
@@ -170,30 +132,22 @@ def get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
             eigvals=eigvals, 
             eigvecs=eigenbasis
         )
-        grid_schemes.append(get_optimal_grid_scheme(local_norm, num_locs=num_locs))
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, grid_size=grid_size))
     
-    return grid_schemes
+    return dd_schemes.LayeredGridScheme(grid_schemes)
 
 
-def get_optimal_grid_scheme_for_multivariate_normal_mixture(
+def generate_multi_grid_scheme_for_mixture_multivariate_normal(
     gmm: dd_dists.MixtureMultivariateNormal,
-    domain: Optional[dd_schemes.Cell] = None,
-    num_locs: int = 10, 
+    grid_size: int, 
     prune_factor: float = 0.5, 
     local_domain_prob : float = 0.99,
     n_iter: int = 500,
     lr: float = 0.01,
     max_init_points: int = 100
 ) -> dd_schemes.MultiGridScheme:
-    if not utils.have_common_eigenbasis( # TODO use dd_schemes.axes_have_common_eigenbasis
-        gmm.component_distribution.covariance_matrix, 
-        gmm.component_distribution[0].covariance_matrix.unsqueeze(0).repeat(gmm.num_components, 1, 1),
-        atol=TOL
-    ):
-        raise ValueError('The components of the GMM do not share a common eigenbasis.')
-
-    if domain is not None:
-        raise NotImplementedError('Domain-aware discretization for GMMs is not implemented yet.')
+    if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
+        raise ValueError("The components of the GMM do not share a common eigenbasis.")
 
     eigenbasis = gmm.component_distribution[0].eigvecs
 
@@ -221,9 +175,11 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
         local_domains.append(dd_schemes.Cell(
             lower_vertex=-torch.ones(gmm.event_shape) * percentile,   
             upper_vertex=torch.ones(gmm.event_shape) * percentile,
-            rot_mat=eigenbasis,
-            scales=eigvals.sqrt(),
-            offset=mode
+            axes=dd_schemes.Axes(
+                rot_mat=eigenbasis,
+                scales=eigvals.sqrt(),
+                offset=mode
+            )
         ))
 
     overlap = dd_schemes.cells_overlap(local_domains)
@@ -255,9 +211,67 @@ def get_optimal_grid_scheme_for_multivariate_normal_mixture(
             eigvals=eigvals, 
             eigvecs=eigvecs
         )
-        grid_schemes.append(get_optimal_grid_scheme(local_norm, num_locs=num_locs, domain=local_domain))
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, grid_size=grid_size, domain=local_domain))
 
-    return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean, domain=domain)
+    return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean)
+
+
+## --- Utils -----------------------------------------------------------------------------------------------------------
+def axes_from_norm(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
+    """
+    Converts a MultivariateNormal distribution to a discretization Axes object.
+    The Axes object contains the grid of locations, rotation matrix, scales, and offset.
+    """
+    return dd_schemes.Axes(
+        rot_mat=norm.eigvecs,
+        scales=norm.eigvals_sqrt,
+        offset=norm.loc
+    )
+
+def get_optimal_grid_shape(
+        eigvals: torch.Tensor,
+        grid_size: int
+    ) -> torch.Tensor:
+    """
+    GRID_shapeS provides all non-dominated shapes for a number of signature points. The order of the shapes match
+    an decrease of eigenvalue over the dimensions, i.e., shape (d0, d1, .., dn) assumes eig(do)>=eig(d1)>=eig(dn).
+    The total number of dimensions included per shape, equals the maximum number dimensions that can create a
+    grid of size signature_points, i.e., equals log2(nr_signature_points).
+    :param eigvals:
+    :param grid_size: number of discretization points, i.e., size of grid.  per discretized Gaussian.
+    :return:
+    """
+    batch_shape = eigvals.shape[:-1]
+    neigh = eigvals.shape[-1]
+    eigvals_sorted, sort_idxs = eigvals.sort(descending=True)    
+
+    if grid_size not in GRID_SHAPES:
+        if eigvals_sorted.unique().numel() == 1:
+            opt_shape = (torch.ones(batch_shape + (neigh,)) * int(grid_size ** (1 / neigh))).to(torch.int64)
+            return opt_shape
+
+        grid_size_options = torch.tensor(list(GRID_SHAPES.keys()), dtype=torch.int)
+        idx_closest_option = torch.where(grid_size_options <= grid_size)[0][-1]
+        grid_size = int(grid_size_options[idx_closest_option])
+        print(f'Grid optimized for size: {grid_size}, requested grid size not available in lookuptables')
+
+    if grid_size == 1:
+        opt_shape = torch.empty(batch_shape + (0,)).to(torch.int64)
+    else:
+        costs = GRID_SHAPES[grid_size]['w2'][..., :neigh] # only select the grids that are relevant for the number of dimensions
+        dims_shapes = costs.shape[-1]
+
+        objective = torch.einsum('ij,...j->...i', costs, eigvals_sorted[..., :dims_shapes])
+        opt_shape_idxs = objective.argmin(dim=-1)
+
+        opt_shape = [GRID_SHAPES[grid_size]['configs'][int(idx)] for idx in opt_shape_idxs.flatten()]  # TODO change configs to shapes (left like this to preserve backwards compatibility)
+        opt_shape = torch.stack(opt_shape).reshape(batch_shape + (-1,))
+        opt_shape = opt_shape[..., :neigh]
+
+    # append grid of size 1 to dimensions that are not yet included in the optimal grid.
+    opt_shape = torch.cat((opt_shape, torch.ones(batch_shape + (neigh - opt_shape.shape[-1],)).to(opt_shape.dtype)), dim=-1)
+    return opt_shape[sort_idxs]
+
 
 def default_prune_tol(gmm: dd_dists.MixtureMultivariateNormal, factor: float = 0.5):
     stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]
@@ -368,34 +382,34 @@ def local_gaussian_covariance(gmm: dd_dists.MixtureMultivariateNormal, mode: tor
 
 
 ### --- Backup (TODO remove) --------------------------------------------------------------------------------------- ###
-def get_optimal_grid(grid_config: torch.Tensor, **kwargs) -> dd_schemes.Grid:
-    default_grid_size = grid_config.prod(-1).max()
+def get_optimal_grid(grid_shape: torch.Tensor, **kwargs) -> dd_schemes.Grid:
+    default_grid_size = grid_shape.prod(-1).max()
     attributes = ['locs', 'probs']
-    grids = batch_handler_get_nd_dim_grids_from_optimal_1d_grid(grid_config, attributes,
+    grids = batch_handler_get_nd_dim_grids_from_optimal_1d_grid(grid_shape, attributes,
                                                                 default_grid_size=default_grid_size,
                                                                 **kwargs)
     probs = grids['probs'].prod(-1)  # Calculate product across the last dimension
     return grids['locs'], probs, grids['trunc_mean'], grids['trunc_var']
 
-def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor,
+def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape: torch.Tensor,
                                                         attributes: Union[list, str],
                                                         **kwargs) -> dict:
     """
     Batched version of get_nd_dim_grids_from_optimal_1d_grid. This function processes all batches by recursively and
     aggregates the results for each attribute across batches.
     """
-    if discr_grid_config.dim() == 1:
-        return get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config, attributes, **kwargs)
+    if discr_grid_shape.dim() == 1:
+        return get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape, attributes, **kwargs)
     else:
         # Process all batches by recursively calling the function for each sub-tensor
         batch_results = [batch_handler_get_nd_dim_grids_from_optimal_1d_grid(
-            discr_grid_config[i], attributes, **kwargs) for i in range(discr_grid_config.shape[0])]
+            discr_grid_shape[i], attributes, **kwargs) for i in range(discr_grid_shape.shape[0])]
         # Aggregate results for each attribute across batches
         combined_results = {attr: torch.stack([batch[attr] for batch in batch_results]) for attr in attributes}
         return combined_results
 
 
-def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attributes: Union[list, str],
+def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape: torch.Tensor, attributes: Union[list, str],
                                           default_grid_size: int) -> dict:
     """
     Creates multiple N-dimensional grids from the pre-defined optimal 1D grids for specified attributes.
@@ -403,7 +417,7 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
     elements by padding with zeros if necessary. The max_grid_size is hence used to ensure batches of grids have the
     same number of elements.
 
-    :param discr_grid_config:       An one-dimensional tensor representing the grid configuration. Each element
+    :param discr_grid_shape:       An one-dimensional tensor representing the grid shape. Each element
                                     indicates the grid size for a dimension.
     :param attributes:              A list of attributes for which grids need to be created. The optional attributes
                                     are the keys of the 'Optimal_1D_GRIDS' dictionary.
@@ -411,12 +425,12 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_config: torch.Tensor, attri
                                     have the same number of elements.
     :return dict of torch.Tensor:   A dictionary where keys are attribute names and values are the grids as tensors.
                                     Each grid tensor has rows equal to `max_grid_size` and columns equal to the number
-                                    of dimensions of the grid, i.e., the len of discr_grid_config.
+                                    of dimensions of the grid, i.e., the len of discr_grid_shape.
     """
     grids = {}
     for attribute in attributes:
         # Create a grid for each attribute based on the optimal 1D grids
-        grid_per_dim = [OPTIMAL_1D_GRIDS[attribute][int(grid_size_dim)] for grid_size_dim in discr_grid_config]
+        grid_per_dim = [OPTIMAL_1D_GRIDS[attribute][int(grid_size_dim)] for grid_size_dim in discr_grid_shape]
         grid = torch.cartesian_prod(*grid_per_dim)
         grid_size = grid.shape[0]
         grid = grid.view(grid_size, -1)

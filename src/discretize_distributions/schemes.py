@@ -1,15 +1,7 @@
 import torch
-from typing import Union, Optional, Sequence, Tuple
+from typing import Union, Optional,  List
 
 import discretize_distributions.utils as utils
-
-# TODO: batchify, robustify, add test, doctring
-# TODO: create toch.nn.Modules from Cell, Grid, GridPartition, GridQuantization
-# for i, axis in enumerate(points_per_dim):
-#     self.register_parameter(f"axis_{i}", torch.nn.Parameter(axis, requires_grad=False))
-# self.register_buffer("rot_mat", rot_mat)
-# self.register_buffer("offset", offset)
-# return [getattr(self, f"axis_{i}") for i in range(self.ndim)]
 
 TOL = 1e-8
 
@@ -17,31 +9,20 @@ TOL = 1e-8
 class Axes:
     def __init__(
         self,
-        ndim_support: int,
-        rot_mat: Optional[torch.Tensor] = None, 
-        permute_mat: Optional[torch.Tensor] = None,
-        scales: Optional[torch.Tensor] = None,
-        offset: Optional[torch.Tensor] = None
+        rot_mat: torch.Tensor, 
+        scales: torch.Tensor,
+        offset: torch.Tensor
     ):
-        scales = torch.ones(ndim_support) if scales is None else scales
-        rot_mat = torch.eye(ndim_support) if rot_mat is None else rot_mat
-        permute_mat = torch.eye(ndim_support) if permute_mat is None else permute_mat
-        ndim = rot_mat.shape[-2]
-        offset = torch.zeros(ndim) if offset is None else offset
+        ndim, ndim_support = rot_mat.shape[-2], rot_mat.shape[-1]
 
         if not ndim_support <= ndim:
             raise ValueError("rot_mat must be injective.")
-    
         if rot_mat.shape[-2] != offset.shape[-1]:
             raise ValueError("Rotation matrix should have the same number of output dimensions as the offset.")
-        if rot_mat.shape[-1] != ndim_support:
-            raise ValueError("Rotation matrix must have the same number of input dimensions as the points per dimension.")
         if scales.shape[-1] != ndim_support:
             raise ValueError("Scales must have the same number of dimensions as the points per dimension.")
-        # if not (scales > 0).all(): # TODO check where I need this assumption!
-        #     raise ValueError("Scales must be positive.")
-        if not utils.is_permuted_eye(permute_mat) or not permute_mat.shape[-1] == ndim_support:
-            raise ValueError("Permute matrix must be a permutation matrix in the space of the support.")
+        if not (scales > 0).all():
+            raise ValueError("Scales must be positive.")
 
         batch_shape = torch.broadcast_shapes(rot_mat.shape[:-2], scales.shape[:-1], offset.shape[:-1])
         if not batch_shape == torch.Size([]):
@@ -50,53 +31,65 @@ class Axes:
         if not torch.allclose(rot_mat.swapaxes(-2, -1) @ rot_mat, torch.eye(ndim_support), atol=TOL):
             raise ValueError("Rotation matrix must be orthogonal.")
 
-        self.ndim_support = ndim_support
-        self.ndim = ndim
-        self.rot_mat = rot_mat
-        self.permute_mat = permute_mat
-        self.scales = scales
-        self.offset = offset
+        self._ndim_support = ndim_support
+        self._ndim = ndim
+        self._rot_mat = rot_mat
+        self._scales = scales
+        self._offset = offset
+
+    @property
+    def ndim_support(self):
+        return self._ndim_support
+
+    @property
+    def ndim(self):
+        return self._ndim
+
+    @property
+    def rot_mat(self):
+        return self._rot_mat
+
+    @property
+    def scales(self):
+        return self._scales
+
+    @property
+    def offset(self):
+        return self._offset
+
+    @property
+    def trans_mat(self):
+        return torch.einsum('ij,j->ij', self.rot_mat, self.scales)
     
     @property
-    def transform_mat(self): # TODO rename trans_mat
-        return torch.einsum('ij,j,jk->ik', self.rot_mat, self.scales, self.permute_mat)
-    
-    @property
-    def inv_transform_mat(self): # TODO rename inv_trans_mat
-        return torch.einsum('kj, j, ji->ki', self.permute_mat.T, self.scales.reciprocal(),  self.rot_mat.T)
+    def inv_trans_mat(self):
+        return torch.einsum('j, ji->ji',self.scales.reciprocal(),  self.rot_mat.T)
 
     @property
     def local_offset(self):
-        return torch.einsum('ij,j->i', self.inv_transform_mat, self.offset)
+        return torch.einsum('ij,j->i', self.inv_trans_mat, self.offset)
     
     def to_global(self, points: torch.Tensor):
-        return torch.einsum('ij,...j->...i', self.transform_mat, points) + self.offset
+        return torch.einsum('ij,...j->...i', self.trans_mat, points) + self.offset
     
     def to_local(self, points: torch.Tensor):
-        return torch.einsum('ij,...j->...i', self.inv_transform_mat, points - self.offset)
+        return torch.einsum('ij,...j->...i', self.inv_trans_mat, points - self.offset)
     
     def scale(self, points: torch.Tensor):
-        return torch.einsum('i,ij,...j->...i', self.scales, self.permute_mat, points)
+        return torch.einsum('i,...i->...i', self.scales, points)
 
     def descale(self, points: torch.Tensor):
-        return torch.einsum('ji,i,...i->...i', self.permute_mat.T, self.scales.reciprocal(), points)
+        return torch.einsum('i,...i->...i', self.scales.reciprocal(), points)
 
-    def rebase(self, rot_mat: torch.Tensor):
-        # Compute projected transform in source basis
-        new_scale_mat = torch.einsum('ij, jk, k->ik', rot_mat.T, self.rot_mat, self.scales)
 
-        # Extract scales in the source eigenbasis
-        permute_mat = (new_scale_mat != 0).to(new_scale_mat.dtype)
-        if not utils.is_permuted_eye(permute_mat):
-            raise ValueError("Can only rebase axes to a rotation matrix that has the same eigenbasis.")
-
-        return Axes(
-            ndim_support=self.ndim_support,
-            rot_mat=rot_mat,
-            scales=new_scale_mat.sum(-1),
-            offset=self.offset.clone(),
-            permute_mat=permute_mat
+class IdentityAxes(Axes):
+    def __init__(self, ndim_support: int):
+        super().__init__(
+            rot_mat=torch.eye(ndim_support),
+            scales=torch.ones(ndim_support),
+            offset=torch.zeros(ndim_support)
         )
+
 
 class Cell(Axes):
     """
@@ -108,54 +101,47 @@ class Cell(Axes):
             self, 
             lower_vertex: torch.Tensor,
             upper_vertex: torch.Tensor, 
-            rot_mat: Optional[torch.Tensor] = None, 
-            permute_mat: Optional[torch.Tensor] = None,
-            scales: Optional[torch.Tensor] = None,
-            offset: Optional[torch.Tensor] = None
+            axes: Optional[Axes] = None
     ):
         if upper_vertex.shape != lower_vertex.shape:
             raise ValueError("Lower and upper vertices must have the same shape.")
         if (upper_vertex < lower_vertex).any():
             raise ValueError("Upper vertices must be greater than or equal to lower vertices.")
         
-        self.batch_shape = lower_vertex.shape[:-1]
-        if len(self.batch_shape) > 1:
+        if axes is None:
+            axes = IdentityAxes(ndim_support=lower_vertex.shape[-1])
+        
+        batch_shape = lower_vertex.shape[:-1]
+        if len(batch_shape) > 1:
             raise ValueError("Only 1-dimensional batch-sizes are supported.")
 
-        self.lower_vertex = lower_vertex
-        self.upper_vertex = upper_vertex
+        self._batch_shape = batch_shape
+        self._lower_vertex = lower_vertex
+        self._upper_vertex = upper_vertex
 
         super().__init__(
-            ndim_support=lower_vertex.shape[-1], 
-            rot_mat=rot_mat, 
-            permute_mat=permute_mat,
-            scales=scales,
-            offset=offset
-        )
-
-    @staticmethod
-    def from_axes(
-            lower_vertex: torch.Tensor,
-            upper_vertex: torch.Tensor,
-            axes: Optional[Axes] = None
-    ):
-        if axes is None:
-            axes = Axes(ndim_support=lower_vertex.shape[-1])
-
-        return Cell(
-            lower_vertex=lower_vertex,
-            upper_vertex=upper_vertex,
             rot_mat=axes.rot_mat,
-            permute_mat=axes.permute_mat,
             scales=axes.scales,
             offset=axes.offset
         )
+
+    @property
+    def lower_vertex(self):
+        return self._lower_vertex
+    
+    @property
+    def upper_vertex(self):
+        return self._upper_vertex
+    
+    @property
+    def batch_shape(self):
+        return self._batch_shape
 
     def __len__(self):
         return 1 if self.lower_vertex.ndim == 1 else self.lower_vertex.shape[0]
 
     def __getitem__(self, idx):
-        return Cell.from_axes(
+        return Cell(
             self.lower_vertex[idx], 
             self.upper_vertex[idx], 
             axes=self
@@ -198,61 +184,63 @@ class Cell(Axes):
 class Grid(Axes):
     def __init__(
             self, 
-            points_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
-            rot_mat: Optional[torch.Tensor] = None, 
-            permute_mat: Optional[torch.Tensor] = None,
-            scales: Optional[torch.Tensor] = None,
-            offset: Optional[torch.Tensor] = None
+            points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            axes: Optional[Axes] = None
     ):
         """
-        points_per_dim: list of 1D torch tensors, each of shape (n_i,)
+        points_per_dim: list of torch tensors, each of shape (batch_shape, n_i,)
         example: [torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])]
         """
-        self.points_per_dim = points_per_dim
-        super().__init__(
-            ndim_support=len(points_per_dim), 
-            rot_mat=rot_mat, 
-            permute_mat=permute_mat,
-            scales=scales,
-            offset=offset
-        )
-    
-    @staticmethod
-    def from_axes(
-        points_per_dim: Union[Sequence[torch.Tensor], torch.Tensor],
-        axes: Optional[Axes] = None
-    ):
-        if axes is None:
-            axes = Axes(ndim_support=len(points_per_dim))
 
-        return Grid(
-            points_per_dim, 
+        # Check if all batch shapes are equal
+        batch_shapes = [p.shape[:-1] for p in points_per_dim]
+        if len(set(batch_shapes)) != 1:
+            raise ValueError("the points per dimension must have the same batch shape.")
+
+        if axes is None:
+            axes = IdentityAxes(ndim_support=len(points_per_dim))
+
+        self._batch_shape = batch_shapes[0]
+        self._points_per_dim = points_per_dim
+
+        super().__init__(
             rot_mat=axes.rot_mat,
-            permute_mat=axes.permute_mat,
             scales=axes.scales,
             offset=axes.offset
         )
+
+    @property
+    def batch_shape(self):
+        return self._batch_shape
+    
+    @property
+    def points_per_dim(self):
+        return self._points_per_dim
     
     @staticmethod
     def from_shape(
-        shape: torch.Size, 
+        grid_shape: torch.Size, 
         domain: Cell
-    ): # TODO if shape = 1 place in the middle of the domain
-        if len(shape) != domain.ndim:
+    ):
+        if len(grid_shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
+        if torch.isinf(domain.lower_vertex).any() or torch.isinf(domain.upper_vertex).any():
+            raise ValueError("Domain must be finite.")
+        
+        center = 0.5 * (domain.lower_vertex + domain.upper_vertex)
 
         points_per_dim = [
-            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], shape[dim]) 
-            for dim in range(len(shape))
+            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
+            else center[dim] for dim in range(len(grid_shape))
         ]
-        return Grid.from_axes(points_per_dim, axes=domain)
+        return Grid(points_per_dim, axes=domain)
     
     @property
-    def shape(self):
-        return torch.Size(tuple(len(p) for p in self.points_per_dim))
+    def grid_shape(self):
+        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
     
     def __len__(self):
-        return int(torch.prod(torch.as_tensor(self.shape)).item())
+        return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
     
     @property
     def points(self):
@@ -260,86 +248,95 @@ class Grid(Axes):
     
     @property
     def domain(self):
-        return Cell.from_axes(
-            torch.stack([p.min() for p in self.points_per_dim]),
-            torch.stack([p.max() for p in self.points_per_dim]),
+        return Cell(
+            torch.stack([p.min(dim=-1).values for p in self.points_per_dim], dim=-1),
+            torch.stack([p.max(dim=-1).values for p in self.points_per_dim], dim=-1),
             axes=self
         )
     
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if isinstance(idx, tuple):
             selected_axes = self._select_axes(idx)
-            mesh = torch.meshgrid(*selected_axes, indexing='ij')
-            points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+            points = utils.batched_cartesian_product(selected_axes)
         elif isinstance(idx, slice):
-            mesh = torch.meshgrid(*self.points_per_dim, indexing='ij')
-            points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
+            points = utils.batched_cartesian_product(self.points_per_dim)[..., idx, :]
         else:
-            # if isinstance(idx, slice):
-            #     idx = torch.arange(self.__len__())[idx]
-
             idx = torch.as_tensor(idx)
             if idx.dim() == 0:
                 idx = idx.unsqueeze(0)
             
-            unravelled = torch.unravel_index(idx, self.shape)
-            points = [self.points_per_dim[d][unravelled[d]] for d in range(self.ndim_support)]
+            unravelled = torch.unravel_index(idx, self.grid_shape)
+            points = [self.points_per_dim[d][..., unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
         return self.to_global(points)
     
     def _select_axes(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
-
-        indexed_points = [self.points_per_dim[d][i] for d, i in enumerate(idx)]
+        indexed_points = [self.points_per_dim[d][..., i].view(self.batch_shape + (-1,)) for d, i in enumerate(idx)]
         return indexed_points
     
-    def __getitem__(self, idx: tuple):
+    def _select_batch(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
+        if isinstance(idx, tuple) and len(idx) > len(self.batch_shape):
+            raise ValueError("Indexing tuple must not exceed the batch shape dimensions.")
+        return [p[idx] for p in self.points_per_dim]
+    
+    def __getitem__(self, idx: Union[int, tuple]):
         if not isinstance(idx, tuple):
             idx = (idx,)
         
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
-        return Grid.from_axes(self._select_axes(idx), axes=self)
+        return Grid(self._select_axes(idx), axes=self)
     
-    def rebase(self, rot_mat: torch.Tensor):
-        return Grid.from_axes(self.points_per_dim, axes=super().rebase(rot_mat))
+    def rebase(self, axes: Axes):
+        """
+        Aligns the reference-frame (axes) the current grid to the given `axes`, WITHOUT modifying the offset. The 
+        rebasing is only possible if the new axes share the same eigenbasis as the current axes
+        """
+        # Compute projected transform in source basis
+        new_scale_mat = torch.einsum('ij, jk, k->ik', axes.rot_mat.T, self.rot_mat, self.scales)
 
+        # Extract scales in the source eigenbasis
+        permute_mat = (new_scale_mat != 0).to(new_scale_mat.dtype)
+        if not utils.is_permuted_eye(permute_mat):
+            raise ValueError("Can only rebase axes to an axes (i.e. rotation matrix) that has the same eigenbasis.")
 
-class GridPartition(Axes):
-    def __init__(
-            self, 
-            grid_of_lower_vertices: Grid,
-            grid_of_upper_vertices: Grid,
-    ):
-        if not equal_axes(grid_of_lower_vertices, grid_of_upper_vertices):
-            raise ValueError("Lower and upper vertices must have the same axes.")
-        
-        self.grid_of_lower_vertices = grid_of_lower_vertices
-        self.grid_of_upper_vertices = grid_of_upper_vertices
-        super().__init__(
-            ndim_support=grid_of_lower_vertices.ndim_support,
-            rot_mat=grid_of_lower_vertices.rot_mat,
-            permute_mat=grid_of_lower_vertices.permute_mat,
-            scales=grid_of_lower_vertices.scales,
-            offset=grid_of_lower_vertices.offset
+        indices = permute_mat.argmax(dim=-1)
+        points_per_dim = [self.points_per_dim[i] for i in indices]
+
+        rel_scaling_diff = new_scale_mat.sum(-1) / axes.scales
+        points_per_dim = [p * rel_scaling_diff[i] for i, p in enumerate(points_per_dim)]
+
+        return Grid(
+            points_per_dim=points_per_dim, 
+            axes=Axes(
+                rot_mat=axes.rot_mat.clone(), 
+                scales=axes.scales.clone(), 
+                offset=self.offset.clone()
+            )
         )
-    
-    @staticmethod
-    def from_vertices_per_dim(
-            lower_vertices_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
-            upper_vertices_per_dim: Union[Sequence[torch.Tensor], torch.Tensor], 
+
+
+class GridPartition(Grid):
+    def __init__(
+            self,
+            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
     ):
+        if not len(lower_vertices_per_dim) == len(upper_vertices_per_dim):
+            raise ValueError("Lower and upper vertices must have the same number of dimensions.")
+
         for idx, (l, u) in enumerate(zip(lower_vertices_per_dim, upper_vertices_per_dim)):
             if l.shape != u.shape:
                 raise ValueError(f"Lower and upper vertices at index {idx} must have the same shape.")
             if (u < l).any():
                 raise ValueError(f"Upper vertices at index {idx} must be greater than or equal to lower vertices.")
 
-        return GridPartition(
-            Grid.from_axes(lower_vertices_per_dim, axes=axes),
-            Grid.from_axes(upper_vertices_per_dim, axes=axes)
+        super().__init__(
+            points_per_dim=[torch.stack([l, u], dim=0) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)], 
+            axes=axes
         )
 
     @staticmethod
@@ -350,13 +347,7 @@ class GridPartition(Axes):
         """Computes (lower, upper) vertices of axis-aligned Voronoi cells w.r.t. grid over domain."""
 
         if domain is None:
-            domain = create_cell_spanning_Rn(
-                grid_of_points.ndim_support, 
-                rot_mat=grid_of_points.rot_mat, 
-                permute_mat=grid_of_points.permute_mat,
-                scales=grid_of_points.scales,
-                offset=grid_of_points.offset
-            )
+            domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
         elif not equal_axes(domain, grid_of_points):
             raise ValueError("Domain axes must match the grid axes.")
             
@@ -374,57 +365,55 @@ class GridPartition(Axes):
                 (vertices, domain.upper_vertex[idx].unsqueeze(0))
                 ))
 
-        return GridPartition.from_vertices_per_dim(
+        return GridPartition(
             lower_vertices_per_dim, 
             upper_vertices_per_dim, 
             axes=domain
         )
     
     @property
-    def shape(self):
-        return self.grid_of_lower_vertices.shape
-    
-    @property
     def lower_vertices_per_dim(self):
-        return self.grid_of_lower_vertices.points_per_dim
+        return self._select_batch(0)
     
     @property
     def upper_vertices_per_dim(self):
-        return self.grid_of_upper_vertices.points_per_dim
+        return self._select_batch(1)
     
     @property
     def lower_vertices(self):
-        return self.grid_of_lower_vertices.points
+        return self.points[0]
     
     @property
     def upper_vertices(self):
-        return self.grid_of_upper_vertices.points
-    
-    def __len__(self):
-        return len(self.grid_of_lower_vertices)
+        return self.points[1]
 
     @property
     def domain(self):
-        return Cell.from_axes(
-            self.grid_of_lower_vertices.domain.lower_vertex,
-            self.grid_of_upper_vertices.domain.upper_vertex,
+        return Cell(
+            super().domain.lower_vertex[0],
+            super().domain.upper_vertex[1],
             axes=self
         )
 
-    @property
-    def domain_spanning_Rn(self) -> bool:
-        return bool(self.domain.lower_vertex.eq(-torch.inf).all().item() and self.domain.upper_vertex.eq(torch.inf).all().item())
-    
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: Union[int, tuple]):
+        grid = super().__getitem__(idx)
         return GridPartition(
-            grid_of_lower_vertices=self.grid_of_lower_vertices[idx],
-            grid_of_upper_vertices=self.grid_of_upper_vertices[idx]
+            lower_vertices_per_dim=grid._select_batch(0),
+            upper_vertices_per_dim=grid._select_batch(1),
+            axes=grid
         )
 
-    def rebase(self, rot_mat: torch.Tensor):
+    def rebase(self, axes: Axes):
+        """
+        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
+        rebasing is only possible if the new axes share the same eigenbasis as the current axes
+        """
+        rebased_grid = super().rebase(axes)
+
         return GridPartition(
-            grid_of_lower_vertices=self.grid_of_lower_vertices.rebase(rot_mat),
-            grid_of_upper_vertices=self.grid_of_upper_vertices.rebase(rot_mat)
+            lower_vertices_per_dim=[p.min(dim=0).values for p in rebased_grid.points_per_dim],
+            upper_vertices_per_dim=[p.max(dim=0).values for p in rebased_grid.points_per_dim],
+            axes=rebased_grid
         )
 
 
@@ -432,88 +421,122 @@ class Scheme:
     pass 
 
 
-class GridScheme(Scheme): # TODO wouln't it be easier to enforce the grid_of_locs and partition to share the same axes?
+class GridScheme(Scheme):
     def __init__(
             self, 
             grid_of_locs: Grid,
-            partition: GridPartition
+            grid_partition: GridPartition 
     ):
-        if len(grid_of_locs) != len(partition):
+        if len(grid_of_locs) != len(grid_partition):
             raise ValueError("Number of locations must match the number of partitions.")
-        if grid_of_locs.ndim != partition.ndim:
+        if grid_of_locs.ndim != grid_partition.ndim:
             raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
-        if not equal_axes(grid_of_locs, partition):
-            raise ValueError("Grid of locations and partition must have the same axes (rot_mat, scales, offset).") # TODO this simplifies the implementation of the discretization operations, but could be relaxed
 
-        self.grid_of_locs = grid_of_locs
-        self.partition = partition
+        self._grid_of_locs = grid_of_locs
+        self._grid_partition = grid_partition
+
+    @staticmethod
+    def from_point(point: torch.Tensor, domain: Optional[Cell] = None):
+        if domain is None:
+            domain = create_cell_spanning_Rn(point.shape[-1])
+
+        return GridScheme(
+            grid_of_locs=Grid(
+                points_per_dim=domain.to_local(point).unsqueeze(-1), 
+                axes=domain
+                ), 
+            grid_partition=GridPartition(
+                lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
+                upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
+                axes=domain
+                )
+        )
+
+    @property
+    def grid_of_locs(self):
+        return self._grid_of_locs
+    
+    @property
+    def grid_partition(self):
+        return self._grid_partition
 
     @property
     def ndim(self):
         return self.grid_of_locs.ndim
-
-    @property
-    def shape(self):
-        return self.grid_of_locs.shape
     
     @property
     def domain(self):
-        return self.partition.domain
-    
-    @property
-    def locs_per_dim(self):
-        return self.grid_of_locs.points_per_dim
+        return self.grid_partition.domain
     
     @property
     def locs(self):
         return self.grid_of_locs.points
     
-    @property
-    def lower_vertices_per_dim(self):
-        return self.partition.lower_vertices_per_dim
-    
-    @property
-    def upper_vertices_per_dim(self):
-        return self.partition.upper_vertices_per_dim
-    
     def __getitem__(self, idx):
         return GridScheme(
             grid_of_locs=self.grid_of_locs[idx],
-            partition=self.partition[idx]
+            grid_partition=self.grid_partition[idx]
         )
 
     def __len__(self):
         return len(self.grid_of_locs)
     
-    def rebase(self, rot_mat: torch.Tensor):
+    def rebase(self, axes: Axes):
         return GridScheme(
-            grid_of_locs=self.grid_of_locs.rebase(rot_mat),
-            partition=self.partition.rebase(rot_mat)
+            grid_of_locs=self.grid_of_locs.rebase(axes),
+            grid_partition=self.grid_partition.rebase(axes)
         )
 
 
 class MultiGridScheme(Scheme):
     def __init__(
             self,
-            grid_schemes: Sequence[GridScheme],
+            grid_schemes: List[GridScheme],
             outer_loc: torch.Tensor,
             domain: Optional[Cell] = None 
     ):
         if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
             raise ValueError("All grid schemes must have the same number of dimensions.")
 
-        # domains = [gq.domain for gq in grid_schemes]
-        # if any_cells_overlap(domains):
-        #     raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
+        domains = [gq.domain for gq in grid_schemes]
+        if any_cells_overlap(domains):
+            raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
 
         self.grid_schemes = grid_schemes
         self.outer_loc = outer_loc
         self.domain = domain if domain is not None else create_cell_spanning_Rn(grid_schemes[0].ndim)
 
+    def __len__(self):
+        return len(self.grid_schemes)
+    
+    def __iter__(self):
+        return iter(self.grid_schemes)
+    
+    def __getitem__(self, idx: int):
+        return self.grid_schemes[idx]
+
+class LayeredGridScheme(Scheme):
+    def __init__(
+            self, 
+            grid_schemes: List[GridScheme]
+    ):
+        if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
+            raise ValueError("All grid schemes must have the same number of dimensions.")
+
+        self.grid_schemes = grid_schemes
+
+    def __len__(self):
+        return len(self.grid_schemes)
+    
+    def __iter__(self):
+        return iter(self.grid_schemes)
+    
+    def __getitem__(self, idx: int):
+        return self.grid_schemes[idx]
 
 ### --- Utility Functions --- ###
-def create_cell_spanning_Rn(n: int, **kwargs) -> Cell:
-    return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), **kwargs)
+def create_cell_spanning_Rn(n: int, axes: Optional[Axes] = None):
+    return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), axes=axes)
 
 def check_grid_in_domain(
     grid: Grid, 
@@ -535,7 +558,7 @@ def check_grid_in_domain(
             return False
     return True
 
-def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor: 
+def cells_overlap(cells: List[Cell]) -> torch.Tensor: 
     """
     Returns an [N, N] boolean tensor where entry (i, j) is True if cells i and j overlap.
     Only supports non-batched Cells with the same rotation matrix
@@ -543,8 +566,8 @@ def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor:
     if not equal_rot_mats(cells):
         raise ValueError("All cells must have the same rotation matrix (rot_mat).")
 
-    scaled_lowers = torch.stack([cell.scale(cell.lower_vertex) - cell.local_offset for cell in cells])
-    scaled_uppers = torch.stack([cell.scale(cell.upper_vertex) - cell.local_offset for cell in cells])
+    scaled_lowers = torch.stack([cell.scale(cell.lower_vertex - cell.local_offset) for cell in cells])
+    scaled_uppers = torch.stack([cell.scale(cell.upper_vertex - cell.local_offset) for cell in cells])
 
     # [N, 1, d] vs [1, N, d] for broadcasting
     separated = (scaled_uppers.unsqueeze(1) < scaled_lowers.unsqueeze(0)).any(-1) | \
@@ -552,7 +575,7 @@ def cells_overlap(cells: Sequence[Cell]) -> torch.Tensor:
     overlap = ~separated
     return overlap
 
-def any_cells_overlap(cells: Sequence[Cell]) -> bool:
+def any_cells_overlap(cells: List[Cell]) -> bool:
     """
     Returns True if any pair of cells overlap.
     """
@@ -560,7 +583,7 @@ def any_cells_overlap(cells: Sequence[Cell]) -> bool:
     overlap.fill_diagonal_(False)  # ignore self-overlap
     return overlap.any().item()
 
-def merge_cells(cells: Sequence[Cell]) -> Cell:
+def merge_cells(cells: List[Cell]) -> Cell:
     if not equal_rot_mats(cells):
         raise ValueError("All cells must have the same rotation matrix (rot_mat).")
     
@@ -580,32 +603,37 @@ def merge_cells(cells: Sequence[Cell]) -> Cell:
     return Cell(
         lower_vertex=(scaled_lower_vertex - scaled_local_offset) * scales.reciprocal(),
         upper_vertex=(scaled_upper_vertex - scaled_local_offset) * scales.reciprocal(),
-        rot_mat=cells[0].rot_mat, 
-        scales=scales,
-        offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
+        axes=Axes(
+            rot_mat=cells[0].rot_mat,
+            scales=scales,
+            offset=torch.einsum('ij,j->i', cells[0].rot_mat, scaled_local_offset)
+        )
     )
 
-def equal_rot_mats(cells: Sequence[Cell]) -> bool:
+def equal_rot_mats(cells: List[Cell]) -> bool:
     rot_mats = torch.stack([cell.rot_mat for cell in cells])
     return torch.allclose(rot_mats, rot_mats[0].expand_as(rot_mats), atol=TOL)
 
 
 def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6):
     return utils.mats_commute(
-        axes0.transform_mat @ axes0.transform_mat.T, 
-        axes1.transform_mat @ axes1.transform_mat.T, 
+        axes0.trans_mat @ axes0.trans_mat.transpose(-2, -1), 
+        axes1.trans_mat @ axes1.trans_mat.transpose(-2, -1), 
         atol=atol
     )
 
 def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
     if not torch.allclose(axes0.rot_mat, axes1.rot_mat, atol=atol):
         raise ValueError("Domain rotation matrix must match the grid rotation matrix")
-    elif not torch.allclose(axes0.permute_mat, axes1.permute_mat, atol=atol):
-        raise ValueError("Domain permute matrix must match the grid permute matrix")
     elif not torch.allclose(axes0.scales, axes1.scales, atol=atol):
         raise ValueError("Domain scale matrix must match the grid scale matrix")
     elif not torch.allclose(axes0.offset, axes1.offset, atol=atol):
         raise ValueError("Domain offset must match the grid offset.")
     else:
         return True
-    
+
+def identity_axes(axes: Axes, atol=TOL) -> bool:
+    return equal_axes(axes, IdentityAxes(ndim_support=axes.ndim_support), atol=atol)
+
+def domain_spans_Rn(domain) -> bool:
+    return bool(domain.lower_vertex.eq(-torch.inf).all().item() and domain.upper_vertex.eq(torch.inf).all().item())

@@ -15,7 +15,7 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
             self,
             mixture_distribution: torch.distributions.Categorical,
             component_distribution: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
-            validate_args=None
+            validate_args=False
     ):
         if not isinstance(component_distribution, (MultivariateNormal, torch.distributions.MultivariateNormal)):
             raise TypeError("The Component Distribution must be an instance of " \

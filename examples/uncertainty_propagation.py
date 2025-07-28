@@ -44,30 +44,20 @@ def single_step(
         noise_dist: dd_dists.MultivariateNormal,
         q: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
         num_samples: int,
-        num_locs: int,
+        grid_size: int,
         w2_p__q_global_lipschitz: float = 0.,
         run_empirical: bool = False,
         p_samples: Optional[torch.Tensor] = None,
 ):
     # Approximate the state distribution
-    if isinstance(q, dd_dists.MultivariateNormal):
-        grid_scheme = dd_gen.get_optimal_grid_scheme(q, num_locs=num_locs)
-        sign_q, w2_q__disc_q = dd.discretize(q, grid_scheme)
-    else:
-        # Discretize per component (the old way):
-        # grid_schemes = []
-        # for i in range(q.num_components):
-        #     grid_schemes.append(dd_gen.get_optimal_grid_scheme(q.component_distribution[i], num_locs=num_locs))
-
-        grid_schemes = dd_gen.get_optimal_list_of_grid_schemes_for_multivariate_normal_mixture(
-            q, 
-            num_locs=num_locs, 
-            prune_factor=0.01, 
-            n_iter=1000,
-            lr=0.01
-        )
-
-        sign_q, w2_q__disc_q = dd.discretize(q, grid_schemes)
+    scheme = dd_gen.generate_scheme(
+        q, 
+        grid_size=grid_size, 
+        prune_factor=0.01, 
+        n_iter=1000,
+        lr=0.01
+    )
+    sign_q, w2_q__disc_q = dd.discretize(q, scheme)
 
     if isinstance(sign_q, dd_dists.CategoricalGrid):
         sign_q = sign_q.to_categorical_float()
@@ -109,7 +99,7 @@ def multi_step(
     q: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
     num_time_steps: int,
     num_samples: int,
-    num_locs: int,
+    grid_size: int,
     run_empirical: bool = False
 ):
     w2_p1__q1_store = {-1: dict(w2_p1__q1_global_lipschitz=0.)}
@@ -130,7 +120,7 @@ def multi_step(
             p_samples=samples_store[k-1]['p1_samples'],
             w2_p__q_global_lipschitz=w2_p1__q1_store[k-1]['w2_p1__q1_global_lipschitz'],
             num_samples=num_samples,
-            num_locs=num_locs, 
+            grid_size=grid_size, 
             run_empirical=run_empirical
         )
 
@@ -256,7 +246,7 @@ if __name__== '__main__':
         ),
         num_time_steps=3,
         num_samples=100,
-        num_locs=10, 
+        grid_size=10, 
         run_empirical=False
     )
 
