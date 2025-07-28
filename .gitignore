@@ -19,3 +19,6 @@ dist/
 .env/
 .venv/
 venv/
+
+# Test files
+tests/
