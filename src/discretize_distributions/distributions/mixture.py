@@ -2,37 +2,67 @@ import torch
 from typing import Union, Tuple
 
 from discretize_distributions.distributions.multivariate_normal import MultivariateNormal
-from discretize_distributions.tensors import kmean_clustering_batches
+from discretize_distributions.utils import kmean_clustering_batches
 
-__all__ = ['MixtureMultivariateNormal', 'compress_mixture_multivariate_normal']
+__all__ = ['MixtureMultivariateNormal', 'compress_mixture_multivariate_normal', 'unique_mixture_multivariate_normal']
 
 
 PRECISION = torch.finfo(torch.float32).eps
 
 
 class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
-    has_rsample = False # \todo implement
-    def __init__(self,
-                 mixture_distribution: torch.distributions.Categorical,
-                 component_distribution: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
-                 validate_args=None):
-        assert isinstance(component_distribution, (MultivariateNormal, torch.distributions.MultivariateNormal)), \
-            "The Component Distribution needs to be an instance of MultivariateNormal"
-        assert isinstance(mixture_distribution, torch.distributions.Categorical), \
-            "The Mixtures need to be an instance of torch.distributions.Categorical"
+    def __init__(
+            self,
+            mixture_distribution: torch.distributions.Categorical,
+            component_distribution: Union[MultivariateNormal, torch.distributions.MultivariateNormal],
+            validate_args=False
+    ):
+        if not isinstance(component_distribution, (MultivariateNormal, torch.distributions.MultivariateNormal)):
+            raise TypeError("The Component Distribution must be an instance of " \
+            "MultivariateNormal or torch.distributions.MultivariateNormal")
+        if not isinstance(mixture_distribution, torch.distributions.Categorical):
+            raise TypeError("The Mixture Distribution must be an instance of torch.distributions.Categorical")
 
-        super(MixtureMultivariateNormal, self).__init__(mixture_distribution=mixture_distribution,
-                                                        component_distribution=component_distribution,
-                                                        validate_args=validate_args)
-
-    def __getitem__(self, index: int):
-        """
-        Get component distribution at index.
-        """
-        return MultivariateNormal(
-            loc=self.component_distribution.loc.select(-len(self.event_shape)-1, index),
-            covariance_matrix=self.component_distribution.covariance_matrix.select(-2 * len(self.event_shape)-1, index)
+        super(MixtureMultivariateNormal, self).__init__(
+            mixture_distribution=mixture_distribution,
+            component_distribution=component_distribution,
+            validate_args=validate_args
         )
+
+    def __getitem__(self, index):
+        """
+        Get component distribution(s) at index.
+        
+        Args:
+            index: Can be an int or tensor of indices
+                  - int: Returns a single MultivariateNormal component
+                  - tensor: Returns a new MixtureMultivariateNormal with selected components
+        
+        Returns:
+            MultivariateNormal (for int index) or MixtureMultivariateNormal (for tensor index)
+        """
+        if isinstance(index, int):
+            # Original behavior for single component access
+            return MultivariateNormal(
+                loc=self.component_distribution.loc.select(-len(self.event_shape)-1, index),
+                covariance_matrix=self.component_distribution.covariance_matrix.select(-2 * len(self.event_shape)-1, index)
+            )
+        elif isinstance(index, torch.Tensor) and index.dtype == torch.long:
+            dim = -len(self.event_shape) - 1
+            selected_loc = torch.index_select(self.component_distribution.loc, dim, index)
+            selected_cov = torch.index_select(self.component_distribution.covariance_matrix, 
+                                            -2 * len(self.event_shape) - 1, index)
+            selected_probs = torch.index_select(self.mixture_distribution.probs, -1, index)
+            
+            # Renormalize probabilities
+            selected_probs = selected_probs / selected_probs.sum(dim=-1, keepdim=True)
+            
+            return MixtureMultivariateNormal(
+                mixture_distribution=torch.distributions.Categorical(probs=selected_probs),
+                component_distribution=MultivariateNormal(loc=selected_loc, covariance_matrix=selected_cov)
+            )
+        else:
+            raise TypeError(f"Index must be int or tensor of indices, got {type(index)}")
 
     @property
     def covariance_matrix(self):
@@ -56,6 +86,7 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
     def num_components(self):
         return self._num_component
 
+
 def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max: int):
     """
     Compress GMM(n) to GMM(n_max).
@@ -66,7 +97,7 @@ def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max:
     if n_max == 1:
         return _collapse(dist)
     else:
-        dist = _unique(dist)
+        dist = unique_mixture_multivariate_normal(dist)
         if dist.num_components <= n_max:
             pass
         else:
@@ -97,7 +128,7 @@ def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max:
 
                 return MixtureMultivariateNormal(
                     mixture_distribution=torch.distributions.Categorical(probs=dist.mixture_distribution.probs.squeeze(-1)),
-                    component_distribution=dist[0]
+                    component_distribution=dist.component_distribution
                 )
             else:
                 return _collapse(dist)
@@ -111,7 +142,7 @@ def _collapse(dist: MixtureMultivariateNormal):
     )
     return MixtureMultivariateNormal(mixture_dist, component_dist)
 
-def _unique(dist: MixtureMultivariateNormal):
+def unique_mixture_multivariate_normal(dist: MixtureMultivariateNormal):
     stack = torch.cat((dist.component_distribution.covariance_matrix,
                        dist.component_distribution.loc.unsqueeze(-1)
                        ), dim=-1)
