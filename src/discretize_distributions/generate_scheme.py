@@ -101,6 +101,12 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     lr: float = 0.01, 
     max_init_points: int = 100
 ) -> dd_schemes.LayeredGridScheme:
+    if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
+        raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
+        "per_component method")
+
+    eigenbasis = gmm.component_distribution[0].eigvecs
+
     modes = find_modes_gradient_ascent(
         gmm, 
         init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))], 
@@ -111,7 +117,7 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
 
-    eigenbasis = gmm.component_distribution[0].eigvecs
+    
     grid_schemes = list()
     for mode in modes:
         cov = local_gaussian_covariance(gmm, mode)
@@ -140,12 +146,8 @@ def generate_multi_grid_scheme_for_mixture_multivariate_normal(
     lr: float = 0.01,
     max_init_points: int = 100
 ) -> dd_schemes.MultiGridScheme:
-    if not utils.have_common_eigenbasis(
-        gmm.component_distribution.covariance_matrix, 
-        gmm.component_distribution[0].covariance_matrix.unsqueeze(0).repeat(gmm.num_components, 1, 1),
-        atol=TOL
-    ):
-        raise ValueError('The components of the GMM do not share a common eigenbasis.')
+    if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
+        raise ValueError("The components of the GMM do not share a common eigenbasis.")
 
     eigenbasis = gmm.component_distribution[0].eigvecs
 

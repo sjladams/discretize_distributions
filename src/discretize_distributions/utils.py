@@ -91,19 +91,13 @@ def is_mat_diag(mat: torch.Tensor) -> bool:
     """
     return not (mat - torch.diag_embed(mat.diagonal(dim1=-2,dim2=-1), dim1=-2, dim2=-1)> PRECISION).any()
 
-
-def have_common_eigenbasis(Sigma1, Sigma2, atol=1e-6):
-    """Check whether two symmetric matrices share an eigenbasis by testing if they commute."""
-    comm = torch.einsum('...ij,...jk->...ik', Sigma1, Sigma2) - torch.einsum('...ij,...jk->...ik', Sigma2, Sigma1)
-    return torch.allclose(comm, torch.zeros_like(comm), atol=atol)
-
 def mats_commute(mat1: torch.Tensor, mat2: torch.Tensor, atol: float = 1e-6) -> bool:
     """
     Checks whether two square matrices (or batches of matrices) commute, i.e.,
     whether mat1 @ mat2 == mat2 @ mat1 within a given numerical tolerance.
 
     This is a sufficient condition for the matrices to be simultaneously diagonalizable 
-    provided both matrices are diagonalizable.
+    provided both matrices are diagonalizable. That is, if two symmetric matrices commute, they share a common eigenbasis.
     """
     commutator = mat1 @ mat2 - mat2 @ mat1
     return torch.allclose(commutator, torch.zeros_like(commutator), atol=atol)

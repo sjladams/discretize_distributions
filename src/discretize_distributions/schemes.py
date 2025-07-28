@@ -617,8 +617,8 @@ def equal_rot_mats(cells: List[Cell]) -> bool:
 
 def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6):
     return utils.mats_commute(
-        axes0.trans_mat @ axes0.trans_mat.T, 
-        axes1.trans_mat @ axes1.trans_mat.T, 
+        axes0.trans_mat @ axes0.trans_mat.transpose(-2, -1), 
+        axes1.trans_mat @ axes1.trans_mat.transpose(-2, -1), 
         atol=atol
     )
 
