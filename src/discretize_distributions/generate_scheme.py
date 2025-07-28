@@ -29,10 +29,9 @@ class Info:
     
 info = Info(GRID_SHAPES, OPTIMAL_1D_GRIDS)
 
-
 def generate_scheme(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-    grid_size: int,
+    scheme_size: int,
     per_mode: bool = True,
     **kwargs
 ) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme]:
@@ -40,12 +39,12 @@ def generate_scheme(
         raise ValueError('batching not supported yet')
 
     if isinstance(dist, dd_dists.MultivariateNormal):
-        return generate_grid_scheme_for_multivariate_normal(dist, grid_size=grid_size, domain=None)
+        return generate_grid_scheme_for_multivariate_normal(dist, grid_size=scheme_size, domain=None)
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
         if per_mode:
-            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, grid_size=grid_size, **kwargs)
+            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, **kwargs)
         else:
-            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, grid_size=grid_size, **kwargs)
+            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, **kwargs)
     else:
         raise NotImplementedError(
             f'Discretization of {dist.__class__.__name__} is not implemented yet. '
@@ -84,18 +83,21 @@ def generate_grid_scheme_for_multivariate_normal(
 
 def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(
     gmm: dd_dists.MixtureMultivariateNormal,
-    grid_size: int
+    scheme_size: int
 ) -> dd_schemes.LayeredGridScheme:
     grid_schemes = list()
     for i in range(gmm.num_components):
-        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(gmm.component_distribution[i], grid_size=grid_size))
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(
+            norm=gmm.component_distribution[i], 
+            grid_size=int(scheme_size / gmm.num_components)
+            ))
 
     return dd_schemes.LayeredGridScheme(grid_schemes)
 
 
 def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     gmm: dd_dists.MixtureMultivariateNormal,
-    grid_size: int, 
+    scheme_size: int, 
     prune_factor: float = 0.5,
     n_iter: int = 500,
     lr: float = 0.01, 
@@ -109,14 +111,13 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
 
     modes = find_modes_gradient_ascent(
         gmm, 
-        init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))], 
+        init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))],  # TODO move this to input
         n_iter=n_iter,
         lr=lr,
     )
 
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
-
     
     grid_schemes = list()
     for mode in modes:
@@ -132,14 +133,14 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
             eigvals=eigvals, 
             eigvecs=eigenbasis
         )
-        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, grid_size=grid_size))
-    
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, grid_size=int(scheme_size/len(modes))))
+
     return dd_schemes.LayeredGridScheme(grid_schemes)
 
 
 def generate_multi_grid_scheme_for_mixture_multivariate_normal(
     gmm: dd_dists.MixtureMultivariateNormal,
-    grid_size: int, 
+    scheme_size: int, 
     prune_factor: float = 0.5, 
     local_domain_prob : float = 0.99,
     n_iter: int = 500,
@@ -211,7 +212,11 @@ def generate_multi_grid_scheme_for_mixture_multivariate_normal(
             eigvals=eigvals, 
             eigvecs=eigvecs
         )
-        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, grid_size=grid_size, domain=local_domain))
+        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(
+            local_norm, 
+            grid_size=int(scheme_size / len(merged_local_domains)), 
+            domain=local_domain)
+        )
 
     return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean)
 

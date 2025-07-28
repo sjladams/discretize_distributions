@@ -34,36 +34,40 @@ if __name__ == "__main__":
     layered_grid_scheme_per_mode = dd_gen.generate_scheme(
         gmm, 
         per_mode=True,
-        grid_size=10, 
+        scheme_size=10 * 2, 
         prune_factor=0.01, 
         n_iter=1000,
         lr=0.01
     )
 
-    disc_gmm, w2 = dd.discretize(gmm, layered_grid_scheme_per_mode)
+    disc_gmm_per_mode, w2 = dd.discretize(gmm, layered_grid_scheme_per_mode)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm_per_mode)
     ax = set_axis(ax)
-    ax.set_title(f'Mode-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm.num_components})')
+    ax.set_title(f'Mode-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm_per_mode.num_components})')
 
     # Discretize per component:
-    layered_grid_scheme_per_component = dd_gen.generate_scheme(gmm, grid_size=10, per_mode=False)
+    layered_grid_scheme_per_component = dd_gen.generate_scheme(
+        gmm, 
+        scheme_size=10*4, 
+        per_mode=False
+    )
 
-    disc_gmm, w2 = dd.discretize(gmm, layered_grid_scheme_per_component)
+    disc_gmm_per_component, w2 = dd.discretize(gmm, layered_grid_scheme_per_component)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax = plot_2d_dist(ax, gmm)
-    ax = plot_2d_cat_float(ax, disc_gmm)
+    ax = plot_2d_cat_float(ax, disc_gmm_per_component)
     ax = set_axis(ax)
-    ax.set_title(f'Component-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm.num_components})')
+    ax.set_title(f'Component-wise (2-Wasserstein distance: {w2:.2f} / {disc_gmm_per_component.num_components})')
     plt.show()
 
     # # Discretize locally (not supported by discretize as sub-optimal):
     # multi_grid_scheme = dd_gen.generate_multi_grid_scheme_for_mixture_multivariate_normal(
     #     gmm, 
-    #     grid_size=10, 
+    #     scheme_size=10, 
     #     prune_factor=0.01, 
     #     local_domain_prob=0.9, 
     #     n_iter=1000,

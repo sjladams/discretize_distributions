@@ -44,7 +44,7 @@ def single_step(
         noise_dist: dd_dists.MultivariateNormal,
         q: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
         num_samples: int,
-        grid_size: int,
+        scheme_size: int,
         w2_p__q_global_lipschitz: float = 0.,
         run_empirical: bool = False,
         p_samples: Optional[torch.Tensor] = None,
@@ -52,7 +52,7 @@ def single_step(
     # Approximate the state distribution
     scheme = dd_gen.generate_scheme(
         q, 
-        grid_size=grid_size, 
+        scheme_size=scheme_size, 
         prune_factor=0.01, 
         n_iter=1000,
         lr=0.01
@@ -96,7 +96,7 @@ def multi_step(
     q: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
     num_time_steps: int,
     num_samples: int,
-    grid_size: int,
+    scheme_size: int,
     run_empirical: bool = False
 ):
     w2_p1__q1_store = {-1: dict(w2_p1__q1_global_lipschitz=0.)}
@@ -115,7 +115,7 @@ def multi_step(
             p_samples=samples_store[k-1]['p1_samples'],
             w2_p__q_global_lipschitz=w2_p1__q1_store[k-1]['w2_p1__q1_global_lipschitz'],
             num_samples=num_samples,
-            grid_size=grid_size, 
+            scheme_size=scheme_size, 
             run_empirical=run_empirical
         )
 
@@ -235,7 +235,7 @@ if __name__== '__main__':
         ),
         num_time_steps=6,
         num_samples=100,
-        grid_size=10, 
+        scheme_size=10, 
         run_empirical=False
     )
 
