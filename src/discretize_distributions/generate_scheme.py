@@ -7,9 +7,9 @@ import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 import discretize_distributions.utils as utils
 
-with files('discretize_distributions.data').joinpath('grid_shapes.pickle').open('rb') as f:
+with (files("discretize_distributions") / "data" / "grid_shapes.pickle").open("rb") as f:
     GRID_SHAPES = pickle.load(f)
-with files('discretize_distributions.data').joinpath('optimal_1d_grids.pickle').open('rb') as f:
+with (files("discretize_distributions") / "data" / "optimal_1d_grids.pickle").open("rb") as f:
     OPTIMAL_1D_GRIDS = pickle.load(f)
 
 TOL = 1e-8
@@ -343,6 +343,7 @@ def find_modes_gradient_ascent(
     """
     x = init_points.clone().detach().requires_grad_(True)
     optimizer = torch.optim.Adam([x], lr=lr)
+    gmm = detach_gmm(gmm)  # Detach GMM to avoid gradients through it
 
     for i in range(n_iter):
         optimizer.zero_grad()
@@ -446,3 +447,13 @@ def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape: torch.Tensor, attrib
             raise ValueError(f"Grid size {grid_size} is larger than the default grid size {default_grid_size}")
         grids[attribute] = grid
     return grids
+
+
+def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMultivariateNormal:
+    return dd_dists.MixtureMultivariateNormal(
+        mixture_distribution=torch.distributions.Categorical(probs=gmm.mixture_distribution.probs.detach()),
+        component_distribution=dd_dists.MultivariateNormal(
+            loc=gmm.component_distribution.loc.detach(),
+            covariance_matrix=gmm.component_distribution.covariance_matrix.detach(),
+        )
+    )
