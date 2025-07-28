@@ -9,6 +9,7 @@ __all__ = [
     'discretize',
     'distributions', 
     'schemes', 
-    'info'
-    ]
+    'info',
+    'generate_scheme'
+]
 
