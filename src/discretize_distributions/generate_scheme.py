@@ -117,7 +117,7 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     )
 
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
-    modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
+    modes = prune_modes_weighted_averaging(modes, gmm.log_prob(modes), prune_tol)
     
     grid_schemes = list()
     for mode in modes:
