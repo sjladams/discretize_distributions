@@ -51,7 +51,7 @@ def compute_locs(
     losses = torch.tensor(losses)
     locs = locs.detach().sort().values
     locs = symmetrize_vector(locs)
-
+    assert not locs.isnan().any()
     return locs, losses
 
 
