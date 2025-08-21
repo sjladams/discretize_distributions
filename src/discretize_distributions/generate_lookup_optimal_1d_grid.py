@@ -9,6 +9,13 @@ from importlib.resources import files
 from utils import pickle_dump, compute_w2_disc_uni_stand_normal, symmetrize_vector
 
 
+# from importlib.resources import files
+# import pickle
+
+# with (files("discretize_distributions") / "data" / "optimal_1d_grids.pickle").open("rb") as f:
+#     OPTIMAL_1D_GRIDS = pickle.load(f)
+    
+
 def compute_locs(
         grid_size: int, 
         locs_init: Optional[torch.Tensor] = None,
@@ -60,17 +67,17 @@ def generate_opt_grid_uni_std_normal(
     table = dict(locs=dict(), w2=dict(), probs=dict())
     table_emp = dict(locs=dict(), w2=dict())
     losses = dict()
-    for grid_size in torch.arange(1, max_grid_size + 1, dtype=torch.int32):
+    for grid_size in range(1, max_grid_size + 1):
         if grid_size == 1:
             locs = torch.zeros(1)
 
             locs_emp = locs.clone()
-            w2_emp = samples.pow(2).sum() * (1 / num_samples)
+            w2_emp = (samples.pow(2).sum() * (1 / num_samples)).sqrt()
         elif grid_size % 2 == 1: # uneven
             kmeans_torch = KMeans(n_clusters=int(grid_size))
             kmeans_result = kmeans_torch(samples.unsqueeze(0))
             locs_emp = kmeans_result.centers.squeeze().sort().values.detach()
-            w2_emp = (kmeans_result.inertia.squeeze() * (1 / num_samples))
+            w2_emp = (kmeans_result.inertia.squeeze() * (1 / num_samples)).sqrt()
 
             locs, losses[grid_size] = compute_locs(
                 grid_size, 
@@ -82,16 +89,14 @@ def generate_opt_grid_uni_std_normal(
             locs = torch.cat((-locs, locs))
 
             locs_emp = locs.clone()
-            # Compute empirical w2 via half plane (prob = 0.5)
-            w2_emp = (samples.abs() - locs[-1]).pow(2).sum() * (0.5 / num_samples) * 2
-        else: 
-            # Use symmetry for efficient sampling
+            w2_emp = ((samples.abs() - locs[-1]).pow(2).sum() * (1 / num_samples)).sqrt()
+        else: # even: use symmetry for efficient sampling
             kmeans_torch = KMeans(n_clusters=int(grid_size) // 2)
             kmeans_result = kmeans_torch(samples.abs().unsqueeze(0))
             locs_one_sided = kmeans_result.centers.squeeze().sort().values
             locs_emp = torch.cat((-locs_one_sided.flip(0), locs_one_sided))
-            # Compute empirical w2 via half plane (prob = 0.5)
-            w2_emp = (kmeans_result.inertia.squeeze() * (0.5 / num_samples)) * 2
+            
+            w2_emp = ((kmeans_result.inertia.squeeze() * (1 / num_samples))).sqrt()
 
             locs, losses[grid_size] = compute_locs(
                 grid_size, 
@@ -106,7 +111,7 @@ def generate_opt_grid_uni_std_normal(
         table['locs'][grid_size] = locs
         table['w2'][grid_size] = compute_w2_disc_uni_stand_normal(locs)
 
-        print("nr_points: {}, w2: {:.4f} / {:.4f}".format(grid_size, table_emp['w2'][grid_size], w2_emp))
+        print("nr_points: {}, w2: {:.4f} / {:.4f} / {:.4f}".format(grid_size, table['w2'][grid_size], OPTIMAL_1D_GRIDS['w2'][int(grid_size)], w2_emp))
 
     return table, table_emp, losses
 
@@ -116,7 +121,7 @@ if __name__ == "__main__":
     torch.manual_seed(1)
 
     parser = argparse.ArgumentParser(description="Generate lookup table for optimal grid shapes.")
-    parser.add_argument('--max_grid_size', type=int, default=10, help='Maximum number of locations in the grid.')
+    parser.add_argument('--max_grid_size', type=int, default=300, help='Maximum number of locations in the grid.')
     parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
     parser.add_argument('--random_init', type=eval, default=True, help='Whether to use random initialization for ' \
     'the optimization.')
@@ -130,3 +135,4 @@ if __name__ == "__main__":
 
     path = str(files('discretize_distributions.data').joinpath(f'optimal_1d_grids{args.tag}.pickle'))
     pickle_dump(lookup_table, path)
+
