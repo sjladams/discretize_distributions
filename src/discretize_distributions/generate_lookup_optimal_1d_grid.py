@@ -111,7 +111,8 @@ def generate_opt_grid_uni_std_normal(
         table['locs'][grid_size] = locs
         table['w2'][grid_size] = compute_w2_disc_uni_stand_normal(locs)
 
-        print("nr_points: {}, w2: {:.4f} / {:.4f} / {:.4f}".format(grid_size, table['w2'][grid_size], OPTIMAL_1D_GRIDS['w2'][int(grid_size)], w2_emp))
+        # print("nr_points: {}, w2: {:.4f} / {:.4f} / {:.4f}".format(grid_size, table['w2'][grid_size], OPTIMAL_1D_GRIDS['w2'][int(grid_size)], w2_emp))
+        print("nr_points: {}, w2: {:.4f} / {:.4f}".format(grid_size, table['w2'][grid_size], w2_emp))
 
     return table, table_emp, losses
 
