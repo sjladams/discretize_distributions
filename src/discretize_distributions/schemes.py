@@ -5,7 +5,14 @@ import discretize_distributions.utils as utils
 
 TOL = 1e-8
 
-
+# TODO: Investigate whether scheme objects should subclass torch.nn.Module (see GitHub issue #11)
+# TODO: Implement "star-type" discretization schemes (sigma-point style).
+#       Use support points along principal axes and Voronoi-based partitions
+#       instead of regular grids. Requires integration over Voronoi cells.
+#       See GitHub issue #10 for details.
+# TODO: Add batch support to `discretize` and `generate_scheme`.
+#       This is currently blocked by the fact that `Grid` assumes a fixed `grid_shape` across the batch.
+#       See GitHub issue #9 for details.
 class Axes:
     def __init__(
         self,
@@ -192,7 +199,6 @@ class Grid(Axes):
         example: [torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])]
         """
 
-        # Check if all batch shapes are equal
         batch_shapes = [p.shape[:-1] for p in points_per_dim]
         if len(set(batch_shapes)) != 1:
             raise ValueError("the points per dimension must have the same batch shape.")

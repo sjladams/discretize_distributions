@@ -1,3 +1,6 @@
+<!-- TODO: Write full README explaining the discretization pipeline, scheme interface (including Axes), how to generate lookup tables, and include a plot showing W2 error vs grid size (See Issue #13) -->
+
+
 # Discretize Distributions
 
 PyTorch-based tool for approximating mixtures of multivariate Gaussian distributions by discrete distributions with guarantees on the approximation error in the 2-Wasserstein distance.
