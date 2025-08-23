@@ -43,7 +43,7 @@ def compute_locs(
         assert not loss.isnan()
         loss.backward()
         optimizer.step()
-        assert not locs.isnan()
+        assert not locs.isnan().any()
         optimizer.zero_grad()
         losses.append(loss.detach())
 
