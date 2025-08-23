@@ -40,8 +40,10 @@ def compute_locs(
     for i in iterations:
         symmetric_locs = symmetrize_vector(locs)
         loss = compute_w2_disc_uni_stand_normal(symmetric_locs)
+        assert not loss.isnan()
         loss.backward()
         optimizer.step()
+        assert not locs.isnan()
         optimizer.zero_grad()
         losses.append(loss.detach())
 
@@ -67,7 +69,7 @@ def generate_opt_grid_uni_std_normal(
     table = dict(locs=dict(), w2=dict(), probs=dict())
     table_emp = dict(locs=dict(), w2=dict())
     losses = dict()
-    for grid_size in range(1, max_grid_size + 1):
+    for grid_size in range(39, max_grid_size + 1):
         if grid_size == 1:
             locs = torch.zeros(1)
 
@@ -122,7 +124,7 @@ if __name__ == "__main__":
     torch.manual_seed(1)
 
     parser = argparse.ArgumentParser(description="Generate lookup table for optimal grid shapes.")
-    parser.add_argument('--max_grid_size', type=int, default=300, help='Maximum number of locations in the grid.')
+    parser.add_argument('--max_grid_size', type=int, default=40, help='Maximum number of locations in the grid.')
     parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
     parser.add_argument('--random_init', type=eval, default=True, help='Whether to use random initialization for ' \
     'the optimization.')
@@ -131,7 +133,7 @@ if __name__ == "__main__":
     lookup_table = generate_opt_grid_uni_std_normal(
         max_grid_size=args.max_grid_size,
         random_init=args.random_init,
-        opt_params=dict(nr_iterations=5000, lr=0.1)
+        opt_params=dict(nr_iterations=1000, lr=0.001)
     )
 
     path = str(files('discretize_distributions.data').joinpath(f'optimal_1d_grids{args.tag}.pickle'))
