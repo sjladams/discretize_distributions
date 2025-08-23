@@ -100,8 +100,7 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     scheme_size: int, 
     prune_factor: float = 0.5,
     n_iter: int = 500,
-    lr: float = 0.01, 
-    max_init_points: int = 100
+    lr: float = 0.01
 ) -> dd_schemes.LayeredGridScheme:
     if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
         raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
@@ -109,12 +108,7 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
 
     eigenbasis = gmm.component_distribution[0].eigvecs
 
-    modes = find_modes_gradient_ascent(
-        gmm, 
-        init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))],  # TODO move this to input
-        n_iter=n_iter,
-        lr=lr,
-    )
+    modes = find_modes_gradient_ascent(gmm, n_iter=n_iter, lr=lr)
 
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.log_prob(modes), prune_tol)
@@ -145,19 +139,13 @@ def generate_multi_grid_scheme_for_mixture_multivariate_normal(
     local_domain_prob : float = 0.99,
     n_iter: int = 500,
     lr: float = 0.01,
-    max_init_points: int = 100
 ) -> dd_schemes.MultiGridScheme:
     if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
         raise ValueError("The components of the GMM do not share a common eigenbasis.")
 
     eigenbasis = gmm.component_distribution[0].eigvecs
 
-    modes = find_modes_gradient_ascent(
-        gmm, 
-        init_points=gmm.component_distribution.loc[torch.randperm(min(max_init_points, gmm.num_components))],  
-        n_iter=n_iter,
-        lr=lr,
-    )
+    modes = find_modes_gradient_ascent(gmm, n_iter=n_iter, lr=lr)
 
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.component_distribution.log_prob(modes), prune_tol)
@@ -322,9 +310,9 @@ def prune_modes_weighted_averaging(modes: torch.Tensor, scores: torch.Tensor, to
 
 def find_modes_gradient_ascent(
     gmm: dd_dists.MixtureMultivariateNormal,
-    init_points: torch.Tensor,
     n_iter: int = 100,
     lr: float = 0.01,
+    max_modes: int = 100,
     verbose: bool = False,
 ) -> torch.Tensor:
     """
@@ -332,16 +320,16 @@ def find_modes_gradient_ascent(
 
     Args:
         gmm: MixtureMultivariateNormal
-        initial_points: Tensor of shape [n_init, d]
         n_iter: Number of gradient steps
         lr: Learning rate
-        prune_tol: Distance threshold for merging close modes
+        max_modes: Maximum number of modes to find
         verbose: Whether to print progress
 
     Returns:
         Tensor [n_modes, d] of approximate GMM modes
     """
-    x = init_points.clone().detach().requires_grad_(True)
+    mask_init_locs = torch.randperm(gmm.num_components)[: min(max_modes, gmm.num_components)]
+    x = gmm.component_distribution.loc[mask_init_locs].clone().detach().requires_grad_(True)
     optimizer = torch.optim.Adam([x], lr=lr)
     gmm = detach_gmm(gmm)  # Detach GMM to avoid gradients through it
 
@@ -361,7 +349,11 @@ def find_modes_gradient_ascent(
 
     return x_final
 
-def local_gaussian_covariance(gmm: dd_dists.MixtureMultivariateNormal, mode: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+def local_gaussian_covariance(
+        gmm: dd_dists.MixtureMultivariateNormal, 
+        mode: torch.Tensor, 
+        eps: float = 1e-6
+    ) -> torch.Tensor:
     """
     Returns the local Gaussian covariance at a mode of the GMM.
 
