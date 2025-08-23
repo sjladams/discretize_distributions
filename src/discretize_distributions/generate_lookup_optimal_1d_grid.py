@@ -64,7 +64,7 @@ def generate_opt_grid_uni_std_normal(
     norm = torch.distributions.Normal(loc=torch.zeros(1), scale=torch.ones(1))
     samples = norm.sample((num_samples,))
 
-    table = dict(locs=dict(), w2=dict(), probs=dict())
+    table = dict(locs=dict(), w2=dict())
     table_emp = dict(locs=dict(), w2=dict())
     losses = dict()
     for grid_size in range(1, max_grid_size + 1):
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     'the optimization.')
     args = parser.parse_args()
 
-    lookup_table = generate_opt_grid_uni_std_normal(
+    lookup_table, _, _ = generate_opt_grid_uni_std_normal(
         max_grid_size=args.max_grid_size,
         random_init=args.random_init,
         opt_params=dict(nr_iterations=5000, lr=0.1)
