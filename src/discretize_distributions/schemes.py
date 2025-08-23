@@ -1,5 +1,6 @@
 import torch
 from typing import Union, Optional,  List
+from abc import ABC, abstractmethod
 
 import discretize_distributions.utils as utils
 
@@ -188,7 +189,7 @@ class Cell(Axes):
 
         return self.to_global(vertices)
 
-class Grid(Axes):
+class AxesAlignedPoints(Axes, ABC):
     def __init__(
             self, 
             points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
@@ -223,31 +224,6 @@ class Grid(Axes):
     def points_per_dim(self):
         return self._points_per_dim
     
-    @staticmethod
-    def from_shape(
-        grid_shape: torch.Size, 
-        domain: Cell
-    ):
-        if len(grid_shape) != domain.ndim:
-            raise ValueError("Shape and number of domain dimensions do not match.")
-        if torch.isinf(domain.lower_vertex).any() or torch.isinf(domain.upper_vertex).any():
-            raise ValueError("Domain must be finite.")
-        
-        center = 0.5 * (domain.lower_vertex + domain.upper_vertex)
-
-        points_per_dim = [
-            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
-            else center[dim] for dim in range(len(grid_shape))
-        ]
-        return Grid(points_per_dim, axes=domain)
-    
-    @property
-    def grid_shape(self):
-        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
-    
-    def __len__(self):
-        return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
-    
     @property
     def points(self):
         return self.query(slice(None))
@@ -259,23 +235,6 @@ class Grid(Axes):
             torch.stack([p.max(dim=-1).values for p in self.points_per_dim], dim=-1),
             axes=self
         )
-    
-    def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
-        if isinstance(idx, tuple):
-            selected_axes = self._select_axes(idx)
-            points = utils.batched_cartesian_product(selected_axes)
-        elif isinstance(idx, slice):
-            points = utils.batched_cartesian_product(self.points_per_dim)[..., idx, :]
-        else:
-            idx = torch.as_tensor(idx)
-            if idx.dim() == 0:
-                idx = idx.unsqueeze(0)
-            
-            unravelled = torch.unravel_index(idx, self.grid_shape)
-            points = [self.points_per_dim[d][..., unravelled[d]] for d in range(self.ndim_support)]
-            points = torch.stack(points, dim=-1)
-
-        return self.to_global(points)
     
     def _select_axes(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
@@ -294,6 +253,10 @@ class Grid(Axes):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
         return Grid(self._select_axes(idx), axes=self)
+
+    @abstractmethod
+    def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
+        raise NotImplementedError
     
     def rebase(self, axes: Axes):
         """
@@ -323,6 +286,70 @@ class Grid(Axes):
             )
         )
 
+
+class Grid(AxesAlignedPoints):
+    def __init__(
+            self, 
+            points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            axes: Optional[Axes] = None
+    ):
+        super().__init__(
+            points_per_dim=points_per_dim, 
+            axes=axes
+        )
+
+    @staticmethod
+    def from_shape(
+        grid_shape: torch.Size,
+        domain: Cell
+    ):
+        if len(grid_shape) != domain.ndim:
+            raise ValueError("Shape and number of domain dimensions do not match.")
+        if torch.isinf(domain.lower_vertex).any() or torch.isinf(domain.upper_vertex).any():
+            raise ValueError("Domain must be finite.")
+        
+        center = 0.5 * (domain.lower_vertex + domain.upper_vertex)
+
+        points_per_dim = [
+            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
+            else center[dim] for dim in range(len(grid_shape))
+        ]
+        return Grid(points_per_dim, axes=domain)
+    
+    def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
+        if isinstance(idx, tuple):
+            selected_axes = self._select_axes(idx)
+            points = utils.batched_cartesian_product(selected_axes)
+        elif isinstance(idx, slice):
+            points = utils.batched_cartesian_product(self.points_per_dim)[..., idx, :]
+        else:
+            idx = torch.as_tensor(idx)
+            if idx.dim() == 0:
+                idx = idx.unsqueeze(0)
+            
+            unravelled = torch.unravel_index(idx, self.grid_shape)
+            points = [self.points_per_dim[d][..., unravelled[d]] for d in range(self.ndim_support)]
+            points = torch.stack(points, dim=-1)
+
+        return self.to_global(points)
+
+    @property
+    def grid_shape(self):
+        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
+    
+    def __len__(self):
+        return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
+
+class Cross(AxesAlignedPoints):
+    def __init__(
+            self, 
+            points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            axes: Optional[Axes] = None
+    ):
+        super().__init__(
+            points_per_dim=points_per_dim, 
+            axes=axes
+        )
 
 class GridPartition(Grid):
     def __init__(
