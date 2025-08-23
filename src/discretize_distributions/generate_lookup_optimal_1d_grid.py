@@ -69,7 +69,7 @@ def generate_opt_grid_uni_std_normal(
     table = dict(locs=dict(), w2=dict(), probs=dict())
     table_emp = dict(locs=dict(), w2=dict())
     losses = dict()
-    for grid_size in range(39, max_grid_size + 1):
+    for grid_size in range(1, max_grid_size + 1):
         if grid_size == 1:
             locs = torch.zeros(1)
 
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     torch.manual_seed(1)
 
     parser = argparse.ArgumentParser(description="Generate lookup table for optimal grid shapes.")
-    parser.add_argument('--max_grid_size', type=int, default=41, help='Maximum number of locations in the grid.')
+    parser.add_argument('--max_grid_size', type=int, default=300, help='Maximum number of locations in the grid.')
     parser.add_argument('--tag', type=str, default='_TEST', help='Tag for the generated lookup table.')
     parser.add_argument('--random_init', type=eval, default=True, help='Whether to use random initialization for ' \
     'the optimization.')
