@@ -537,26 +537,6 @@ class Scheme:
         self._locs = locs
         self._partition = partition
 
-    def from_point(
-        self,
-        point: torch.Tensor, 
-        domain: Optional[Cell] = None
-    ):
-        if domain is None:
-            domain = create_cell_spanning_Rn(point.shape[-1])
-
-        return self.__class__(
-            locs=self._locs.__class__(
-                points_per_dim=domain.to_local(point).unsqueeze(-1), 
-                axes=domain
-                ), 
-            partition=self._partition.__class__.from_vertices(
-                lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
-                upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
-                axes=domain
-                )
-        )
-
     @property
     def ndim(self):
         return self._partition.ndim
@@ -591,6 +571,26 @@ class GridScheme(Scheme):
             grid_partition: GridPartition 
     ):
         super().__init__(locs=grid_of_locs, partition=grid_partition)
+
+    @staticmethod
+    def from_point(
+        point: torch.Tensor, 
+        domain: Optional[Cell] = None
+    ):
+        if domain is None:
+            domain = create_cell_spanning_Rn(point.shape[-1])
+
+        return GridScheme(
+            grid_of_locs=Grid(
+                points_per_dim=domain.to_local(point).unsqueeze(-1), 
+                axes=domain
+                ), 
+            grid_partition=GridPartition.from_vertices(
+                lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
+                upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
+                axes=domain
+                )
+        )
 
     @property
     def grid_of_locs(self):
