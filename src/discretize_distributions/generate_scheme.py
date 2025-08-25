@@ -33,23 +33,35 @@ def generate_scheme(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
     scheme_size: int,
     per_mode: bool = True,
+    configuration: str = 'grid',
     **kwargs
-) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme]:
-    if not dist.batch_shape == torch.Size([]):
-        raise ValueError('batching not supported yet')
+) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme, dd_schemes.CrossScheme]:
+    if configuration == 'grid':
+        if not dist.batch_shape == torch.Size([]):
+            raise ValueError('batching not supported yet')
 
-    if isinstance(dist, dd_dists.MultivariateNormal):
-        return generate_grid_scheme_for_multivariate_normal(dist, grid_size=scheme_size, domain=None)
-    elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
-        if per_mode:
-            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, **kwargs)
+        if isinstance(dist, dd_dists.MultivariateNormal):
+            return generate_grid_scheme_for_multivariate_normal(dist, grid_size=scheme_size, domain=None)
+        elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
+            if per_mode:
+                return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, **kwargs)
+            else:
+                return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, **kwargs)
         else:
-            return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, **kwargs)
+            raise NotImplementedError(
+                f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
+                'Please implement a custom discretization function.'
+            )
+    elif configuration == 'cross':
+        if isinstance(dist, dd_dists.MultivariateNormal):
+            return generate_cross_scheme_for_multivariate_normal(dist, cross_size=scheme_size, domain=None)
+        else:
+            raise NotImplementedError(
+                f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
+                'Please implement a custom discretization function.'
+            )
     else:
-        raise NotImplementedError(
-            f'Discretization of {dist.__class__.__name__} is not implemented yet. '
-            'Please implement a custom discretization function.'
-        )
+        raise NotImplementedError
 
 
 def generate_grid_scheme_for_multivariate_normal(
@@ -207,6 +219,26 @@ def generate_multi_grid_scheme_for_mixture_multivariate_normal(
         )
 
     return dd_schemes.MultiGridScheme(grid_schemes, outer_loc=gmm.mean)
+
+
+def generate_cross_scheme_for_multivariate_normal(
+    norm: dd_dists.MultivariateNormal,
+    cross_size: int,
+    domain: Optional[dd_schemes.Cell] = None,
+) -> dd_schemes.CrossScheme:
+    if domain is not None:
+        raise NotImplementedError('Domain support not implemented yet for CrossScheme.')
+    
+    ndim_support = norm.event_shape_support[-1]
+    points_per_side = get_points_per_side(
+        num_points=max(1, int(cross_size / (2 * ndim_support))), 
+        ndim=ndim_support
+    )
+    
+    return dd_schemes.CrossScheme(dd_schemes.Cross(
+        points_per_side=points_per_side,
+        axes=axes_from_norm(norm)
+    ))
 
 
 ## --- Utils -----------------------------------------------------------------------------------------------------------
@@ -377,6 +409,16 @@ def local_gaussian_covariance(
 
     cov = torch.linalg.inv(H_neg)
     return cov  # [d, d]
+
+
+def get_points_per_side(num_points: int, ndim: int):
+    probs_edges = torch.linspace(0.5, 1.0, steps=num_points + 1)
+    qqs = torch.distributions.Normal(0, 1).icdf(probs_edges)
+    l, u = qqs[0:-1], qqs[1:]
+    probs = utils.cdf(u) - utils.cdf(l)
+    locs = - (utils.pdf(u) - utils.pdf(l)) / probs
+    locs = locs * ndim ** 0.5
+    return locs
 
 
 ### --- Backup (TODO remove) --------------------------------------------------------------------------------------- ###
