@@ -258,7 +258,7 @@ class AxesAlignedPoints(Axes, ABC):
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         raise NotImplementedError
     
-    def rebase(self, axes: Axes):
+    def _rebase(self, axes: Axes):
         """
         Aligns the reference-frame (axes) the current grid to the given `axes`, WITHOUT modifying the offset. The 
         rebasing is only possible if the new axes share the same eigenbasis as the current axes
@@ -277,14 +277,20 @@ class AxesAlignedPoints(Axes, ABC):
         rel_scaling_diff = new_scale_mat.sum(-1) / axes.scales
         points_per_dim = [p * rel_scaling_diff[i] for i, p in enumerate(points_per_dim)]
 
-        return Grid(
-            points_per_dim=points_per_dim, 
-            axes=Axes(
+        axes = Axes(
                 rot_mat=axes.rot_mat.clone(), 
                 scales=axes.scales.clone(), 
                 offset=self.offset.clone()
-            )
         )
+        return points_per_dim, axes
+    
+    def rebase(self, axes: Axes):
+        points_per_dim, axes = self._rebase(axes)
+        return self.__class__(points_per_dim, axes=axes)
+    
+    @abstractmethod
+    def __len__(self) -> int:
+        raise NotImplementedError
 
 
 class Grid(AxesAlignedPoints):
@@ -397,6 +403,19 @@ class _Partition(Grid):
             upper_vertices_per_dim=elem._select_batch(1),
             axes=elem
         )
+    
+    def rebase(self, axes: Axes):
+        """
+        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
+        rebasing is only possible if the new axes share the same eigenbasis as the current axes
+        """
+        points_per_dim, axes = self._rebase(axes)
+
+        return self.__class__(
+            lower_vertices_per_dim=[p.min(dim=0).values for p in points_per_dim],
+            upper_vertices_per_dim=[p.max(dim=0).values for p in points_per_dim],
+            axes=axes
+        )
 
 
 class GridPartition(_Partition):
@@ -460,38 +479,33 @@ class GridPartition(_Partition):
 
 
 class Scheme:
-    pass 
-
-
-class GridScheme(Scheme):
     def __init__(
             self, 
-            grid_of_locs: Grid,
-            grid_partition: GridPartition 
+            locs: AxesAlignedPoints,
+            partition: _Partition 
     ):
-        if len(grid_of_locs) != len(grid_partition):
-            raise ValueError("Number of locations must match the number of partitions.")
-        if grid_of_locs.ndim != grid_partition.ndim:
+        if locs.ndim != partition.ndim:
             raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
+        if len(locs) != len(partition):
+            raise ValueError("Number of locations must match the number of partitions.")
 
-        self._grid_of_locs = grid_of_locs
-        self._grid_partition = grid_partition
+        self._locs = locs
+        self._partition = partition
 
-    @classmethod
     def from_point(
-        cls: type[Self],
+        self,
         point: torch.Tensor, 
         domain: Optional[Cell] = None
     ):
         if domain is None:
             domain = create_cell_spanning_Rn(point.shape[-1])
 
-        return cls(
-            grid_of_locs=Grid(
+        return self.__class__(
+            locs=self._locs.__class__(
                 points_per_dim=domain.to_local(point).unsqueeze(-1), 
                 axes=domain
                 ), 
-            grid_partition=GridPartition(
+            partition=self._partition.__class__(
                 lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
                 upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
                 axes=domain
@@ -499,42 +513,52 @@ class GridScheme(Scheme):
         )
 
     @property
-    def grid_of_locs(self):
-        return self._grid_of_locs
-    
-    @property
-    def grid_partition(self):
-        return self._grid_partition
-
-    @property
     def ndim(self):
-        return self.grid_of_locs.ndim
+        return self._partition.ndim
     
     @property
     def domain(self):
-        return self.grid_partition.domain
+        return self._partition.domain
     
     @property
     def locs(self):
-        return self.grid_of_locs.points
+        return self._locs.points
     
     def __getitem__(self, idx):
-        return GridScheme(
-            grid_of_locs=self.grid_of_locs[idx],
-            grid_partition=self.grid_partition[idx]
+        return self.__class__(
+            locs=self._locs[idx],
+            partition=self._partition[idx]
         )
 
     def __len__(self):
-        return len(self.grid_of_locs)
+        return len(self._locs)
     
     def rebase(self, axes: Axes):
-        return GridScheme(
-            grid_of_locs=self.grid_of_locs.rebase(axes),
-            grid_partition=self.grid_partition.rebase(axes)
+        return self.__class__(
+            self._locs.rebase(axes),
+            self._partition.rebase(axes)
         )
 
+class GridScheme(Scheme):
+    def __init__(
+            self, 
+            grid_of_locs: Grid,
+            grid_partition: GridPartition 
+    ):
+        super().__init__(locs=grid_of_locs, partition=grid_partition)
 
-class MultiGridScheme(Scheme):
+    @property
+    def grid_of_locs(self):
+        return self._locs
+    
+    @property
+    def grid_partition(self):
+        return self._partition
+
+class MultiScheme:
+    pass
+
+class MultiGridScheme(MultiScheme):
     def __init__(
             self,
             grid_schemes: List[GridScheme],
@@ -561,7 +585,10 @@ class MultiGridScheme(Scheme):
     def __getitem__(self, idx: int):
         return self.grid_schemes[idx]
 
-class LayeredGridScheme(Scheme):
+class LayeredScheme:
+    pass
+
+class LayeredGridScheme(LayeredScheme):
     def __init__(
             self, 
             grid_schemes: List[GridScheme]
