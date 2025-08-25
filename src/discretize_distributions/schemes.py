@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional,  List
+from typing import Union, Optional, List, Self
 from abc import ABC, abstractmethod
 
 import discretize_distributions.utils as utils
@@ -252,7 +252,7 @@ class AxesAlignedPoints(Axes, ABC):
         
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
-        return Grid(self._select_axes(idx), axes=self)
+        return self.__class__(self._select_axes(idx), axes=self)
 
     @abstractmethod
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
@@ -298,8 +298,9 @@ class Grid(AxesAlignedPoints):
             axes=axes
         )
 
-    @staticmethod
+    @classmethod
     def from_shape(
+        cls: type[Self],
         grid_shape: torch.Size,
         domain: Cell
     ):
@@ -314,7 +315,7 @@ class Grid(AxesAlignedPoints):
             torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
             else center[dim] for dim in range(len(grid_shape))
         ]
-        return Grid(points_per_dim, axes=domain)
+        return cls(points_per_dim, axes=domain)
     
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if isinstance(idx, tuple):
@@ -372,8 +373,9 @@ class GridPartition(Grid):
             axes=axes
         )
 
-    @staticmethod
+    @classmethod
     def from_grid_of_points(
+        cls: type[Self],
         grid_of_points: Grid, 
         domain: Optional[Cell] = None
     ): 
@@ -398,7 +400,7 @@ class GridPartition(Grid):
                 (vertices, domain.upper_vertex[idx].unsqueeze(0))
                 ))
 
-        return GridPartition(
+        return cls(
             lower_vertices_per_dim, 
             upper_vertices_per_dim, 
             axes=domain
@@ -422,7 +424,7 @@ class GridPartition(Grid):
 
     def __getitem__(self, idx: Union[int, tuple]):
         grid = super().__getitem__(idx)
-        return GridPartition(
+        return  self.__class__(
             lower_vertices_per_dim=grid._select_batch(0),
             upper_vertices_per_dim=grid._select_batch(1),
             axes=grid
@@ -460,12 +462,16 @@ class GridScheme(Scheme):
         self._grid_of_locs = grid_of_locs
         self._grid_partition = grid_partition
 
-    @staticmethod
-    def from_point(point: torch.Tensor, domain: Optional[Cell] = None):
+    @classmethod
+    def from_point(
+        cls: type[Self],
+        point: torch.Tensor, 
+        domain: Optional[Cell] = None
+    ):
         if domain is None:
             domain = create_cell_spanning_Rn(point.shape[-1])
 
-        return GridScheme(
+        return cls(
             grid_of_locs=Grid(
                 points_per_dim=domain.to_local(point).unsqueeze(-1), 
                 axes=domain
@@ -606,7 +612,7 @@ def any_cells_overlap(cells: List[Cell]) -> bool:
     """
     overlap = cells_overlap(cells)
     overlap.fill_diagonal_(False)  # ignore self-overlap
-    return overlap.any().item()
+    return bool(overlap.any().item())
 
 def merge_cells(cells: List[Cell]) -> Cell:
     if not equal_rot_mats(cells):
