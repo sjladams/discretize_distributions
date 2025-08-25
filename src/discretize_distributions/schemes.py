@@ -384,9 +384,22 @@ class Cross(AxesAlignedPoints):
 class _Partition(Grid):
     def __init__(
             self,
-            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
+    ):
+        assert [len(v) == 2 for v in vertices_per_dim]
+
+        super().__init__(
+            vertices_per_dim, 
+            axes=axes
+        )
+
+    @classmethod
+    def from_vertices(
+        cls,
+        lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+        upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+        axes: Optional[Axes] = None,
     ):
         if not len(lower_vertices_per_dim) == len(upper_vertices_per_dim):
             raise ValueError("Lower and upper vertices must have the same number of dimensions.")
@@ -396,9 +409,8 @@ class _Partition(Grid):
                 raise ValueError(f"Lower and upper vertices at index {idx} must have the same shape.")
             if (u < l).any():
                 raise ValueError(f"Upper vertices at index {idx} must be greater than or equal to lower vertices.")
-
-        super().__init__(
-            points_per_dim=[torch.stack([l, u], dim=0) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)], 
+        return cls(
+            [torch.stack([l, u], dim=0) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)],
             axes=axes
         )
     
@@ -417,14 +429,6 @@ class _Partition(Grid):
             super().domain.upper_vertex[1],
             axes=self
         )
-
-    def __getitem__(self, idx: Union[int, tuple]):
-        elem = super().__getitem__(idx)
-        return  self.__class__(
-            lower_vertices_per_dim=elem._select_batch(0),
-            upper_vertices_per_dim=elem._select_batch(1),
-            axes=elem
-        )
     
     def rebase(self, axes: Axes):
         """
@@ -433,7 +437,7 @@ class _Partition(Grid):
         """
         points_per_dim, axes = self._rebase(axes)
 
-        return self.__class__(
+        return self.__class__.from_vertices(
             lower_vertices_per_dim=[p.min(dim=0).values for p in points_per_dim],
             upper_vertices_per_dim=[p.max(dim=0).values for p in points_per_dim],
             axes=axes
@@ -443,13 +447,11 @@ class _Partition(Grid):
 class GridPartition(_Partition):
     def __init__(
             self,
-            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
     ):
         super().__init__(
-            lower_vertices_per_dim=lower_vertices_per_dim,
-            upper_vertices_per_dim=upper_vertices_per_dim,
+            vertices_per_dim=vertices_per_dim,
             axes=axes
         )
 
@@ -480,7 +482,7 @@ class GridPartition(_Partition):
                 (vertices, domain.upper_vertex[idx].unsqueeze(0))
                 ))
 
-        return cls(
+        return cls.from_vertices(
             lower_vertices_per_dim, 
             upper_vertices_per_dim, 
             axes=domain
@@ -489,13 +491,11 @@ class GridPartition(_Partition):
 class CrossPartition(_Partition):
     def __init__(
             self,
-            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
     ):
         super().__init__(
-            lower_vertices_per_dim=lower_vertices_per_dim,
-            upper_vertices_per_dim=upper_vertices_per_dim,
+            vertices_per_dim=vertices_per_dim,
             axes=axes
         )
 
@@ -517,7 +517,7 @@ class CrossPartition(_Partition):
                 (vertices, domain.upper_vertex[idx].unsqueeze(0))
                 ))
 
-        return cls(
+        return cls.from_vertices(
             lower_vertices_per_dim, 
             upper_vertices_per_dim, 
             axes=domain
@@ -550,7 +550,7 @@ class Scheme:
                 points_per_dim=domain.to_local(point).unsqueeze(-1), 
                 axes=domain
                 ), 
-            partition=self._partition.__class__(
+            partition=self._partition.__class__.from_vertices(
                 lower_vertices_per_dim=domain.lower_vertex.unsqueeze(-1),
                 upper_vertices_per_dim=domain.upper_vertex.unsqueeze(-1),
                 axes=domain
