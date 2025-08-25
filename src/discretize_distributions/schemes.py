@@ -350,24 +350,50 @@ class Grid(AxesAlignedPoints):
 class Cross(AxesAlignedPoints):
     def __init__(
             self, 
-            points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            axes: Optional[Axes] = None
+            points_per_side: Union[List[torch.Tensor], torch.Tensor],
+            axes: Axes,
     ):
-        # self._include_center = torch.stack([(p == 0.).any(dim=-1) for p in points_per_dim], dim=-1).any(-1)
+        if isinstance(points_per_side, torch.Tensor) and points_per_side.ndim == 1:
+            points_per_side = [points_per_side]
+
+        if (isinstance(points_per_side, torch.Tensor) and not points_per_side.size(-2) == 1) or \
+                (isinstance(points_per_side, list) and not len(points_per_side) == 1):
+            raise ValueError("points_per_side must be 1-dimensional, we're constructing a Cross with equal number of " \
+                "locations in each dimension")    
+        
         super().__init__(
-            points_per_dim=points_per_dim, 
+            points_per_dim=points_per_side,
             axes=axes
+        )
+    
+    @property
+    def points_per_side(self):
+        return self.points_per_dim[0]
+
+    @classmethod
+    def from_num_dims(
+        cls: type[Self], 
+        points_per_side: torch.Tensor, 
+        ndim: int
+    ):
+        return cls(
+            points_per_side,
+            axes=IdentityAxes(ndim_support=ndim)
         )
 
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if idx == slice(None):
+            points_per_dim = torch.cat((-self.points_per_side.flip(0), self.points_per_side), dim=0)
+            points_per_dim = torch.unique(points_per_dim, dim=-1)
+
             points = list()
-            for i in range(self.ndim):
-                points_to_append =  torch.zeros(self.points_per_dim[i].shape + (self.ndim,))
-                points_to_append[..., i] = self.points_per_dim[i]
+            for i in range(self.ndim_support):
+                points_to_append = torch.zeros(points_per_dim.shape + (self.ndim_support,))    
+                points_to_append[..., i] = points_per_dim
                 points.append(points_to_append)
 
-            points = torch.cat(points, dim=-2)
+            points = torch.vstack(points)
+            points = torch.unique(points, dim=-2)  # filter out center duplicates
         else:
             points = self.query(slice(None))[idx]
 
@@ -375,22 +401,20 @@ class Cross(AxesAlignedPoints):
     
     @property
     def cross_shape(self):
-        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
+        return torch.Size((len(self.points_per_dim),) * self.ndim_support)
     
     def __len__(self):
         return int(torch.sum(torch.as_tensor(self.cross_shape)).item())
 
 
-class _Partition(AxesAlignedPoints):
+class GridPartition(Grid):
     def __init__(
             self,
             vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None,
     ):
-        assert [len(v) == 2 for v in vertices_per_dim]
-
         super().__init__(
-            vertices_per_dim, 
+            vertices_per_dim,
             axes=axes
         )
 
@@ -399,7 +423,7 @@ class _Partition(AxesAlignedPoints):
         cls,
         lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
         upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-        axes: Optional[Axes] = None,
+        axes: Optional[Axes] = None
     ):
         if not len(lower_vertices_per_dim) == len(upper_vertices_per_dim):
             raise ValueError("Lower and upper vertices must have the same number of dimensions.")
@@ -414,47 +438,6 @@ class _Partition(AxesAlignedPoints):
             axes=axes
         )
     
-    @property
-    def lower_vertices_per_dim(self):
-        return self._select_batch(0)
-    
-    @property
-    def upper_vertices_per_dim(self):
-        return self._select_batch(1)
-
-    @property
-    def domain(self):
-        return Cell(
-            super().domain.lower_vertex[0],
-            super().domain.upper_vertex[1],
-            axes=self
-        )
-    
-    def rebase(self, axes: Axes):
-        """
-        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
-        rebasing is only possible if the new axes share the same eigenbasis as the current axes
-        """
-        points_per_dim, axes = self._rebase(axes)
-
-        return self.__class__.from_vertices(
-            lower_vertices_per_dim=[p.min(dim=0).values for p in points_per_dim],
-            upper_vertices_per_dim=[p.max(dim=0).values for p in points_per_dim],
-            axes=axes
-        )
-
-
-class GridPartition(_Partition, Grid):
-    def __init__(
-            self,
-            vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            axes: Optional[Axes] = None,
-    ):
-        super().__init__(
-            vertices_per_dim=vertices_per_dim,
-            axes=axes
-        )
-
     @classmethod
     def from_grid_of_points(
         cls: type[Self],
@@ -488,81 +471,37 @@ class GridPartition(_Partition, Grid):
             axes=domain
         )
 
-class CrossPartition(_Partition, Cross):
-    def __init__(
-            self,
-            vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
-            axes: Optional[Axes] = None,
-    ):
-        super().__init__(
-            vertices_per_dim=vertices_per_dim,
+    @property
+    def lower_vertices_per_dim(self):
+        return self._select_batch(0)
+    
+    @property
+    def upper_vertices_per_dim(self):
+        return self._select_batch(1)
+
+    @property
+    def domain(self):
+        return Cell(
+            super().domain.lower_vertex[0],
+            super().domain.upper_vertex[1],
+            axes=self
+        )
+    
+    def rebase(self, axes: Axes):
+        """
+        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
+        rebasing is only possible if the new axes share the same eigenbasis as the current axes
+        """
+        points_per_dim, axes = self._rebase(axes)
+
+        return self.__class__.from_vertices(
+            lower_vertices_per_dim=[p.min(dim=0).values for p in points_per_dim],
+            upper_vertices_per_dim=[p.max(dim=0).values for p in points_per_dim],
             axes=axes
         )
 
-    @classmethod
-    def from_cross_of_points(
-        cls: type[Self],
-        grid_of_points: Grid
-    ): 
-        
-        domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
-        
-        lower_vertices_per_dim, upper_vertices_per_dim = [], [] 
-        for idx, points in enumerate(grid_of_points.points_per_dim):
-            vertices = (points[1:] + points[:-1]) / 2
-            lower_vertices_per_dim.append(torch.cat(
-                (domain.lower_vertex[idx].unsqueeze(0), vertices)
-                ))
-            upper_vertices_per_dim.append(torch.cat(
-                (vertices, domain.upper_vertex[idx].unsqueeze(0))
-                ))
-
-        return cls.from_vertices(
-            lower_vertices_per_dim, 
-            upper_vertices_per_dim, 
-            axes=domain
-        )
-
 class Scheme:
-    def __init__(
-            self, 
-            locs: AxesAlignedPoints,
-            partition: _Partition 
-    ):
-        if locs.ndim != partition.ndim:
-            raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
-        if len(locs) != len(partition):
-            raise ValueError("Number of locations must match the number of partitions.")
-
-        self._locs = locs
-        self._partition = partition
-
-    @property
-    def ndim(self):
-        return self._partition.ndim
-    
-    @property
-    def domain(self):
-        return self._partition.domain
-    
-    @property
-    def locs(self):
-        return self._locs.points
-    
-    def __getitem__(self, idx):
-        return self.__class__(
-            locs=self._locs[idx],
-            partition=self._partition[idx]
-        )
-
-    def __len__(self):
-        return len(self._locs)
-    
-    def rebase(self, axes: Axes):
-        return self.__class__(
-            self._locs.rebase(axes),
-            self._partition.rebase(axes)
-        )
+    pass
 
 class GridScheme(Scheme):
     def __init__(
@@ -570,7 +509,48 @@ class GridScheme(Scheme):
             grid_of_locs: Grid,
             grid_partition: GridPartition 
     ):
-        super().__init__(locs=grid_of_locs, partition=grid_partition)
+        if grid_of_locs.ndim != grid_partition.ndim:
+            raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
+        if len(grid_of_locs) != len(grid_partition):
+            raise ValueError("Number of locations must match the number of partitions.")
+
+        self._grid_of_locs = grid_of_locs
+        self._grid_partition = grid_partition
+
+    @property
+    def grid_of_locs(self):
+        return self._grid_of_locs
+    
+    @property
+    def grid_partition(self):
+        return self._grid_partition
+    
+    @property
+    def ndim(self):
+        return self._grid_partition.ndim
+
+    @property
+    def domain(self):
+        return self._grid_partition.domain
+
+    @property
+    def locs(self):
+        return self._grid_of_locs.points
+
+    def __getitem__(self, idx):
+        return self.__class__(
+            grid_of_locs=self._grid_of_locs[idx],
+            grid_partition=self._grid_partition[idx]
+        )
+
+    def __len__(self):
+        return len(self._grid_of_locs)
+    
+    def rebase(self, axes: Axes):
+        return self.__class__(
+            self._grid_of_locs.rebase(axes),
+            self._grid_partition.rebase(axes)
+        )
 
     @staticmethod
     def from_point(
@@ -591,31 +571,16 @@ class GridScheme(Scheme):
                 axes=domain
                 )
         )
-
-    @property
-    def grid_of_locs(self):
-        return self._locs
     
-    @property
-    def grid_partition(self):
-        return self._partition
-    
-class CrossScheme(Scheme):
+class CrossScheme(Scheme, Cross):
     def __init__(
         self, 
-        cross_of_locs: Cross,
-        cross_partition: CrossPartition
+        cross_of_locs: Cross
     ):
-        super().__init__(locs=cross_of_locs, partition=cross_partition)
-
-    @property
-    def cross_of_locs(self):
-        return self._locs
-
-    @property
-    def cross_partition(self):
-        return self._partition
-
+        super().__init__(
+            points_per_side=cross_of_locs.points_per_side,
+            axes=cross_of_locs
+        )
 
 class MultiScheme:
     pass
