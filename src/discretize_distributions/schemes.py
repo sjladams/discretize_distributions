@@ -647,6 +647,9 @@ class MultiGridScheme(MultiScheme):
     def __getitem__(self, idx: int):
         return self.grid_schemes[idx]
 
+class MultiCrossScheme(MultiScheme):
+    pass
+
 class LayeredScheme:
     pass
 
@@ -668,6 +671,9 @@ class LayeredGridScheme(LayeredScheme):
     
     def __getitem__(self, idx: int):
         return self.grid_schemes[idx]
+    
+class LayeredCrossScheme(LayeredScheme):
+    pass
 
 ### --- Utility Functions --- ###
 def create_cell_spanning_Rn(n: int, axes: Optional[Axes] = None):

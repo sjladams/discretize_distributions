@@ -13,12 +13,23 @@ __all__ = ['discretize']
 
 def discretize(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-        scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
+        scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
-    locs, probs, w2 = _discretize(dist, scheme)
+    if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.MultiGridScheme, dd_schemes.LayeredGridScheme)):
+        locs, probs, w2 = _discretize_grid(dist, scheme)
+    elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme)):
+        locs, probs, w2 = _discretize_cross(dist, scheme)
+    else:
+        raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
     return dd_dists.CategoricalFloat(locs, probs), w2
 
-def _discretize(
+def _discretize_cross(
+    dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
+    scheme: Union[dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme]
+):
+    raise NotImplementedError
+
+def _discretize_grid(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
         scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -35,16 +46,16 @@ def _discretize(
 
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
         for grid_scheme in scheme:
-            locs_component, probs_component, w2_component = _discretize(dist, grid_scheme)
+            locs_component, probs_component, w2_component = _discretize_grid(dist, grid_scheme)
             locs.append(locs_component)
             probs.append(probs_component)
             w2_sq += w2_component.pow(2)
-            w2_sq_outer -= _discretize(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, grid_scheme.domain))[2].pow(2)
+            w2_sq_outer -= _discretize_grid(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, grid_scheme.domain))[2].pow(2)
 
         locs = torch.cat(locs, dim=0)
         probs = torch.cat(probs, dim=0)
 
-        _, prob_domain, w2_domain =_discretize(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, scheme.domain))
+        _, prob_domain, w2_domain =_discretize_grid(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, scheme.domain))
 
         w2_sq_outer += w2_domain.pow(2)
         assert (prob_domain - probs.sum()) >= -TOL, (f"The sum of probabilities on the subdomains should be equal or "
@@ -55,7 +66,7 @@ def _discretize(
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):
-            _, probs_component, w2_component = _discretize(dist.component_distribution[i], scheme)
+            _, probs_component, w2_component = _discretize_grid(dist.component_distribution[i], scheme)
             probs.append(probs_component * dist.mixture_distribution.probs[i])
             w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
 
@@ -80,7 +91,7 @@ def _discretize(
         for i in range(len(scheme)):
             indices = torch.where(scheme_per_gmm_comp==i)[0]
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            locs_scheme, probs_scheme, w2_scheme = _discretize(dist[indices], scheme[i])
+            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist[indices], scheme[i])
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
