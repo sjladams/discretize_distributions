@@ -15,6 +15,9 @@ def discretize(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
         scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
+    if not dist.batch_shape == torch.Size([]):
+        raise NotImplementedError('Discretization of batched distributions is not supported yet.')
+    
     if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.MultiGridScheme, dd_schemes.LayeredGridScheme)):
         locs, probs, w2 = _discretize_grid(dist, scheme)
     elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme)):
@@ -33,9 +36,6 @@ def _discretize_grid(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
         scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    if not dist.batch_shape == torch.Size([]):
-        raise NotImplementedError('Discretization of batched distributions is not supported yet.')
-
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
         locs, probs = categorical_grid.locs, categorical_grid.probs
