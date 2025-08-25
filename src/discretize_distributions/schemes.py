@@ -353,10 +353,32 @@ class Cross(AxesAlignedPoints):
             points_per_dim: Union[List[torch.Tensor], torch.Tensor], 
             axes: Optional[Axes] = None
     ):
+        # self._include_center = torch.stack([(p == 0.).any(dim=-1) for p in points_per_dim], dim=-1).any(-1)
         super().__init__(
             points_per_dim=points_per_dim, 
             axes=axes
         )
+
+    def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
+        if idx == slice(None):
+            points = list()
+            for i in range(self.ndim):
+                points_to_append =  torch.zeros(self.points_per_dim[i].shape + (self.ndim,))
+                points_to_append[..., i] = self.points_per_dim[i]
+                points.append(points_to_append)
+
+            points = torch.cat(points, dim=-2)
+        else:
+            points = self.query(slice(None))[idx]
+
+        return self.to_global(points)
+    
+    @property
+    def cross_shape(self):
+        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
+    
+    def __len__(self):
+        return int(torch.sum(torch.as_tensor(self.cross_shape)).item())
 
 
 class _Partition(Grid):
@@ -463,20 +485,43 @@ class GridPartition(_Partition):
             upper_vertices_per_dim, 
             axes=domain
         )
-        
-    def rebase(self, axes: Axes):
-        """
-        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
-        rebasing is only possible if the new axes share the same eigenbasis as the current axes
-        """
-        rebased_grid = super().rebase(axes)
 
-        return GridPartition(
-            lower_vertices_per_dim=[p.min(dim=0).values for p in rebased_grid.points_per_dim],
-            upper_vertices_per_dim=[p.max(dim=0).values for p in rebased_grid.points_per_dim],
-            axes=rebased_grid
+class CrossPartition(_Partition):
+    def __init__(
+            self,
+            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            axes: Optional[Axes] = None,
+    ):
+        super().__init__(
+            lower_vertices_per_dim=lower_vertices_per_dim,
+            upper_vertices_per_dim=upper_vertices_per_dim,
+            axes=axes
         )
 
+    @classmethod
+    def from_cross_of_points(
+        cls: type[Self],
+        grid_of_points: Grid
+    ): 
+        
+        domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
+        
+        lower_vertices_per_dim, upper_vertices_per_dim = [], [] 
+        for idx, points in enumerate(grid_of_points.points_per_dim):
+            vertices = (points[1:] + points[:-1]) / 2
+            lower_vertices_per_dim.append(torch.cat(
+                (domain.lower_vertex[idx].unsqueeze(0), vertices)
+                ))
+            upper_vertices_per_dim.append(torch.cat(
+                (vertices, domain.upper_vertex[idx].unsqueeze(0))
+                ))
+
+        return cls(
+            lower_vertices_per_dim, 
+            upper_vertices_per_dim, 
+            axes=domain
+        )
 
 class Scheme:
     def __init__(
@@ -554,6 +599,23 @@ class GridScheme(Scheme):
     @property
     def grid_partition(self):
         return self._partition
+    
+class CrossScheme(Scheme):
+    def __init__(
+        self, 
+        cross_of_locs: Cross,
+        cross_partition: CrossPartition
+    ):
+        super().__init__(locs=cross_of_locs, partition=cross_partition)
+
+    @property
+    def cross_of_locs(self):
+        return self._locs
+
+    @property
+    def cross_partition(self):
+        return self._partition
+
 
 class MultiScheme:
     pass
