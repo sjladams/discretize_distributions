@@ -411,14 +411,6 @@ class GridPartition(Grid):
     @property
     def upper_vertices_per_dim(self):
         return self._select_batch(1)
-    
-    @property
-    def lower_vertices(self):
-        return self.points[0]
-    
-    @property
-    def upper_vertices(self):
-        return self.points[1]
 
     @property
     def domain(self):
