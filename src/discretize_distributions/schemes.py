@@ -381,7 +381,7 @@ class Cross(AxesAlignedPoints):
         return int(torch.sum(torch.as_tensor(self.cross_shape)).item())
 
 
-class _Partition(Grid):
+class _Partition(AxesAlignedPoints):
     def __init__(
             self,
             vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
@@ -444,7 +444,7 @@ class _Partition(Grid):
         )
 
 
-class GridPartition(_Partition):
+class GridPartition(_Partition, Grid):
     def __init__(
             self,
             vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
@@ -488,7 +488,7 @@ class GridPartition(_Partition):
             axes=domain
         )
 
-class CrossPartition(_Partition):
+class CrossPartition(_Partition, Cross):
     def __init__(
             self,
             vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
