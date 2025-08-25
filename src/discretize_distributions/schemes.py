@@ -352,7 +352,8 @@ class Cross(AxesAlignedPoints):
             axes=axes
         )
 
-class GridPartition(Grid):
+
+class _Partition(Grid):
     def __init__(
             self,
             lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
@@ -372,39 +373,6 @@ class GridPartition(Grid):
             points_per_dim=[torch.stack([l, u], dim=0) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)], 
             axes=axes
         )
-
-    @classmethod
-    def from_grid_of_points(
-        cls: type[Self],
-        grid_of_points: Grid, 
-        domain: Optional[Cell] = None
-    ): 
-        """Computes (lower, upper) vertices of axis-aligned Voronoi cells w.r.t. grid over domain."""
-
-        if domain is None:
-            domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
-        elif not equal_axes(domain, grid_of_points):
-            raise ValueError("Domain axes must match the grid axes.")
-            
-        # This is not an unaovidable check, but simplifies the implementation. To relax this, saturate the vertices.
-        if not check_grid_in_domain(grid_of_points, domain):
-            raise ValueError("Grid is not fully contained within the domain.") 
-
-        lower_vertices_per_dim, upper_vertices_per_dim = [], [] 
-        for idx, points in enumerate(grid_of_points.points_per_dim):
-            vertices = (points[1:] + points[:-1]) / 2
-            lower_vertices_per_dim.append(torch.cat(
-                (domain.lower_vertex[idx].unsqueeze(0), vertices)
-                ))
-            upper_vertices_per_dim.append(torch.cat(
-                (vertices, domain.upper_vertex[idx].unsqueeze(0))
-                ))
-
-        return cls(
-            lower_vertices_per_dim, 
-            upper_vertices_per_dim, 
-            axes=domain
-        )
     
     @property
     def lower_vertices_per_dim(self):
@@ -423,13 +391,60 @@ class GridPartition(Grid):
         )
 
     def __getitem__(self, idx: Union[int, tuple]):
-        grid = super().__getitem__(idx)
+        elem = super().__getitem__(idx)
         return  self.__class__(
-            lower_vertices_per_dim=grid._select_batch(0),
-            upper_vertices_per_dim=grid._select_batch(1),
-            axes=grid
+            lower_vertices_per_dim=elem._select_batch(0),
+            upper_vertices_per_dim=elem._select_batch(1),
+            axes=elem
         )
 
+
+class GridPartition(_Partition):
+    def __init__(
+            self,
+            lower_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            upper_vertices_per_dim: Union[List[torch.Tensor], torch.Tensor], 
+            axes: Optional[Axes] = None,
+    ):
+        super().__init__(
+            lower_vertices_per_dim=lower_vertices_per_dim,
+            upper_vertices_per_dim=upper_vertices_per_dim,
+            axes=axes
+        )
+
+    @classmethod
+    def from_grid_of_points(
+        cls: type[Self],
+        grid_of_points: Grid, 
+        domain: Optional[Cell] = None
+    ): 
+        """Computes (lower, upper) vertices of axis-aligned Voronoi cells w.r.t. grid over domain."""
+
+        if domain is None:
+            domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
+        elif not equal_axes(domain, grid_of_points):
+            raise ValueError("Domain axes must match the grid axes.")
+
+        # This is not an unavoidable check, but simplifies the implementation. To relax this, saturate the vertices.
+        if not check_grid_in_domain(grid_of_points, domain):
+            raise ValueError("Grid is not fully contained within the domain.")
+
+        lower_vertices_per_dim, upper_vertices_per_dim = [], [] 
+        for idx, points in enumerate(grid_of_points.points_per_dim):
+            vertices = (points[1:] + points[:-1]) / 2
+            lower_vertices_per_dim.append(torch.cat(
+                (domain.lower_vertex[idx].unsqueeze(0), vertices)
+                ))
+            upper_vertices_per_dim.append(torch.cat(
+                (vertices, domain.upper_vertex[idx].unsqueeze(0))
+                ))
+
+        return cls(
+            lower_vertices_per_dim, 
+            upper_vertices_per_dim, 
+            axes=domain
+        )
+        
     def rebase(self, axes: Axes):
         """
         Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
