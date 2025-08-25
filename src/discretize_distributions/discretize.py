@@ -30,7 +30,13 @@ def _discretize_cross(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
     scheme: Union[dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme]
 ):
-    raise NotImplementedError
+    if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.CrossScheme):
+        locs, probs, w2 = discretize_multi_norm_using_cross_scheme(dist, scheme)
+    else:
+        raise NotImplementedError(f"Discretization for distribution {type(dist).__name__} "
+                                  f"and scheme {type(scheme).__name__} is not implemented yet.")
+
+    return locs, probs, w2
 
 def _discretize_grid(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
@@ -164,3 +170,45 @@ def discretize_multi_norm_using_grid_scheme(
     # print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
     return disc_dist, w2
+
+def discretize_multi_norm_using_cross_scheme(
+        dist: dd_dists.MultivariateNormal,
+        cross_scheme: dd_schemes.CrossScheme
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    dist_axes = dd_gen.axes_from_norm(dist)
+
+    if not dd_schemes.equal_axes(dist_axes, cross_scheme, atol=TOL):
+        raise ValueError('The distribution and the cross partition do not share the same axes.')
+
+    points = cross_scheme.points_per_side
+    edges = torch.cat((torch.zeros(1), points[0:-1] + 0.5 * points.diff(), torch.ones(1).fill_(torch.inf)))
+
+    volume_ellipsoids = gaussian_ball_probability(edges, dim=cross_scheme.ndim_support)  
+    volume_shells = volume_ellipsoids[1:] - volume_ellipsoids[0:-1]
+    probs_per_side = volume_shells / (2 * cross_scheme.ndim_support)
+
+    probs = dd_schemes.Cross.from_num_dims(probs_per_side, cross_scheme.ndim_support).points.abs().sum(-1)
+    locs = cross_scheme.points
+    w2 = torch.full(dist.batch_shape, torch.nan)
+
+    assert probs.shape == locs.shape[:-1]
+    assert ((probs.sum(-1) - 1.).abs() < TOL).all()
+
+    return locs, probs, w2
+
+
+def gaussian_ball_probability(radii: torch.Tensor, dim: int) -> torch.Tensor:
+    """
+    Compute probability that a d-dimensional standard normal lies within
+    a ball of radius r, for each r in radii.
+
+    Args:
+        radii (torch.Tensor): Tensor of radii (any shape).
+        dim (int): Dimension d of the Gaussian.
+
+    Returns:
+        torch.Tensor: Probabilities of same shape as radii.
+    """
+    chi2 = torch.distributions.chi2.Chi2(df=dim)
+    return chi2.cdf(radii.pow(2))
+
