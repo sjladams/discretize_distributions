@@ -723,7 +723,7 @@ def equal_rot_mats(cells: List[Cell]) -> bool:
     return torch.allclose(rot_mats, rot_mats[0].expand_as(rot_mats), atol=TOL)
 
 
-def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6):
+def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6): # TODO rename common_eigenbasis
     return utils.mats_commute(
         axes0.trans_mat @ axes0.trans_mat.transpose(-2, -1), 
         axes1.trans_mat @ axes1.trans_mat.transpose(-2, -1), 
