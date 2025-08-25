@@ -359,8 +359,13 @@ class Cross(AxesAlignedPoints):
         if (isinstance(points_per_side, torch.Tensor) and not points_per_side.size(-2) == 1) or \
                 (isinstance(points_per_side, list) and not len(points_per_side) == 1):
             raise ValueError("points_per_side must be 1-dimensional, we're constructing a Cross with equal number of " \
-                "locations in each dimension")    
-        
+                "locations in each dimension") 
+
+        if not (points_per_side[0] >= 0.).all():
+            raise ValueError("points_per_side must be non-negative.") # TODO accept zeros (remove duplicates in query 
+        # (don't use unique, this applies a hidden sorting and ruins everything), and most importantly, account for 
+        # zero in computation of probabilities in discretize_multi_norm_using_cross_scheme)
+
         super().__init__(
             points_per_dim=points_per_side,
             axes=axes
@@ -384,8 +389,6 @@ class Cross(AxesAlignedPoints):
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if idx == slice(None):
             points_per_dim = torch.cat((-self.points_per_side.flip(0), self.points_per_side), dim=0)
-            points_per_dim = torch.unique(points_per_dim, dim=-1)
-
             points = list()
             for i in range(self.ndim_support):
                 points_to_append = torch.zeros(points_per_dim.shape + (self.ndim_support,))    
@@ -393,7 +396,6 @@ class Cross(AxesAlignedPoints):
                 points.append(points_to_append)
 
             points = torch.vstack(points)
-            points = torch.unique(points, dim=-2)  # filter out center duplicates
         else:
             points = self.query(slice(None))[idx]
 
