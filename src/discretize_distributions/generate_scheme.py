@@ -57,7 +57,7 @@ def generate_scheme(
             )
     elif configuration == 'cross':
         if isinstance(dist, dd_dists.MultivariateNormal):
-            return generate_cross_scheme_for_multivariate_normal(dist, cross_size=scheme_size, domain=None)
+            return generate_cross_scheme_for_multivariate_normal(dist, cross_size=scheme_size, domain=None, **kwargs)
         else:
             raise NotImplementedError(
                 f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
@@ -272,6 +272,7 @@ def generate_cross_scheme_for_multivariate_normal(
     norm: dd_dists.MultivariateNormal,
     cross_size: int,
     domain: Optional[dd_schemes.Cell] = None,
+    ndim_support: Optional[int] = None
 ) -> dd_schemes.CrossScheme:
     """
     The cross-scheme is a specific form of sigma-point approximation for a multivariate normal distribution.
@@ -282,16 +283,22 @@ def generate_cross_scheme_for_multivariate_normal(
     if domain is not None:
         raise NotImplementedError('Domain support not implemented yet for CrossScheme.')
     
-    ndim_support = norm.event_shape_support[-1]
+    ndim_support = norm.event_shape_support[-1] if ndim_support is None else ndim_support
+
     points_per_side = get_points_per_side(
         num_points=max(1, int(cross_size / (2 * ndim_support))), 
         ndim=ndim_support
     )
-    
-    return dd_schemes.CrossScheme(dd_schemes.Cross(
-        points_per_side=points_per_side,
-        axes=axes_from_norm(norm)
-    ))
+
+    axes=axes_from_norm(norm, ndim_support=ndim_support)
+
+    cross = dd_schemes.Cross(
+                points_per_side=points_per_side,
+                axes=axes
+            )
+        
+    return dd_schemes.CrossScheme(cross)
+
 
 def get_points_per_side(num_points: int, ndim: int):
     probs_edges = torch.linspace(0.5, 1.0, steps=num_points + 1)

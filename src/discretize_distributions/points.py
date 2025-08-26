@@ -188,6 +188,15 @@ class Cross(AxesAlignedPoints):
             points_per_dim=points_per_side,
             axes=axes
         )
+
+        self._parent_axes = axes.parent_axes if hasattr(axes, 'parent_axes') else axes # TODO fix this more fundamentally in AxesAlignedPoints by inherring DegenerateAxes, and enable rebasing
+    
+    @property
+    def parent_axes(self):
+        return self._parent_axes
+
+    def rebase(self, axes: Axes):
+        raise NotImplementedError("Rebasing not supported yet") 
     
     @property
     def points_per_side(self):
