@@ -1,9 +1,9 @@
 import torch
 from typing import Union, Optional, List, Self
 
-from discretize_distributions.axes import Axes, equal_axes
-from discretize_distributions.cell import Cell, create_cell_spanning_Rn, any_cells_overlap
-from discretize_distributions.points import Grid, Cross, check_grid_in_domain
+from .axes import Axes, equal_axes
+from .cell import Cell, create_cell_spanning_Rn, any_cells_overlap
+from .points import Grid, Cross, check_grid_in_domain
 
 
 TOL = 1e-8

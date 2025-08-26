@@ -1,6 +1,6 @@
 import torch
 
-import discretize_distributions.utils as utils
+from . import utils
 
 TOL = 1e-8
 

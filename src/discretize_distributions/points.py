@@ -2,9 +2,9 @@ import torch
 from typing import Union, Optional, List, Self
 from abc import ABC, abstractmethod
 
-import discretize_distributions.utils as utils
-from discretize_distributions.axes import Axes, IdentityAxes, equal_axes
-from discretize_distributions.cell import Cell
+from . import utils
+from .axes import Axes, IdentityAxes, equal_axes
+from .cell import Cell
 
 
 class AxesAlignedPoints(Axes, ABC):

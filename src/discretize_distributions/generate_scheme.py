@@ -3,10 +3,10 @@ import torch
 from importlib.resources import files
 import pickle
 
-import discretize_distributions.cell as dd_cell
-import discretize_distributions.schemes as dd_schemes
-import discretize_distributions.distributions as dd_dists
-import discretize_distributions.utils as utils
+from . import cell as dd_cell
+from . import schemes as dd_schemes
+from . import distributions as dd_dists
+from . import utils
 
 with (files("discretize_distributions") / "data" / "grid_shapes.pickle").open("rb") as f:
     GRID_SHAPES = pickle.load(f)

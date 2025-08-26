@@ -1,9 +1,9 @@
 import torch
-from typing import Union, Optional, List, Self
-from abc import ABC, abstractmethod
+from typing import Optional, List
 
-import discretize_distributions.utils as utils
-from discretize_distributions.axes import Axes, IdentityAxes
+from .axes import Axes, IdentityAxes
+
+TOL = 1e-8
 
 class Cell(Axes):
     """

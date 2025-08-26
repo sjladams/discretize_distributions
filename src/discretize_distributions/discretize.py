@@ -1,12 +1,12 @@
 import torch
 from typing import Union, Optional, Tuple, List
 
-import discretize_distributions.utils as utils
-import discretize_distributions.distributions as dd_dists
-import discretize_distributions.axes as dd_axes
-import discretize_distributions.cell as dd_cell
-import discretize_distributions.schemes as dd_schemes
-import discretize_distributions.generate_scheme as dd_gen
+from . import utils
+from . import distributions as dd_dists
+from . import axes as dd_axes
+from . import cell as dd_cell
+from . import schemes as dd_schemes
+from . import generate_scheme as dd_gen
 
 TOL = 1e-8
 
