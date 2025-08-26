@@ -100,7 +100,7 @@ def create_cell_spanning_Rn(n: int, axes: Optional[Axes] = None):
     return Cell(torch.full((n,), -torch.inf), torch.full((n,), torch.inf), axes=axes)
 
 
-def cells_overlap(cells: List[Cell]) -> torch.Tensor:  # TODO check if used
+def cells_overlap(cells: List[Cell]) -> torch.Tensor:
     """
     Returns an [N, N] boolean tensor where entry (i, j) is True if cells i and j overlap.
     Only supports non-batched Cells with the same rotation matrix
@@ -117,7 +117,7 @@ def cells_overlap(cells: List[Cell]) -> torch.Tensor:  # TODO check if used
     overlap = ~separated
     return overlap
 
-def any_cells_overlap(cells: List[Cell]) -> bool:  # TODO check if used
+def any_cells_overlap(cells: List[Cell]) -> bool:
     """
     Returns True if any pair of cells overlap.
     """
@@ -152,7 +152,7 @@ def merge_cells(cells: List[Cell]) -> Cell:
         )
     )
 
-def equal_rot_mats(cells: List[Cell]) -> bool: # TODO depreciate
+def equal_rot_mats(cells: List[Cell]) -> bool:
     rot_mats = torch.stack([cell.rot_mat for cell in cells])
     return torch.allclose(rot_mats, rot_mats[0].expand_as(rot_mats), atol=TOL)
 
