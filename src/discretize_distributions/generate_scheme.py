@@ -3,6 +3,7 @@ import torch
 from importlib.resources import files
 import pickle
 
+import discretize_distributions.cell as dd_cell
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.distributions as dd_dists
 import discretize_distributions.utils as utils
@@ -183,7 +184,7 @@ def generate_multi_grid_scheme_for_mixture_multivariate_normal(
             )
         ))
 
-    overlap = dd_schemes.cells_overlap(local_domains)
+    overlap = dd_cell.cells_overlap(local_domains)
 
     merged_local_domains = list()
     covered = torch.full((len(local_domains),), False)
@@ -195,7 +196,7 @@ def generate_multi_grid_scheme_for_mixture_multivariate_normal(
         elif len(overlapping_local_domains) == 1:
             merged_local_domains.append(overlapping_local_domains[0])
         else:
-            merged_local_domains.append(dd_schemes.merge_cells(overlapping_local_domains))
+            merged_local_domains.append(dd_cell.merge_cells(overlapping_local_domains))
             
         covered[mask] = True
 

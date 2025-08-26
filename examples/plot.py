@@ -1,5 +1,6 @@
 import torch
 
+import discretize_distributions.cell as dd_cell
 import discretize_distributions.schemes as dd_schemes
 
 
@@ -28,7 +29,7 @@ def plot_2d_grid(ax, grid, s: float = 10, c: str = 'red', **kwargs):
     )
     return ax
 
-def plot_2d_cell(ax, cell: dd_schemes.Cell, c: str = 'blue', linewidth: float = 2, **kwargs):
+def plot_2d_cell(ax, cell: dd_cell.Cell, c: str = 'blue', linewidth: float = 2, **kwargs):
     verts = sort_vertices_counterclockwise(cell.vertices)
 
     # Close the box by repeating the first vertex at the end

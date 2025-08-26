@@ -3,6 +3,8 @@ from typing import Union, Optional, Tuple, List
 
 import discretize_distributions.utils as utils
 import discretize_distributions.distributions as dd_dists
+import discretize_distributions.axes as dd_axes
+import discretize_distributions.cell as dd_cell
 import discretize_distributions.schemes as dd_schemes
 import discretize_distributions.generate_scheme as dd_gen
 
@@ -48,7 +50,7 @@ def _discretize_grid(
     elif (isinstance(dist, (dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal)) and 
           isinstance(scheme, dd_schemes.MultiGridScheme)):
         
-        assert dd_schemes.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
+        assert dd_cell.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
 
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
         for grid_scheme in scheme:
@@ -85,7 +87,7 @@ def _discretize_grid(
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
             )
-        assert all([dd_schemes.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
+        assert all([dd_cell.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
             'All grid schemes must span the full R^n domain.'
 
         scheme_per_gmm_comp = torch.cdist(
@@ -121,7 +123,7 @@ def discretize_multi_norm_using_grid_scheme(
 ) -> Tuple[dd_dists.CategoricalGrid, torch.Tensor]:
     dist_axes = dd_gen.axes_from_norm(dist)
 
-    if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
+    if not dd_axes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       
 
     grid_scheme_in_dist_axes = grid_scheme.rebase(dist_axes)
