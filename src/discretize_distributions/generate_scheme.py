@@ -7,6 +7,8 @@ from . import cell as dd_cell
 from . import schemes as dd_schemes
 from . import distributions as dd_dists
 from . import utils
+from .generate_scheme_utils import (axes_from_norm, find_modes_gradient_ascent, default_prune_tol, 
+                                    prune_modes_weighted_averaging, local_gaussian_covariance)
 
 with (files("discretize_distributions") / "data" / "grid_shapes.pickle").open("rb") as f:
     GRID_SHAPES = pickle.load(f)
@@ -92,6 +94,50 @@ def generate_grid_scheme_for_multivariate_normal(
     grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
 
     return dd_schemes.GridScheme(grid_of_locs, grid_partition)
+
+def get_optimal_grid_shape(
+        eigvals: torch.Tensor,
+        grid_size: int
+    ) -> torch.Tensor:
+    """
+    GRID_shapeS provides all non-dominated shapes for a number of signature points. The order of the shapes match
+    an decrease of eigenvalue over the dimensions, i.e., shape (d0, d1, .., dn) assumes eig(do)>=eig(d1)>=eig(dn).
+    The total number of dimensions included per shape, equals the maximum number dimensions that can create a
+    grid of size signature_points, i.e., equals log2(nr_signature_points).
+    :param eigvals:
+    :param grid_size: number of discretization points, i.e., size of grid.  per discretized Gaussian.
+    :return:
+    """
+    batch_shape = eigvals.shape[:-1]
+    neigh = eigvals.shape[-1]
+    eigvals_sorted, sort_idxs = eigvals.sort(descending=True)    
+
+    if grid_size not in GRID_SHAPES:
+        if eigvals_sorted.unique().numel() == 1:
+            opt_shape = (torch.ones(batch_shape + (neigh,)) * int(grid_size ** (1 / neigh))).to(torch.int64)
+            return opt_shape
+
+        grid_size_options = torch.tensor(list(GRID_SHAPES.keys()), dtype=torch.int)
+        idx_closest_option = torch.where(grid_size_options <= grid_size)[0][-1]
+        grid_size = int(grid_size_options[idx_closest_option])
+        print(f'Grid optimized for size: {grid_size}, requested grid size not available in lookuptables')
+
+    if grid_size == 1:
+        opt_shape = torch.empty(batch_shape + (0,)).to(torch.int64)
+    else:
+        costs = GRID_SHAPES[grid_size]['w2'][..., :neigh] # only select the grids that are relevant for the number of dimensions
+        dims_shapes = costs.shape[-1]
+
+        objective = torch.einsum('ij,...j->...i', costs, eigvals_sorted[..., :dims_shapes])
+        opt_shape_idxs = objective.argmin(dim=-1)
+
+        opt_shape = [GRID_SHAPES[grid_size]['configs'][int(idx)] for idx in opt_shape_idxs.flatten()]  # TODO change configs to shapes (left like this to preserve backwards compatibility)
+        opt_shape = torch.stack(opt_shape).reshape(batch_shape + (-1,))
+        opt_shape = opt_shape[..., :neigh]
+
+    # append grid of size 1 to dimensions that are not yet included in the optimal grid.
+    opt_shape = torch.cat((opt_shape, torch.ones(batch_shape + (neigh - opt_shape.shape[-1],)).to(opt_shape.dtype)), dim=-1)
+    return opt_shape[sort_idxs]
 
 
 def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(
@@ -247,177 +293,6 @@ def generate_cross_scheme_for_multivariate_normal(
         axes=axes_from_norm(norm)
     ))
 
-
-## --- Utils -----------------------------------------------------------------------------------------------------------
-def axes_from_norm(norm: dd_dists.MultivariateNormal) -> dd_schemes.Axes:
-    """
-    Converts a MultivariateNormal distribution to a discretization Axes object.
-    The Axes object contains the grid of locations, rotation matrix, scales, and offset.
-    """
-    return dd_schemes.Axes(
-        rot_mat=norm.eigvecs,
-        scales=norm.eigvals_sqrt,
-        offset=norm.loc
-    )
-
-def get_optimal_grid_shape(
-        eigvals: torch.Tensor,
-        grid_size: int
-    ) -> torch.Tensor:
-    """
-    GRID_shapeS provides all non-dominated shapes for a number of signature points. The order of the shapes match
-    an decrease of eigenvalue over the dimensions, i.e., shape (d0, d1, .., dn) assumes eig(do)>=eig(d1)>=eig(dn).
-    The total number of dimensions included per shape, equals the maximum number dimensions that can create a
-    grid of size signature_points, i.e., equals log2(nr_signature_points).
-    :param eigvals:
-    :param grid_size: number of discretization points, i.e., size of grid.  per discretized Gaussian.
-    :return:
-    """
-    batch_shape = eigvals.shape[:-1]
-    neigh = eigvals.shape[-1]
-    eigvals_sorted, sort_idxs = eigvals.sort(descending=True)    
-
-    if grid_size not in GRID_SHAPES:
-        if eigvals_sorted.unique().numel() == 1:
-            opt_shape = (torch.ones(batch_shape + (neigh,)) * int(grid_size ** (1 / neigh))).to(torch.int64)
-            return opt_shape
-
-        grid_size_options = torch.tensor(list(GRID_SHAPES.keys()), dtype=torch.int)
-        idx_closest_option = torch.where(grid_size_options <= grid_size)[0][-1]
-        grid_size = int(grid_size_options[idx_closest_option])
-        print(f'Grid optimized for size: {grid_size}, requested grid size not available in lookuptables')
-
-    if grid_size == 1:
-        opt_shape = torch.empty(batch_shape + (0,)).to(torch.int64)
-    else:
-        costs = GRID_SHAPES[grid_size]['w2'][..., :neigh] # only select the grids that are relevant for the number of dimensions
-        dims_shapes = costs.shape[-1]
-
-        objective = torch.einsum('ij,...j->...i', costs, eigvals_sorted[..., :dims_shapes])
-        opt_shape_idxs = objective.argmin(dim=-1)
-
-        opt_shape = [GRID_SHAPES[grid_size]['configs'][int(idx)] for idx in opt_shape_idxs.flatten()]  # TODO change configs to shapes (left like this to preserve backwards compatibility)
-        opt_shape = torch.stack(opt_shape).reshape(batch_shape + (-1,))
-        opt_shape = opt_shape[..., :neigh]
-
-    # append grid of size 1 to dimensions that are not yet included in the optimal grid.
-    opt_shape = torch.cat((opt_shape, torch.ones(batch_shape + (neigh - opt_shape.shape[-1],)).to(opt_shape.dtype)), dim=-1)
-    return opt_shape[sort_idxs]
-
-
-def default_prune_tol(gmm: dd_dists.MixtureMultivariateNormal, factor: float = 0.5):
-    stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]
-    weights = gmm.mixture_distribution.probs
-    avg_std = (weights * stds).sum()
-    return factor * avg_std.item()
-
-def prune_modes_weighted_averaging(modes: torch.Tensor, scores: torch.Tensor, tol: float) -> torch.Tensor:
-    """
-    Cluster modes by proximity and compute a weighted average within each cluster.
-
-    Args:
-        modes: Tensor [n, d] — mode locations
-        scores: Tensor [n] — associated log-density values (used as weights)
-        tol: float — distance threshold for pruning
-
-    Returns:
-        Tensor [n_clusters, d] — weighted average of each cluster
-    """
-    remaining = modes.clone()
-    scores_remaining = scores.clone()
-    pruned = []
-
-    while remaining.shape[0] > 0:
-        center = remaining[0:1]  # [1, d]
-        dists = torch.norm(remaining - center, dim=1)  # [n]
-        mask = dists < tol
-
-        cluster = remaining[mask]        # [k, d]
-        cluster_scores = scores_remaining[mask]  # [k]
-
-        # Convert log-scores to weights: w_i = exp(log p(x_i)) — stabilize first
-        weights = (cluster_scores - cluster_scores.max()).exp()
-        weights = weights / weights.sum()
-
-        pruned.append((weights[:, None] * cluster).sum(dim=0))  # [d]
-
-        remaining = remaining[~mask]
-        scores_remaining = scores_remaining[~mask]
-
-    return torch.stack(pruned, dim=0)
-
-
-def find_modes_gradient_ascent(
-    gmm: dd_dists.MixtureMultivariateNormal,
-    n_iter: int = 100,
-    lr: float = 0.01,
-    max_modes: int = 100,
-    verbose: bool = False,
-) -> torch.Tensor:
-    """
-    Finds GMM modes using gradient ascent on log-density.
-
-    Args:
-        gmm: MixtureMultivariateNormal
-        n_iter: Number of gradient steps
-        lr: Learning rate
-        max_modes: Maximum number of modes to find
-        verbose: Whether to print progress
-
-    Returns:
-        Tensor [n_modes, d] of approximate GMM modes
-    """
-    mask_init_locs = torch.randperm(gmm.num_components)[: min(max_modes, gmm.num_components)]
-    x = gmm.component_distribution.loc[mask_init_locs].clone().detach().requires_grad_(True)
-    optimizer = torch.optim.Adam([x], lr=lr)
-    gmm = detach_gmm(gmm)  # Detach GMM to avoid gradients through it
-
-    for i in range(n_iter):
-        optimizer.zero_grad()
-        log_probs = gmm.log_prob(x)  # [n_init]
-        assert not log_probs.isnan().any(), "Log probabilities contain NaN values. Check the GMM parameters."
-        loss = -log_probs.sum()
-        loss.backward()
-        optimizer.step()
-
-        if verbose and (i % 20 == 0 or i == n_iter - 1):
-            print(f"Step {i:3d} | Avg log p(x): {log_probs.mean().item():.4f}")
-
-    x_final = x.detach()
-    assert not x_final.isnan().any(), "Final modes contain NaN values. Check the GMM parameters."
-
-    return x_final
-
-def local_gaussian_covariance(
-        gmm: dd_dists.MixtureMultivariateNormal, 
-        mode: torch.Tensor, 
-        eps: float = 1e-6
-    ) -> torch.Tensor:
-    """
-    Returns the local Gaussian covariance at a mode of the GMM.
-
-    Args:
-        gmm: MixtureMultivariateNormal
-        mode: Tensor [d], location of the mode
-        eps: for numerical stability in inversion
-
-    Returns:
-        covariance: local Gaussian covariance [d, d]
-    """
-    d = mode.shape[0]
-    mode = mode.detach().requires_grad_(True)
-
-    def log_density_fn(x: torch.Tensor):
-        return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
-
-    H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
-    H_neg = -0.5 * (H + H.swapaxes(-1, -2))  # symmetrize and flip sign
-    H_neg += eps * torch.eye(d, device=mode.device)
-
-    cov = torch.linalg.inv(H_neg)
-    return cov  # [d, d]
-
-
 def get_points_per_side(num_points: int, ndim: int):
     probs_edges = torch.linspace(0.5, 1.0, steps=num_points + 1)
     qqs = torch.distributions.Normal(0, 1).icdf(probs_edges)
@@ -426,12 +301,3 @@ def get_points_per_side(num_points: int, ndim: int):
     locs = - (utils.pdf(u) - utils.pdf(l)) / probs
     locs = locs * ndim ** 0.5
     return locs
-
-def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMultivariateNormal:
-    return dd_dists.MixtureMultivariateNormal(
-        mixture_distribution=torch.distributions.Categorical(probs=gmm.mixture_distribution.probs.detach()),
-        component_distribution=dd_dists.MultivariateNormal(
-            loc=gmm.component_distribution.loc.detach(),
-            covariance_matrix=gmm.component_distribution.covariance_matrix.detach(),
-        )
-    )
