@@ -9,10 +9,6 @@ from .points import Grid, Cross, check_grid_in_domain
 TOL = 1e-8
 
 # TODO: Investigate whether scheme objects should subclass torch.nn.Module (see GitHub issue #11)
-# TODO: Implement "star-type" discretization schemes (sigma-point style).
-#       Use support points along principal axes and Voronoi-based partitions
-#       instead of regular grids. Requires integration over Voronoi cells.
-#       See GitHub issue #10 for details.
 # TODO: Add batch support to `discretize` and `generate_scheme`.
 #       This is currently blocked by the fact that `Grid` assumes a fixed `grid_shape` across the batch.
 #       See GitHub issue #9 for details.
