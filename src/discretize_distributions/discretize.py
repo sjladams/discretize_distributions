@@ -194,7 +194,7 @@ def discretize_multi_norm_using_cross_scheme(
     w2 = torch.full(dist.batch_shape, torch.nan)
 
     assert probs.shape == locs.shape[:-1]
-    assert ((probs.sum(-1) - 1.).abs() < TOL).all()
+    assert torch.isclose(probs.sum(-1), torch.ones(cross_scheme.batch_shape))
 
     return locs, probs, w2
 
