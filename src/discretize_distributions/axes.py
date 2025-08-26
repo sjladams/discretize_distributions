@@ -88,6 +88,25 @@ class IdentityAxes(Axes):
             offset=torch.zeros(ndim_support)
         )
 
+class DegenerateAxes(Axes):
+    def __init__(
+            self, 
+            rot_mat: torch.Tensor, 
+            scales: torch.Tensor, 
+            offset: torch.Tensor,
+            ndim_support: int,
+    ):
+        self.parent_axes = Axes(rot_mat, scales, offset)
+
+        idxs = torch.topk(scales, k=ndim_support, dim=-1).indices
+
+        super().__init__(
+            rot_mat[..., idxs], 
+            scales[..., idxs], 
+            offset
+        )
+            
+
 def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6): # TODO rename common_eigenbasis
     return utils.mats_commute(
         axes0.trans_mat @ axes0.trans_mat.transpose(-2, -1), 
