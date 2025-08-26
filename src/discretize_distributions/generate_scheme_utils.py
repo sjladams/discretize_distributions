@@ -1,19 +1,28 @@
+from typing import Optional
 import torch
 
-from .axes import Axes
+from .axes import Axes, DegenerateAxes
 from . import distributions as dd_dists
 from . import utils
 
-def axes_from_norm(norm: dd_dists.MultivariateNormal) -> Axes:
+def axes_from_norm(norm: dd_dists.MultivariateNormal, ndim_support: Optional[int] = None) -> Axes:
     """
     Converts a MultivariateNormal distribution to a discretization Axes object.
     The Axes object contains the grid of locations, rotation matrix, scales, and offset.
     """
-    return Axes(
-        rot_mat=norm.eigvecs,
-        scales=norm.eigvals_sqrt,
-        offset=norm.loc
-    )
+    if ndim_support is not None and ndim_support < norm.event_shape[-1]:
+        return DegenerateAxes(
+            rot_mat=norm.eigvecs,
+            scales=norm.eigvals_sqrt,
+            offset=norm.loc, 
+            ndim_support=ndim_support
+        )
+    else:
+        return Axes(
+            rot_mat=norm.eigvecs,
+            scales=norm.eigvals_sqrt,
+            offset=norm.loc
+        )
 
 def default_prune_tol(gmm: dd_dists.MixtureMultivariateNormal, factor: float = 0.5):
     stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]
