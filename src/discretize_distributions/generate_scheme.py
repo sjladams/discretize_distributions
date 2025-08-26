@@ -226,6 +226,12 @@ def generate_cross_scheme_for_multivariate_normal(
     cross_size: int,
     domain: Optional[dd_schemes.Cell] = None,
 ) -> dd_schemes.CrossScheme:
+    """
+    The cross-scheme is a specific form of sigma-point approximation for a multivariate normal distribution.
+    Instead of selecting points along the axes defined by the Cholesky decomposition of the covariance matrix,
+    it places points along the directions of the eigenvectors. This approach ensures a closed-form discretization
+    for the approximation.
+    """
     if domain is not None:
         raise NotImplementedError('Domain support not implemented yet for CrossScheme.')
     
