@@ -427,69 +427,6 @@ def get_points_per_side(num_points: int, ndim: int):
     locs = locs * ndim ** 0.5
     return locs
 
-
-### --- Backup (TODO remove) --------------------------------------------------------------------------------------- ###
-def get_optimal_grid(grid_shape: torch.Tensor, **kwargs) -> dd_schemes.Grid:
-    default_grid_size = grid_shape.prod(-1).max()
-    attributes = ['locs', 'probs']
-    grids = batch_handler_get_nd_dim_grids_from_optimal_1d_grid(grid_shape, attributes,
-                                                                default_grid_size=default_grid_size,
-                                                                **kwargs)
-    probs = grids['probs'].prod(-1)  # Calculate product across the last dimension
-    return grids['locs'], probs, grids['trunc_mean'], grids['trunc_var']
-
-def batch_handler_get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape: torch.Tensor,
-                                                        attributes: Union[list, str],
-                                                        **kwargs) -> dict:
-    """
-    Batched version of get_nd_dim_grids_from_optimal_1d_grid. This function processes all batches by recursively and
-    aggregates the results for each attribute across batches.
-    """
-    if discr_grid_shape.dim() == 1:
-        return get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape, attributes, **kwargs)
-    else:
-        # Process all batches by recursively calling the function for each sub-tensor
-        batch_results = [batch_handler_get_nd_dim_grids_from_optimal_1d_grid(
-            discr_grid_shape[i], attributes, **kwargs) for i in range(discr_grid_shape.shape[0])]
-        # Aggregate results for each attribute across batches
-        combined_results = {attr: torch.stack([batch[attr] for batch in batch_results]) for attr in attributes}
-        return combined_results
-
-
-def get_nd_dim_grids_from_optimal_1d_grid(discr_grid_shape: torch.Tensor, attributes: Union[list, str],
-                                          default_grid_size: int) -> dict:
-    """
-    Creates multiple N-dimensional grids from the pre-defined optimal 1D grids for specified attributes.
-    The function generates Cartesian products for each attribute and ensures the grid has max_grid_size number of
-    elements by padding with zeros if necessary. The max_grid_size is hence used to ensure batches of grids have the
-    same number of elements.
-
-    :param discr_grid_shape:       An one-dimensional tensor representing the grid shape. Each element
-                                    indicates the grid size for a dimension.
-    :param attributes:              A list of attributes for which grids need to be created. The optional attributes
-                                    are the keys of the 'Optimal_1D_GRIDS' dictionary.
-    :param default_grid_size:       The grid size to be fitted. This param is used to ensure that a batch of grids all
-                                    have the same number of elements.
-    :return dict of torch.Tensor:   A dictionary where keys are attribute names and values are the grids as tensors.
-                                    Each grid tensor has rows equal to `max_grid_size` and columns equal to the number
-                                    of dimensions of the grid, i.e., the len of discr_grid_shape.
-    """
-    grids = {}
-    for attribute in attributes:
-        # Create a grid for each attribute based on the optimal 1D grids
-        grid_per_dim = [OPTIMAL_1D_GRIDS[attribute][int(grid_size_dim)] for grid_size_dim in discr_grid_shape]
-        grid = torch.cartesian_prod(*grid_per_dim)
-        grid_size = grid.shape[0]
-        grid = grid.view(grid_size, -1)
-        # Pad the grid to ensure it has the maximum required number of rows
-        if grid_size < default_grid_size:
-            grid = torch.vstack((grid, torch.zeros(default_grid_size - grid.shape[0], grid.shape[1])))
-        elif grid_size > default_grid_size:
-            raise ValueError(f"Grid size {grid_size} is larger than the default grid size {default_grid_size}")
-        grids[attribute] = grid
-    return grids
-
-
 def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMultivariateNormal:
     return dd_dists.MixtureMultivariateNormal(
         mixture_distribution=torch.distributions.Categorical(probs=gmm.mixture_distribution.probs.detach()),
