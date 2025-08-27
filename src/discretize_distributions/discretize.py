@@ -1,10 +1,12 @@
 import torch
 from typing import Union, Optional, Tuple, List
 
-import discretize_distributions.utils as utils
-import discretize_distributions.distributions as dd_dists
-import discretize_distributions.schemes as dd_schemes
-import discretize_distributions.generate_scheme as dd_gen
+from . import utils
+from . import distributions as dd_dists
+from . import axes as dd_axes
+from . import cell as dd_cell
+from . import schemes as dd_schemes
+from . import generate_scheme as dd_gen
 
 TOL = 1e-8
 
@@ -13,38 +15,55 @@ __all__ = ['discretize']
 
 def discretize(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-        scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
+        scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
-    locs, probs, w2 = _discretize(dist, scheme)
+    if not dist.batch_shape == torch.Size([]):
+        raise NotImplementedError('Discretization of batched distributions is not supported yet.')
+    
+    if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.MultiGridScheme, dd_schemes.LayeredGridScheme)):
+        locs, probs, w2 = _discretize_grid(dist, scheme)
+    elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme)):
+        locs, probs, w2 = _discretize_cross(dist, scheme)
+    else:
+        raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
     return dd_dists.CategoricalFloat(locs, probs), w2
 
-def _discretize(
+def _discretize_cross(
+    dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
+    scheme: Union[dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme]
+):
+    if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.CrossScheme):
+        locs, probs, w2 = discretize_multi_norm_using_cross_scheme(dist, scheme)
+    else:
+        raise NotImplementedError(f"Discretization for distribution {type(dist).__name__} "
+                                  f"and scheme {type(scheme).__name__} is not implemented yet.")
+
+    return locs, probs, w2
+
+def _discretize_grid(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
         scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    if not dist.batch_shape == torch.Size([]):
-        raise NotImplementedError('Discretization of batched distributions is not supported yet.')
-
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
         locs, probs = categorical_grid.locs, categorical_grid.probs
     elif (isinstance(dist, (dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal)) and 
           isinstance(scheme, dd_schemes.MultiGridScheme)):
         
-        assert dd_schemes.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
+        assert dd_cell.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
 
         locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
         for grid_scheme in scheme:
-            locs_component, probs_component, w2_component = _discretize(dist, grid_scheme)
+            locs_component, probs_component, w2_component = _discretize_grid(dist, grid_scheme)
             locs.append(locs_component)
             probs.append(probs_component)
             w2_sq += w2_component.pow(2)
-            w2_sq_outer -= _discretize(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, grid_scheme.domain))[2].pow(2)
+            w2_sq_outer -= _discretize_grid(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, grid_scheme.domain))[2].pow(2)
 
         locs = torch.cat(locs, dim=0)
         probs = torch.cat(probs, dim=0)
 
-        _, prob_domain, w2_domain =_discretize(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, scheme.domain))
+        _, prob_domain, w2_domain =_discretize_grid(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, scheme.domain))
 
         w2_sq_outer += w2_domain.pow(2)
         assert (prob_domain - probs.sum()) >= -TOL, (f"The sum of probabilities on the subdomains should be equal or "
@@ -55,7 +74,7 @@ def _discretize(
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):
-            _, probs_component, w2_component = _discretize(dist.component_distribution[i], scheme)
+            _, probs_component, w2_component = _discretize_grid(dist.component_distribution[i], scheme)
             probs.append(probs_component * dist.mixture_distribution.probs[i])
             w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
 
@@ -68,7 +87,7 @@ def _discretize(
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
             )
-        assert all([dd_schemes.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
+        assert all([dd_cell.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
             'All grid schemes must span the full R^n domain.'
 
         scheme_per_gmm_comp = torch.cdist(
@@ -80,7 +99,7 @@ def _discretize(
         for i in range(len(scheme)):
             indices = torch.where(scheme_per_gmm_comp==i)[0]
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            locs_scheme, probs_scheme, w2_scheme = _discretize(dist[indices], scheme[i])
+            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist[indices], scheme[i])
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
@@ -104,7 +123,7 @@ def discretize_multi_norm_using_grid_scheme(
 ) -> Tuple[dd_dists.CategoricalGrid, torch.Tensor]:
     dist_axes = dd_gen.axes_from_norm(dist)
 
-    if not dd_schemes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
+    if not dd_axes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       
 
     grid_scheme_in_dist_axes = grid_scheme.rebase(dist_axes)
@@ -153,3 +172,45 @@ def discretize_multi_norm_using_grid_scheme(
     # print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
     return disc_dist, w2
+
+def discretize_multi_norm_using_cross_scheme(
+        dist: dd_dists.MultivariateNormal,
+        cross_scheme: dd_schemes.CrossScheme
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    dist_axes = dd_gen.axes_from_norm(dist)
+
+    if not dd_schemes.equal_axes(dist_axes, cross_scheme, atol=TOL):
+        raise ValueError('The distribution and the cross partition do not share the same axes.')
+
+    points = cross_scheme.points_per_side
+    edges = torch.cat((torch.zeros(1), points[0:-1] + 0.5 * points.diff(), torch.ones(1).fill_(torch.inf)))
+
+    volume_ellipsoids = gaussian_ball_probability(edges, dim=cross_scheme.ndim_support)  
+    volume_shells = volume_ellipsoids[1:] - volume_ellipsoids[0:-1]
+    probs_per_side = volume_shells / (2 * cross_scheme.ndim_support)
+
+    probs = dd_schemes.Cross.from_num_dims(probs_per_side, cross_scheme.ndim_support).points.abs().sum(-1)
+    locs = cross_scheme.points
+    w2 = torch.full(dist.batch_shape, torch.nan)
+
+    assert probs.shape == locs.shape[:-1]
+    assert torch.isclose(probs.sum(-1), torch.ones(cross_scheme.batch_shape))
+
+    return locs, probs, w2
+
+
+def gaussian_ball_probability(radii: torch.Tensor, dim: int) -> torch.Tensor:
+    """
+    Compute probability that a d-dimensional standard normal lies within
+    a ball of radius r, for each r in radii.
+
+    Args:
+        radii (torch.Tensor): Tensor of radii (any shape).
+        dim (int): Dimension d of the Gaussian.
+
+    Returns:
+        torch.Tensor: Probabilities of same shape as radii.
+    """
+    chi2 = torch.distributions.chi2.Chi2(df=dim)
+    return chi2.cdf(radii.pow(2))
+

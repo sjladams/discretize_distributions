@@ -2,8 +2,9 @@ import torch
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 
-from discretize_distributions.utils import kmean_clustering_batches
-import discretize_distributions.schemes as dd_schemes
+from ..utils import kmean_clustering_batches
+from ..points import Grid
+from ..axes import identity_axes
 
 TOL = 1e-8
 
@@ -88,15 +89,15 @@ class CategoricalGrid(Distribution):
 
     def __init__(
             self, 
-            grid_of_locs: dd_schemes.Grid,
-            grid_of_probs: dd_schemes.Grid,
+            grid_of_locs: Grid,
+            grid_of_probs: Grid,
             validate_args=None
     ):
         if len(grid_of_probs) != len(grid_of_locs):
             raise ValueError("probs and locs must have the same number of points")
         if grid_of_probs.batch_shape != grid_of_locs.batch_shape:
             raise ValueError("probs and locs must have the same batch shape")
-        if not dd_schemes.identity_axes(grid_of_probs):
+        if not identity_axes(grid_of_probs):
             raise ValueError("probs should have an identity axes")
 
         self.grid_of_probs = grid_of_probs

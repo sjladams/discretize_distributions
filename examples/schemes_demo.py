@@ -1,6 +1,7 @@
 import torch
 import math
 
+import discretize_distributions.axes as dd_axes
 import discretize_distributions.schemes as dd_schemes
 from plot import *
 
@@ -77,10 +78,10 @@ if __name__ == '__main__':
     )
 
     print("Have common eigenbasis:", 
-          dd_schemes.axes_have_common_eigenbasis(axes0, axes1))
+          dd_axes.axes_have_common_eigenbasis(axes0, axes1))
     
     print("Have common eigenbasis:", 
-          dd_schemes.axes_have_common_eigenbasis(axes0, axes2))
+          dd_axes.axes_have_common_eigenbasis(axes0, axes2))
 
     # Initialize Grids using the axes
     grid1 = dd_schemes.Grid(points_per_dim=points_per_dim, axes=axes1)

@@ -22,7 +22,7 @@ PRECISION = torch.finfo(torch.float32).eps
 
 def eigh(mat: torch.Tensor):
     """
-    Computes the eigenvalues and eigenvectors of a Hermitian matrix.
+    Computes the eigenvalues and eigenvectors of a Hermitian matrix.The eigenvectors will be given by the columns of eigenvectors.
     """
     neigh = torch.linalg.matrix_rank(mat, hermitian=True).min()
     if neigh == mat.shape[-1]:
