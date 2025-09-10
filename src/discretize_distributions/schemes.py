@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional, List, Self
+from typing import Union, Optional, List
 
 from .axes import Axes, equal_axes
 from .cell import Cell, create_cell_spanning_Rn, any_cells_overlap
@@ -47,7 +47,7 @@ class GridPartition(Grid):
     
     @classmethod
     def from_grid_of_points(
-        cls: type[Self],
+        cls,
         grid_of_points: Grid, 
         domain: Optional[Cell] = None
     ): 

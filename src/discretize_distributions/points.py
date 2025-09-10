@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional, List, Self
+from typing import Union, Optional, List
 from abc import ABC, abstractmethod
 
 from . import utils
@@ -124,7 +124,7 @@ class Grid(AxesAlignedPoints):
 
     @classmethod
     def from_shape(
-        cls: type[Self],
+        cls,
         grid_shape: torch.Size,
         domain: Cell
     ):
@@ -204,7 +204,7 @@ class Cross(AxesAlignedPoints):
 
     @classmethod
     def from_num_dims(
-        cls: type[Self], 
+        cls, 
         points_per_side: torch.Tensor, 
         ndim: int
     ):
