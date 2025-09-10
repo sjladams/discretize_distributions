@@ -111,7 +111,7 @@ def local_gaussian_covariance(
         gmm: dd_dists.MixtureMultivariateNormal, 
         mode: torch.Tensor, 
         eps: float = 1e-6
-    ) -> torch.Tensor:
+    ) -> torch.Tensor: # TODO Hessian has closed form, potentially providing a faster implementation than via the Hessian
     """
     Returns the local Gaussian covariance at a mode of the GMM.
 
@@ -130,10 +130,16 @@ def local_gaussian_covariance(
         return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
 
     H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
-    H_neg = -0.5 * (H + H.swapaxes(-1, -2))  # symmetrize and flip sign
-    H_neg += eps * torch.eye(d, device=mode.device)
 
-    cov = torch.linalg.inv(H_neg)
+    P = -(0.5 * (H + H.swapaxes(-1, -2))) # symmetrize and flip sign
+    P = P + eps * torch.eye(d, device=mode.device)
+
+    P = nearest_spd(P, eps=eps)
+
+    L = torch.linalg.cholesky(P, upper=False)
+    I = torch.eye(d, device=mode.device)
+    cov = torch.cholesky_solve(I, L, upper=False)  # = P^{-1} without forming inv explicitly
+
     return cov  # [d, d]
 
 def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMultivariateNormal:
@@ -144,3 +150,12 @@ def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMulti
             covariance_matrix=gmm.component_distribution.covariance_matrix.detach(),
         )
     )
+
+def nearest_spd(P, eps=1e-6):
+    # symmetrize
+    P = 0.5 * (P + P.T)
+    # eigendecomposition
+    eigvals, eigvecs = torch.linalg.eigh(P)
+    # clamp eigenvalues
+    eigvals = torch.clamp(eigvals, min=eps)
+    return (eigvecs * eigvals) @ eigvecs.T
