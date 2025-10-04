@@ -99,14 +99,48 @@ class MultivariateNormal(torch.distributions.Distribution):
         return self.loc + _batch_mv(self.inv_mahalanobis_mat, eps)
 
     def log_prob(self, value):
+        """
+        Computes the (pseudo) log-probability density of the multivariate normal distribution.
+
+        • Non-degenerate case: evaluates the standard Gaussian log-density with covariance Σ.
+        • Degenerate case: evaluates the pseudo log-density on the affine support of Σ,
+        using the Moore-Penrose pseudoinverse Σ⁺ and the pseudodeterminant |Σ|₊.
+
+        log p(x) = −½ [ k log(2π) + (x - μ)ᵀ Σ⁺ (x - μ) ] - ½ log|Σ|₊
+
+        where
+            - k is the support dimension (rank of Σ),
+            - μ is the mean vector,
+            - Σ⁺ is the pseudoinverse of Σ,
+            - |Σ|₊ is the product of the non-zero eigenvalues of Σ.
+
+        Points lying outside the affine support are assigned a log-probability of −∞.
+
+        Args:
+            value (Tensor): Points at which to evaluate the (pseudo) log-density,
+                            of shape [..., d], broadcasting over batch dimensions.
+
+        Returns:
+            Tensor: Log-probabilities of shape [...], finite on the support and −∞ outside.
+        """
         if self.event_shape != self.event_shape_support:
-            raise NotImplementedError(
-                "Log probability is not implemented for the degenerate case."
-            )
-        proj = _batch_mv(self.mahalanobis_mat, value - self.loc)
-        M = (proj ** 2).sum(-1)
-        half_log_det = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
-        return -0.5 * (self.event_shape[0] * math.log(2 * math.pi) + M) - half_log_det
+            residual = value - self.loc
+            proj = _batch_mv(self.mahalanobis_mat, residual)
+            M = (proj ** 2).sum(dim=-1)
+
+            recon = _batch_mv(self.inv_mahalanobis_mat, proj)
+            perp_norm = (residual - recon).norm(dim=-1)
+            off_support = ~torch.isclose(perp_norm, torch.zeros_like(perp_norm))
+
+            half_log_pdet = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
+            out = -0.5 * (self.ndim_support * math.log(2.0 * math.pi) + M) - half_log_pdet
+            return torch.where(off_support, torch.full_like(out, -torch.inf), out)
+        else:
+            # Non-degenerate case: original implementation
+            proj = _batch_mv(self.mahalanobis_mat, value - self.loc)
+            M = (proj ** 2).sum(-1)
+            half_log_det = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
+            return -0.5 * (self.ndim * math.log(2 * math.pi) + M) - half_log_det
 
     def __getitem__(self, idx):
         return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eigvals[idx], self.eigvecs[idx])
