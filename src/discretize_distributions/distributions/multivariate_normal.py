@@ -47,7 +47,7 @@ class MultivariateNormal(torch.distributions.Distribution):
         else:
             event_shape_support = torch.broadcast_shapes(eigvals.shape[-1:], eigvecs.shape[-1:])
             eigvals = eigvals.expand(batch_shape + event_shape_support)
-            eigvecs = eigvecs.expand(batch_shape + event_shape + event_shape)
+            eigvecs = eigvecs.expand(batch_shape + event_shape + event_shape_support)
 
         if (eigvals < - TOL).any() or not utils.is_sym(covariance_matrix, atol=TOL):
             raise ValueError("covariance matrix is not positive semi-definite")
