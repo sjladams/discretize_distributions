@@ -145,7 +145,7 @@ class MultivariateNormal(torch.distributions.Distribution):
     def __getitem__(self, idx):
         return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eigvals[idx], self.eigvecs[idx])
 
-    def _extended_shape(self, sample_shape: torch.Size = torch.Size()) -> torch.Size:
+    def _extended_shape(self, sample_shape=torch.Size()) -> torch.Size:
         if not isinstance(sample_shape, torch.Size):
             sample_shape = torch.Size(sample_shape)
         return torch.Size(sample_shape + self._batch_shape + self.event_shape_support)
