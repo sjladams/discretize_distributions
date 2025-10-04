@@ -59,7 +59,7 @@ class MultivariateNormal(torch.distributions.Distribution):
 
     @property
     def ndim(self):
-        assert self.event_shape[0]
+        return self.event_shape[0]
 
     @property
     def ndim_support(self):
