@@ -112,8 +112,9 @@ def find_modes_gradient_ascent(
 def local_gaussian_covariance(
         gmm: dd_dists.MixtureMultivariateNormal, 
         mode: torch.Tensor, 
-        eps: float = 1e-8
-    ) -> torch.Tensor: # TODO Hessian has closed form, potentially providing a faster implementation than via the Hessian
+        eps: float = 1e-8, 
+        use_closed_form: bool = False
+    ) -> torch.Tensor:
     """
     Returns the local Gaussian covariance at a mode of the GMM.
 
@@ -126,12 +127,16 @@ def local_gaussian_covariance(
         covariance: local Gaussian covariance [d, d]
     """
     d = mode.shape[0]
-    mode = mode.detach().requires_grad_(True)
 
-    def log_density_fn(x: torch.Tensor):
-        return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
+    if use_closed_form:
+        H = gmm.log_prob_hessian(mode.unsqueeze(0)).squeeze(0)
+    else:
+        mode = mode.detach().requires_grad_(True)
 
-    H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
+        def log_density_fn(x: torch.Tensor):
+            return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
+
+        H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
 
     P = -(0.5 * (H + H.swapaxes(-1, -2))) # symmetrize and flip sign
 
