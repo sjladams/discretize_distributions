@@ -18,7 +18,7 @@ class Axes:
         if rot_mat.shape[-2] != offset.shape[-1]:
             raise ValueError("Rotation matrix should have the same number of output dimensions as the offset.")
         if scales.shape[-1] != ndim_support:
-            raise ValueError("Scales must have the same number of dimensions as the points per dimension.")
+            raise ValueError("Scales must equal the number of support dimensions.")
         if not (scales > 0).all():
             raise ValueError("Scales must be positive.")
 
