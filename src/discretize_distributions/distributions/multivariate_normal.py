@@ -151,6 +151,63 @@ class MultivariateNormal(torch.distributions.Distribution):
         return torch.Size(sample_shape + self._batch_shape + self.event_shape_support)
 
 
+    def log_prob_jacobian(self, value: torch.Tensor) -> torch.Tensor:
+        """
+        ∇_x log p(x) for a (possibly degenerate) MVN.
+        Returns NaNs for points off the affine support.
+        Shape: [..., d]
+        """
+        residual = value - self.loc
+        if self.event_shape != self.event_shape_support:
+            # Project to support and test membership
+            proj = _batch_mv(self.mahalanobis_mat, residual)              # ~ Λ^{1/2} U^T (x-μ)
+            recon = _batch_mv(self.inv_mahalanobis_mat, proj)             # U Λ^{1/2} proj, projection onto support
+            perp_norm = (residual - recon).norm(dim=-1)
+            off_support = ~torch.isclose(perp_norm, torch.zeros_like(perp_norm))
+
+            # grad = -Σ^+ (x-μ) = - U diag(1/λ_i^+) U^T (x-μ)
+            # Efficiently: grad = - (U diag(1/√λ) U^T)(U diag(1/√λ) U^T)(x-μ)
+            grad = -_batch_mv(self.mahalanobis_mat.swapdims(-1, -2), proj)
+
+            # Mask out undefined points
+            nan_like = torch.full_like(grad, torch.nan)
+            return torch.where(off_support.unsqueeze(-1), nan_like, grad)
+        else:
+            # Full rank: grad = -Σ^{-1} (x-μ)
+            proj = _batch_mv(self.mahalanobis_mat, residual)
+            grad = -_batch_mv(self.mahalanobis_mat.swapdims(-1, -2), proj)
+            return grad
+
+    def log_prob_hessian(self, value: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        ∇^2_x log p(x) for a (possibly degenerate) MVN.
+        Constant on the support: H = -Σ^+.
+        If `value` is given, returns NaNs for points off the affine support.
+        Shape: [..., d, d]
+        """
+        # Build Σ^+ from eigenpairs: Σ^+ = U diag(1/λ_i^+) U^T
+        # Use a strict positivity mask to avoid inverting zeros
+        pos = self.eigvals > PRECISION
+        inv_eigs = torch.zeros_like(self.eigvals)
+        inv_eigs = torch.where(pos, 1.0 / self.eigvals.clamp_min(PRECISION), inv_eigs)
+
+        sigma_pinv = torch.einsum('...ik,...k,...jk->...ij', self.eigvecs, inv_eigs, self.eigvecs)
+        hess = -sigma_pinv
+
+        if value is None or self.event_shape == self.event_shape_support:
+            return hess
+
+        # Degenerate case with masking by support membership
+        residual = value - self.loc
+        proj = _batch_mv(self.mahalanobis_mat, residual)
+        recon = _batch_mv(self.inv_mahalanobis_mat, proj)
+        perp_norm = (residual - recon).norm(dim=-1)
+        off_support = ~torch.isclose(perp_norm, torch.zeros_like(perp_norm))
+
+        nan_like = torch.full_like(hess, torch.nan)
+        return torch.where(off_support.unsqueeze(-1).unsqueeze(-1), nan_like, hess)
+
+
 def covariance_matrices_have_common_eigenbasis(
     dist: MultivariateNormal
 ):

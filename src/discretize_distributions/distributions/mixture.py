@@ -1,5 +1,6 @@
 import torch
 from typing import Union, Tuple
+from torch.distributions.multivariate_normal import _batch_mv
 
 from .multivariate_normal import MultivariateNormal
 from ..utils import kmean_clustering_batches
@@ -85,6 +86,80 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
     @property
     def num_components(self):
         return self._num_component
+    
+    def _log_mixture_weights(self) -> torch.Tensor:
+        if hasattr(self.mixture_distribution, "logits") and self.mixture_distribution.logits is not None:
+            return torch.log_softmax(self.mixture_distribution.logits, dim=-1)
+        else:
+            probs = self.mixture_distribution.probs.clamp_min(PRECISION)
+            return probs.log() - probs.log().logsumexp(dim=-1, keepdim=True)
+
+    
+    def _component_scores_and_hessians(self, value: torch.Tensor):
+        xk = self._pad(value)  # [..., K, d]
+        comp = self.component_distribution
+
+        logp_k = comp.log_prob(xk)  # [..., K]
+
+        if isinstance(comp, MultivariateNormal):
+            s_k = comp.log_prob_jacobian(xk)        # [..., K, d]
+            H_k = comp.log_prob_hessian(xk)         # [..., K, d, d]
+        else:
+            precision = comp.precision_matrix       # [..., K, d, d]
+            mu = comp.mean                          # [..., K, d]
+            s_k = _batch_mv(precision, mu - xk)     # [..., K, d]
+            H_k = -precision                        # [..., K, d, d]
+
+        # Validity masks: finite logp, finite score, finite Hessian
+        valid_logp = torch.isfinite(logp_k)
+        valid_s    = torch.isfinite(s_k).all(dim=-1)
+        valid_H    = torch.isfinite(H_k).all(dim=(-1, -2))
+        valid_k    = valid_logp & valid_s & valid_H          # [..., K]
+
+        # Zero-out invalid component tensors (so they don't contribute when r_k=0)
+        s_k = torch.where(valid_k.unsqueeze(-1), torch.nan_to_num(s_k, nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(s_k))
+        H_k = torch.where(valid_k.unsqueeze(-1).unsqueeze(-1), torch.nan_to_num(H_k, nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(H_k))
+
+        return logp_k, s_k, H_k, valid_k
+
+    def log_prob_jacobian(self, value: torch.Tensor) -> torch.Tensor:
+        log_pi = self._log_mixture_weights() 
+
+        logp_k, s_k, H_k, valid_k = self._component_scores_and_hessians(value)
+
+        # Mask logits: invalid components get -inf so r_k=0
+        masked_logits = torch.where(valid_k, log_pi + logp_k, torch.full_like(logp_k, -float("inf")))
+        denom = torch.logsumexp(masked_logits, dim=-1)           # [...]
+        off_all = ~torch.isfinite(denom)                         # no valid comps at x
+
+        r = torch.softmax(masked_logits, dim=-1)                 # [..., K]
+        grad = (r.unsqueeze(-1) * s_k).sum(dim=-2)               # [..., d]
+
+        nan_like = torch.full_like(grad, torch.nan)
+        return torch.where(off_all.unsqueeze(-1), nan_like, grad)
+
+
+    def log_prob_hessian(self, value: torch.Tensor) -> torch.Tensor:
+        log_pi = self._log_mixture_weights() 
+
+        logp_k, s_k, H_k, valid_k = self._component_scores_and_hessians(value)
+
+        masked_logits = torch.where(valid_k, log_pi + logp_k, torch.full_like(logp_k, -float("inf")))
+        denom = torch.logsumexp(masked_logits, dim=-1)           # [...]
+        off_all = ~torch.isfinite(denom)
+
+        r = torch.softmax(masked_logits, dim=-1)                 # [..., K]
+
+        term1 = (r.unsqueeze(-1).unsqueeze(-1) * H_k).sum(dim=-3)            # Σ r_k H_k
+        outer_k = s_k.unsqueeze(-1) * s_k.unsqueeze(-2)                       # s_k s_k^T
+        term2 = (r.unsqueeze(-1).unsqueeze(-1) * outer_k).sum(dim=-3)         # Σ r_k s_k s_k^T
+        mean_s = (r.unsqueeze(-1) * s_k).sum(dim=-2)                          # Σ r_k s_k
+        term3 = mean_s.unsqueeze(-1) @ mean_s.unsqueeze(-2)                   # (Σ r_k s_k)(...)^T
+
+        hess = term1 + term2 - term3
+
+        nan_like = torch.full_like(hess, torch.nan)
+        return torch.where(off_all.unsqueeze(-1).unsqueeze(-1), nan_like, hess)
 
 
 def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max: int):
