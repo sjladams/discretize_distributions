@@ -5,6 +5,8 @@ from .axes import Axes, DegenerateAxes
 from . import distributions as dd_dists
 from . import utils
 
+TOL = 1e-8
+
 def axes_from_norm(norm: dd_dists.MultivariateNormal, ndim_support: Optional[int] = None) -> Axes:
     """
     Converts a MultivariateNormal distribution to a discretization Axes object.
@@ -110,8 +112,9 @@ def find_modes_gradient_ascent(
 def local_gaussian_covariance(
         gmm: dd_dists.MixtureMultivariateNormal, 
         mode: torch.Tensor, 
-        eps: float = 1e-6
-    ) -> torch.Tensor: # TODO Hessian has closed form, potentially providing a faster implementation than via the Hessian
+        eps: float = 1e-8, 
+        use_analytical_hessian: bool = True
+    ) -> torch.Tensor:
     """
     Returns the local Gaussian covariance at a mode of the GMM.
 
@@ -124,23 +127,29 @@ def local_gaussian_covariance(
         covariance: local Gaussian covariance [d, d]
     """
     d = mode.shape[0]
-    mode = mode.detach().requires_grad_(True)
 
-    def log_density_fn(x: torch.Tensor):
-        return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
+    if use_analytical_hessian:
+        H = gmm.log_prob_hessian(mode.unsqueeze(0)).squeeze(0)
+    else:
+        mode = mode.detach().requires_grad_(True)
 
-    H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
+        def log_density_fn(x: torch.Tensor):
+            return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
+
+        H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
 
     P = -(0.5 * (H + H.swapaxes(-1, -2))) # symmetrize and flip sign
-    P = P + eps * torch.eye(d, device=mode.device)
 
-    P = nearest_spd(P, eps=eps)
+    eigvals, eigvecs = utils.eigh(P)
+    eigvals.clamp_(min=0.0)
 
-    L = torch.linalg.cholesky(P, upper=False)
-    I = torch.eye(d, device=mode.device)
-    cov = torch.cholesky_solve(I, L, upper=False)  # = P^{-1} without forming inv explicitly
+    pos = eigvals > eps
+    inv = torch.zeros_like(eigvals)
+    inv[pos] = eigvals[pos].reciprocal()
 
-    return cov  # [d, d]
+    cov = torch.einsum('...ik,...k,...jk->...ij', eigvecs, inv, eigvecs)
+    cov = 0.5 * (cov + cov.swapaxes(-1, -2))                         # numeric symmetrization
+    return cov
 
 def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMultivariateNormal:
     return dd_dists.MixtureMultivariateNormal(

@@ -98,6 +98,9 @@ def _discretize_grid(
         probs, locs, w2_sq = [], [], torch.tensor(0.)
         for i in range(len(scheme)):
             indices = torch.where(scheme_per_gmm_comp==i)[0]
+            if len(indices) == 0:
+                print(f'Warning: No GMM component assigned to scheme {i}, skipping this scheme.')
+                continue
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
             locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist[indices], scheme[i])
 
