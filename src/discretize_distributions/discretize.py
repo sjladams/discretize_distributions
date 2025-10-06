@@ -102,7 +102,7 @@ def _discretize_grid(
                 print(f'Warning: No GMM component assigned to scheme {i}, skipping this scheme.')
                 continue
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist[indices], scheme[i])
+            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist.select_components(indices), scheme[i])
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
