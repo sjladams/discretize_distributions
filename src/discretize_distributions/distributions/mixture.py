@@ -30,7 +30,13 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
             validate_args=validate_args
         )
 
-    def __getitem__(self, idx: Union[int, torch.Tensor]):
+    def __getitem__(self, idx):
+        return MixtureMultivariateNormal(
+            mixture_distribution=self.mixture_distribution[idx],
+            component_distribution=self.component_distribution[idx]
+        )
+
+    def select_components(self, idx: Union[int, torch.Tensor]):
         if isinstance(idx, int):
             idx_tensor = torch.tensor([idx], device=self.component_distribution.loc.device)
         elif isinstance(idx, torch.Tensor):
@@ -40,11 +46,8 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
 
         dim = -len(self.event_shape) - 1
         selected_loc = torch.index_select(self.component_distribution.loc, dim, idx_tensor)
-        selected_cov = torch.index_select(self.component_distribution.covariance_matrix, 
-                                         -2 * len(self.event_shape) - 1, idx_tensor)
+        selected_cov = torch.index_select(self.component_distribution.covariance_matrix, -2 * len(self.event_shape) - 1, idx_tensor)
         selected_probs = torch.index_select(self.mixture_distribution.probs, -1, idx_tensor)
-
-        selected_probs = selected_probs / selected_probs.sum(dim=-1, keepdim=True)
 
         return MixtureMultivariateNormal(
             mixture_distribution=torch.distributions.Categorical(probs=selected_probs),
