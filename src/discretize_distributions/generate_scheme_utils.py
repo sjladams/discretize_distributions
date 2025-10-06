@@ -113,7 +113,7 @@ def local_gaussian_covariance(
         gmm: dd_dists.MixtureMultivariateNormal, 
         mode: torch.Tensor, 
         eps: float = 1e-8, 
-        use_closed_form: bool = False
+        use_closed_form: bool = True
     ) -> torch.Tensor:
     """
     Returns the local Gaussian covariance at a mode of the GMM.
