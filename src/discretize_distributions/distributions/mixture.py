@@ -93,73 +93,103 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
         else:
             probs = self.mixture_distribution.probs.clamp_min(PRECISION)
             return probs.log() - probs.log().logsumexp(dim=-1, keepdim=True)
-
     
     def _component_scores_and_hessians(self, value: torch.Tensor):
-        xk = self._pad(value)  # [..., K, d]
-        comp = self.component_distribution
+        xk = self._pad(value)                                                   # [..., K, d]
+        logp_k = self.component_distribution.log_prob(xk)                       # [..., K]
 
-        logp_k = comp.log_prob(xk)  # [..., K]
-
-        if isinstance(comp, MultivariateNormal):
-            s_k = comp.log_prob_jacobian(xk)        # [..., K, d]
-            H_k = comp.log_prob_hessian(xk)         # [..., K, d, d]
+        if isinstance(self.component_distribution, MultivariateNormal):
+            s_k = self.component_distribution.log_prob_jacobian(xk)             # [..., K, d]
+            H_k = self.component_distribution.log_prob_hessian()                # [..., K, d, d]
         else:
-            precision = comp.precision_matrix       # [..., K, d, d]
-            mu = comp.mean                          # [..., K, d]
-            s_k = _batch_mv(precision, mu - xk)     # [..., K, d]
-            H_k = -precision                        # [..., K, d, d]
+            precision = self.component_distribution.precision_matrix            # [..., K, d, d]
+            s_k = _batch_mv(precision, self.component_distribution.mean - xk)   # [..., K, d]
+            H_k = -precision                                                    # [..., K, d, d]
 
-        # Validity masks: finite logp, finite score, finite Hessian
-        valid_logp = torch.isfinite(logp_k)
-        valid_s    = torch.isfinite(s_k).all(dim=-1)
-        valid_H    = torch.isfinite(H_k).all(dim=(-1, -2))
-        valid_k    = valid_logp & valid_s & valid_H          # [..., K]
-
-        # Zero-out invalid component tensors (so they don't contribute when r_k=0)
-        s_k = torch.where(valid_k.unsqueeze(-1), torch.nan_to_num(s_k, nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(s_k))
-        H_k = torch.where(valid_k.unsqueeze(-1).unsqueeze(-1), torch.nan_to_num(H_k, nan=0.0, posinf=0.0, neginf=0.0), torch.zeros_like(H_k))
-
-        return logp_k, s_k, H_k, valid_k
+        return logp_k, s_k, H_k
 
     def log_prob_jacobian(self, value: torch.Tensor) -> torch.Tensor:
-        log_pi = self._log_mixture_weights() 
+        """
+        Compute ∇ₓ log p(x) for this mixture distribution.
 
-        logp_k, s_k, H_k, valid_k = self._component_scores_and_hessians(value)
+        Each component contributes ∇ₓ log p_k(x), weighted by its posterior
+        responsibility r_k = w_k p_k(x) / ∑_j w_j p_j(x):
 
-        # Mask logits: invalid components get -inf so r_k=0
-        masked_logits = torch.where(valid_k, log_pi + logp_k, torch.full_like(logp_k, -float("inf")))
-        denom = torch.logsumexp(masked_logits, dim=-1)           # [...]
-        off_all = ~torch.isfinite(denom)                         # no valid comps at x
+            ∇ₓ log p(x) = ∑_k r_k ∇ₓ log p_k(x),
 
-        r = torch.softmax(masked_logits, dim=-1)                 # [..., K]
-        grad = (r.unsqueeze(-1) * s_k).sum(dim=-2)               # [..., d]
+        where w_k are the mixture weights and p_k(x) the component densities.
 
-        nan_like = torch.full_like(grad, torch.nan)
-        return torch.where(off_all.unsqueeze(-1), nan_like, grad)
+        Components with non-finite log-probabilities automatically receive zero weight,
+        and points where all components are invalid return NaN.
 
+        Args:
+            value (Tensor): Evaluation points of shape [..., d]; broadcasts over batch dims.
+
+        Returns:
+            Tensor: Gradient of shape [..., d]; finite when at least one component is valid,
+                    NaN otherwise.
+        """
+        log_pi = self._log_mixture_weights()                 # [..., K]
+        logp_k, s_k, _ = self._component_scores_and_hessians(value)
+
+        # Compute masked mixture logits: invalid components → -inf
+        masked_logits = (log_pi + logp_k).masked_fill(~torch.isfinite(logp_k), -torch.inf)
+
+        denom = torch.logsumexp(masked_logits, dim=-1)       # [...], mixture normalizer
+        off_all = ~torch.isfinite(denom)                     # true if no valid components
+
+        r = torch.softmax(masked_logits, dim=-1)             # responsibilities [..., K]
+        grad = (r.unsqueeze(-1) * s_k).sum(dim=-2)           # weighted sum of component scores
+
+        return grad.masked_fill(off_all.unsqueeze(-1), torch.nan)
 
     def log_prob_hessian(self, value: torch.Tensor) -> torch.Tensor:
-        log_pi = self._log_mixture_weights() 
+        """
+        Compute ∇²ₓ log p(x) for this mixture distribution.
 
-        logp_k, s_k, H_k, valid_k = self._component_scores_and_hessians(value)
+        The Hessian of the mixture log-density combines component Hessians and
+        score outer-products weighted by the posterior responsibilities
+        r_k = w_k p_k(x) / ∑_j w_j p_j(x):
 
-        masked_logits = torch.where(valid_k, log_pi + logp_k, torch.full_like(logp_k, -float("inf")))
-        denom = torch.logsumexp(masked_logits, dim=-1)           # [...]
-        off_all = ~torch.isfinite(denom)
+            ∇²ₓ log p(x) = ∑_k r_k H_k + ∑_k r_k s_k s_kᵀ − (∑_k r_k s_k)(∑_k r_k s_k)ᵀ,
 
-        r = torch.softmax(masked_logits, dim=-1)                 # [..., K]
+        where H_k = ∇²ₓ log p_k(x) and s_k = ∇ₓ log p_k(x) for each component.
 
-        term1 = (r.unsqueeze(-1).unsqueeze(-1) * H_k).sum(dim=-3)            # Σ r_k H_k
-        outer_k = s_k.unsqueeze(-1) * s_k.unsqueeze(-2)                       # s_k s_k^T
-        term2 = (r.unsqueeze(-1).unsqueeze(-1) * outer_k).sum(dim=-3)         # Σ r_k s_k s_k^T
-        mean_s = (r.unsqueeze(-1) * s_k).sum(dim=-2)                          # Σ r_k s_k
-        term3 = mean_s.unsqueeze(-1) @ mean_s.unsqueeze(-2)                   # (Σ r_k s_k)(...)^T
+        Components with non-finite log-probabilities automatically receive zero weight,
+        and points where all components are invalid return NaN.
+
+        Args:
+            value (Tensor): Evaluation points of shape [..., d]; broadcasts over batch dims.
+
+        Returns:
+            Tensor: Hessian of shape [..., d, d]; finite when at least one component is valid,
+                    NaN otherwise.
+        """
+        log_pi = self._log_mixture_weights()                  # [..., K]
+        logp_k, s_k, H_k = self._component_scores_and_hessians(value)
+
+        # Mask invalid components (non-finite log-probs)
+        masked_logits = (log_pi + logp_k).masked_fill(~torch.isfinite(logp_k), -torch.inf)
+
+        denom = torch.logsumexp(masked_logits, dim=-1)        # [...], mixture normalizer
+        off_all = ~torch.isfinite(denom)                      # True if all components invalid
+
+        r = torch.softmax(masked_logits, dim=-1)              # responsibilities [..., K]
+
+        # Σ r_k H_k
+        term1 = (r.unsqueeze(-1).unsqueeze(-1) * H_k).sum(dim=-3)
+
+        # Σ r_k s_k s_kᵀ
+        outer_k = s_k.unsqueeze(-1) * s_k.unsqueeze(-2)
+        term2 = (r.unsqueeze(-1).unsqueeze(-1) * outer_k).sum(dim=-3)
+
+        # (Σ r_k s_k)(Σ r_k s_k)ᵀ
+        mean_s = (r.unsqueeze(-1) * s_k).sum(dim=-2)
+        term3 = mean_s.unsqueeze(-1) @ mean_s.unsqueeze(-2)
 
         hess = term1 + term2 - term3
 
-        nan_like = torch.full_like(hess, torch.nan)
-        return torch.where(off_all.unsqueeze(-1).unsqueeze(-1), nan_like, hess)
+        return hess.masked_fill(off_all.unsqueeze(-1).unsqueeze(-1), torch.nan)
 
 
 def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max: int):

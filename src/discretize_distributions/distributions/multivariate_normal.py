@@ -92,56 +92,7 @@ class MultivariateNormal(torch.distributions.Distribution):
     @property
     def variance(self):
         return self.covariance_matrix.diagonal(dim1=-2, dim2=-1)
-
-    def rsample(self, sample_shape=torch.Size()):
-        shape = self._extended_shape(sample_shape)
-        eps = _standard_normal(shape, dtype=self.loc.dtype, device=self.loc.device)
-        return self.loc + _batch_mv(self.inv_mahalanobis_mat, eps)
-
-    def log_prob(self, value):
-        """
-        Computes the (pseudo) log-probability density of the multivariate normal distribution.
-
-        • Non-degenerate case: evaluates the standard Gaussian log-density with covariance Σ.
-        • Degenerate case: evaluates the pseudo log-density on the affine support of Σ,
-        using the Moore-Penrose pseudoinverse Σ⁺ and the pseudodeterminant |Σ|₊.
-
-        log p(x) = −½ [ k log(2π) + (x - μ)ᵀ Σ⁺ (x - μ) ] - ½ log|Σ|₊
-
-        where
-            - k is the support dimension (rank of Σ),
-            - μ is the mean vector,
-            - Σ⁺ is the pseudoinverse of Σ,
-            - |Σ|₊ is the product of the non-zero eigenvalues of Σ.
-
-        Points lying outside the affine support are assigned a log-probability of −∞.
-
-        Args:
-            value (Tensor): Points at which to evaluate the (pseudo) log-density,
-                            of shape [..., d], broadcasting over batch dimensions.
-
-        Returns:
-            Tensor: Log-probabilities of shape [...], finite on the support and −∞ outside.
-        """
-        if self.event_shape != self.event_shape_support:
-            residual = value - self.loc
-            proj = _batch_mv(self.mahalanobis_mat, residual)
-            M = (proj ** 2).sum(dim=-1)
-
-            recon = _batch_mv(self.inv_mahalanobis_mat, proj)
-            perp_norm = (residual - recon).norm(dim=-1)
-            off_support = ~torch.isclose(perp_norm, torch.zeros_like(perp_norm))
-
-            half_log_pdet = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
-            out = -0.5 * (self.ndim_support * math.log(2.0 * math.pi) + M) - half_log_pdet
-            return torch.where(off_support, torch.full_like(out, -torch.inf), out)
-        else:
-            # Non-degenerate case: original implementation
-            proj = _batch_mv(self.mahalanobis_mat, value - self.loc)
-            M = (proj ** 2).sum(-1)
-            half_log_det = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
-            return -0.5 * (self.ndim * math.log(2 * math.pi) + M) - half_log_det
-
+    
     def __getitem__(self, idx):
         return MultivariateNormal(self.loc[idx], self.covariance_matrix[idx], self.eigvals[idx], self.eigvecs[idx])
 
@@ -150,62 +101,105 @@ class MultivariateNormal(torch.distributions.Distribution):
             sample_shape = torch.Size(sample_shape)
         return torch.Size(sample_shape + self._batch_shape + self.event_shape_support)
 
+    def rsample(self, sample_shape=torch.Size()):
+        shape = self._extended_shape(sample_shape)
+        eps = _standard_normal(shape, dtype=self.loc.dtype, device=self.loc.device)
+        return self.loc + _batch_mv(self.inv_mahalanobis_mat, eps)
+
+    def log_prob(self, value):
+        """
+        Compute log p(x) for this multivariate normal distribution (possibly rank-deficient).
+
+        • Full-rank Σ:  log p(x) = −½ [ d log(2π) + (x - μ)ᵀ Σ⁻¹ (x - μ) ] - ½ log|Σ|.
+        • Rank-deficient Σ: on the affine support,
+        log p(x) = −½ [ k log(2π) + (x - μ)ᵀ Σ⁺ (x - μ) ] - ½ log|Σ|₊,
+        where Σ⁺ is the Moore-Penrose pseudoinverse, |Σ|₊ the pseudodeterminant
+        (product of the nonzero eigenvalues), and k = rank(Σ).
+        Points lying outside the affine support are assigned a log-probability of −∞.
+
+        Implementation:
+        Using Σ = U Λ Uᵀ with Λ ≥ 0 (restricted to the nonzero eigenvalues in the degenerate case),
+        we work in Mahalanobis coordinates via
+            M = Λ^{-1/2} Uᵀ,  u = M (x - μ).
+        Then (x - μ)ᵀ Σ⁺ (x - μ) = ‖u‖² and Σ⁺ = Mᵀ M, so the quadratic term is computed as ‖u‖²
+        without forming explicit inverses. The (pseudo)determinant term uses the (nonzero) eigenvalues:
+            log|Σ| or log|Σ|₊ = ∑_i log λ_i.
+        For support membership in the degenerate case, we reconstruct the on-support component via
+            recon = U Λ^{1/2} u  (i.e., using U Λ^{1/2} = M⁺),
+        and declare points off-support when the residual orthogonal to the support is nonzero.
+
+        Args:
+            value (Tensor): Evaluation points of shape [..., d]; broadcasts over batch dims.
+
+        Returns:
+            Tensor: Log-probabilities of shape [...]; finite on the support, −∞ outside.
+        """
+        residual = value - self.loc
+        proj = _batch_mv(self.mahalanobis_mat, residual)
+        M = (proj ** 2).sum(-1)
+        half_log_det = 0.5 * self.eigvals.abs().clamp_min(PRECISION).log().sum(-1)
+
+        if self.event_shape != self.event_shape_support:
+            recon = _batch_mv(self.inv_mahalanobis_mat, proj)
+            perp_norm = (residual - recon).norm(dim=-1)
+            in_support = torch.isclose(perp_norm, torch.zeros_like(perp_norm))
+
+            out = -0.5 * (self.ndim_support * math.log(2.0 * math.pi) + M) - half_log_det
+            return out.masked_fill(~in_support, -torch.inf)
+        else:
+            return -0.5 * (self.ndim * math.log(2.0 * math.pi) + M) - half_log_det
 
     def log_prob_jacobian(self, value: torch.Tensor) -> torch.Tensor:
         """
-        ∇_x log p(x) for a (possibly degenerate) MVN.
-        Returns NaNs for points off the affine support.
-        Shape: [..., d]
+        Compute ∇ₓ log p(x) for this multivariate normal distribution (possibly rank-deficient).
+
+        • Full-rank Σ:  ∇ₓ log p(x) = −Σ⁻¹ (x - μ)
+        • Rank-deficient Σ: for x on the affine support,
+        ∇ₓ log p(x) = −Σ⁺ (x - μ), where Σ⁺ is the Moore-Penrose pseudoinverse.
+        For points off the support, the gradient is undefined and this method returns NaNs.
+
+        Implementation:
+        We use that Σ⁺ = MᵀM with M = Λ^{-1/2} Uᵀ (the Mahalanobis transformation),
+        where Σ = U Λ Uᵀ, Λ ≥ 0 (restricted to nonzero eigenvalues in the degenerate case).
+        This yields Σ⁺ = U Λ^{-1} Uᵀ without forming explicit inverses.
+
+        Args:
+            value (Tensor): Evaluation points of shape [..., d]; broadcasts over batch dims.
+
+        Returns:
+            Tensor: Gradient of shape [..., d]; finite on the support, NaN off-support.
         """
-        residual = value - self.loc
-        if self.event_shape != self.event_shape_support:
-            # Project to support and test membership
-            proj = _batch_mv(self.mahalanobis_mat, residual)              # ~ Λ^{1/2} U^T (x-μ)
-            recon = _batch_mv(self.inv_mahalanobis_mat, proj)             # U Λ^{1/2} proj, projection onto support
-            perp_norm = (residual - recon).norm(dim=-1)
-            off_support = ~torch.isclose(perp_norm, torch.zeros_like(perp_norm))
-
-            # grad = -Σ^+ (x-μ) = - U diag(1/λ_i^+) U^T (x-μ)
-            # Efficiently: grad = - (U diag(1/√λ) U^T)(U diag(1/√λ) U^T)(x-μ)
-            grad = -_batch_mv(self.mahalanobis_mat.swapdims(-1, -2), proj)
-
-            # Mask out undefined points
-            nan_like = torch.full_like(grad, torch.nan)
-            return torch.where(off_support.unsqueeze(-1), nan_like, grad)
-        else:
-            # Full rank: grad = -Σ^{-1} (x-μ)
-            proj = _batch_mv(self.mahalanobis_mat, residual)
-            grad = -_batch_mv(self.mahalanobis_mat.swapdims(-1, -2), proj)
-            return grad
-
-    def log_prob_hessian(self, value: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        ∇^2_x log p(x) for a (possibly degenerate) MVN.
-        Constant on the support: H = -Σ^+.
-        If `value` is given, returns NaNs for points off the affine support.
-        Shape: [..., d, d]
-        """
-        # Build Σ^+ from eigenpairs: Σ^+ = U diag(1/λ_i^+) U^T
-        # Use a strict positivity mask to avoid inverting zeros
-        pos = self.eigvals > PRECISION
-        inv_eigs = torch.zeros_like(self.eigvals)
-        inv_eigs = torch.where(pos, 1.0 / self.eigvals.clamp_min(PRECISION), inv_eigs)
-
-        sigma_pinv = torch.einsum('...ik,...k,...jk->...ij', self.eigvecs, inv_eigs, self.eigvecs)
-        hess = -sigma_pinv
-
-        if value is None or self.event_shape == self.event_shape_support:
-            return hess
-
-        # Degenerate case with masking by support membership
         residual = value - self.loc
         proj = _batch_mv(self.mahalanobis_mat, residual)
-        recon = _batch_mv(self.inv_mahalanobis_mat, proj)
-        perp_norm = (residual - recon).norm(dim=-1)
-        off_support = ~torch.isclose(perp_norm, torch.zeros_like(perp_norm))
+        grad = -_batch_mv(self.mahalanobis_mat.swapdims(-1, -2), proj)
 
-        nan_like = torch.full_like(hess, torch.nan)
-        return torch.where(off_support.unsqueeze(-1).unsqueeze(-1), nan_like, hess)
+        if self.event_shape != self.event_shape_support:
+            # Project to support and test membership
+            recon = _batch_mv(self.inv_mahalanobis_mat, proj)
+            perp_norm = (residual - recon).norm(dim=-1)
+            in_support = torch.isclose(perp_norm, torch.zeros_like(perp_norm))
+            return grad.masked_fill((~in_support).unsqueeze(-1), torch.nan)
+        else:
+            return grad
+
+    def log_prob_hessian(self) -> torch.Tensor:
+        """
+        Compute ∇²ₓ log p(x) for this multivariate normal distribution (possibly rank-deficient).
+
+        • Full-rank Σ: ∇²ₓ log p(x) = −Σ⁻¹ (constant in x).
+        • Rank-deficient Σ: on the affine support, ∇²ₓ log p(x) = −Σ⁺ (constant in x);
+
+        Implementation:
+        Using the eigendecomposition Σ = U Λ Uᵀ, invert only nonzero eigenvalues:
+        Σ⁺ = U diag(1/λᵢ) Uᵀ  (zeros remain zero).
+        Equivalently, Σ⁺ = MᵀM with M = Λ^{-1/2} Uᵀ (Mahalanobis transform).
+
+        Returns:
+            Tensor: Hessian of shape [..., d, d]
+        """
+        inv_eigs = torch.where(self.eigvals > PRECISION, self.eigvals.reciprocal(), torch.zeros_like(self.eigvals)) 
+        sigma_pinv = torch.einsum('...ik,...k,...jk->...ij', self.eigvecs, inv_eigs, self.eigvecs)
+        return -sigma_pinv
 
 
 def covariance_matrices_have_common_eigenbasis(
