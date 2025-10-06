@@ -39,7 +39,8 @@ if __name__ == "__main__":
         scheme_size=10 * 2, 
         prune_factor=0.01, 
         n_iter=1000,
-        lr=0.01
+        lr=0.01,
+        use_analytical_hessian=False
     )
 
     disc_gmm_per_mode, w2 = dd.discretize(gmm, layered_grid_scheme_per_mode)
