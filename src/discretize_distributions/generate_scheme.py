@@ -159,7 +159,9 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     scheme_size: int, 
     prune_factor: float = 0.5,
     n_iter: int = 500,
-    lr: float = 0.01
+    lr: float = 0.01,
+    eps: float = 1e-8, 
+    use_analytical_hessian: bool = True
 ) -> dd_schemes.LayeredGridScheme:
     if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
         raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
@@ -174,7 +176,7 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     
     grid_schemes = list()
     for mode in modes:
-        cov = local_gaussian_covariance(gmm, mode)
+        cov = local_gaussian_covariance(gmm, mode, eps=eps, use_analytical_hessian=use_analytical_hessian)
 
         # project to the eigenbasis (to compute the W2 w.r.t the gmm, all local_domains should have: rot_mat = eigenbasis):
         eigvals = torch.diagonal(torch.einsum('ij,jk,kl->il', eigenbasis.swapaxes(-1, -2), cov, eigenbasis))

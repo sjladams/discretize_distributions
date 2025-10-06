@@ -113,7 +113,7 @@ def local_gaussian_covariance(
         gmm: dd_dists.MixtureMultivariateNormal, 
         mode: torch.Tensor, 
         eps: float = 1e-8, 
-        use_closed_form: bool = True
+        use_analytical_hessian: bool = True
     ) -> torch.Tensor:
     """
     Returns the local Gaussian covariance at a mode of the GMM.
@@ -128,7 +128,7 @@ def local_gaussian_covariance(
     """
     d = mode.shape[0]
 
-    if use_closed_form:
+    if use_analytical_hessian:
         H = gmm.log_prob_hessian(mode.unsqueeze(0)).squeeze(0)
     else:
         mode = mode.detach().requires_grad_(True)
