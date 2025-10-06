@@ -87,24 +87,6 @@ class IdentityAxes(Axes):
             scales=torch.ones(ndim_support),
             offset=torch.zeros(ndim_support)
         )
-
-class DegenerateAxes(Axes):
-    def __init__(
-            self, 
-            rot_mat: torch.Tensor, 
-            scales: torch.Tensor, 
-            offset: torch.Tensor,
-            ndim_support: int,
-    ):
-        self.parent_axes = Axes(rot_mat, scales, offset)
-
-        idxs = torch.topk(scales, k=ndim_support, dim=-1).indices
-
-        super().__init__(
-            rot_mat[..., idxs], 
-            scales[..., idxs], 
-            offset
-        )
             
 
 def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6): # TODO rename common_eigenbasis
@@ -115,9 +97,6 @@ def axes_have_common_eigenbasis(axes0: Axes, axes1: Axes, atol=1e-6): # TODO ren
     )
 
 def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
-    axes0 = axes0.parent_axes if hasattr(axes0, 'parent_axes') else axes0  # TODO hasattr replaced by isinstance when cross inherit DegenerateAxes
-    axes1 = axes1.parent_axes if hasattr(axes1, 'parent_axes') else axes1
-
     if not torch.allclose(axes0.rot_mat, axes1.rot_mat, atol=atol):
         raise ValueError("Domain rotation matrix must match the grid rotation matrix")
     elif not torch.allclose(axes0.scales, axes1.scales, atol=atol):
