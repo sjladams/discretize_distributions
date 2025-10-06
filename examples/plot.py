@@ -44,8 +44,8 @@ def sort_vertices_counterclockwise(vertices: torch.Tensor) -> torch.Tensor:
     return vertices[sorted_idx]
 
 def plot_2d_partition(ax, partition: dd_schemes.GridPartition, c: str = 'blue', linewidth: float = 2, **kwargs):
-    for i in range(partition.grid_shape[0]):
-        for j in range(partition.grid_shape[1]):
+    for i in range(partition.shape[0]):
+        for j in range(partition.shape[1]):
             cell = partition[i, j]
             if cell is not None:
                 try: 

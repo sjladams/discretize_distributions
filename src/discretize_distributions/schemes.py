@@ -10,7 +10,7 @@ TOL = 1e-8
 
 # TODO: Investigate whether scheme objects should subclass torch.nn.Module (see GitHub issue #11)
 # TODO: Add batch support to `discretize` and `generate_scheme`.
-#       This is currently blocked by the fact that `Grid` assumes a fixed `grid_shape` across the batch.
+#       This is currently blocked by the fact that `Grid` assumes a fixed `shape` across the batch.
 #       See GitHub issue #9 for details.
 
 

@@ -109,6 +109,10 @@ class AxesAlignedPoints(Axes, ABC):
         points_per_dim, axes = self._rebase(axes)
         return self.__class__(points_per_dim, axes=axes)
     
+    @property
+    def shape(self):
+        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
+
     @abstractmethod
     def __len__(self) -> int:
         raise NotImplementedError
@@ -128,10 +132,10 @@ class Grid(AxesAlignedPoints):
     @classmethod
     def from_shape(
         cls,
-        grid_shape: torch.Size,
+        shape: torch.Size,
         domain: Cell
     ):
-        if len(grid_shape) != domain.ndim:
+        if len(shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
         if torch.isinf(domain.lower_vertex).any() or torch.isinf(domain.upper_vertex).any():
             raise ValueError("Domain must be finite.")
@@ -139,8 +143,8 @@ class Grid(AxesAlignedPoints):
         center = 0.5 * (domain.lower_vertex + domain.upper_vertex)
 
         points_per_dim = [
-            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
-            else center[dim] for dim in range(len(grid_shape))
+            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], shape[dim]) if shape[dim] > 1
+            else center[dim] for dim in range(len(shape))
         ]
         return cls(points_per_dim, axes=domain)
     
@@ -154,19 +158,15 @@ class Grid(AxesAlignedPoints):
             idx = torch.as_tensor(idx)
             if idx.dim() == 0:
                 idx = idx.unsqueeze(0)
-            
-            unravelled = torch.unravel_index(idx, self.grid_shape)
+
+            unravelled = torch.unravel_index(idx, self.shape)
             points = [self.points_per_dim[d][..., unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
         return self.to_global(points)
-
-    @property
-    def grid_shape(self):
-        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
     
     def __len__(self):
-        return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
+        return int(torch.prod(torch.as_tensor(self.shape)).item())
 
 class Cross(AxesAlignedPoints):
     def __init__(
@@ -228,12 +228,8 @@ class Cross(AxesAlignedPoints):
 
         return self.to_global(points)
     
-    @property
-    def cross_shape(self): # TODO merge in AxesAlignedPoints
-        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
-    
     def __len__(self):
-        return sum(self.cross_shape[i] for i in self.active_dims)
+        return sum(self.shape[i] for i in self.active_dims)
     
 
 def check_grid_in_domain(
