@@ -284,25 +284,30 @@ def generate_cross_scheme_for_multivariate_normal(
     """
     if domain is not None:
         raise NotImplementedError('Domain support not implemented yet for CrossScheme.')
-    
-    ndim_support = norm.event_shape_support[-1] if ndim_support is None else ndim_support
 
-    points_per_side = get_points_per_side(
+    ndim_support = norm.event_shape_support[-1] if ndim_support is None else min(ndim_support, norm.event_shape_support[-1])
+
+    locs_active_side = get_locations_active_side(
         num_points=max(1, int(cross_size / (2 * ndim_support))), 
         ndim=ndim_support
     )
 
-    axes=axes_from_norm(norm, ndim_support=ndim_support)
+    idxs = torch.topk(norm.eigvals_sqrt, k=ndim_support, dim=-1).indices
+
+    points_per_side = [
+        locs_active_side if i in idxs else torch.zeros(1, dtype=locs_active_side.dtype)
+        for i in range(norm.ndim_support)
+    ]
 
     cross = dd_schemes.Cross(
-                points_per_side=points_per_side,
-                axes=axes
-            )
+        points_per_side=points_per_side, 
+        axes=axes_from_norm(norm)
+    )
         
     return dd_schemes.CrossScheme(cross)
 
 
-def get_points_per_side(num_points: int, ndim: int):
+def get_locations_active_side(num_points: int, ndim: int) -> torch.Tensor:
     probs_edges = torch.linspace(0.5, 1.0, steps=num_points + 1)
     qqs = torch.distributions.Normal(0, 1).icdf(probs_edges)
     l, u = qqs[0:-1], qqs[1:]

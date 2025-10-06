@@ -185,12 +185,22 @@ def discretize_multi_norm_using_cross_scheme(
     if not dd_schemes.equal_axes(dist_axes, cross_scheme, atol=TOL):
         raise ValueError('The distribution and the cross partition do not share the same axes.')
 
-    points = cross_scheme.points_per_side
+    points_per_active_side = [cross_scheme.points_per_side[i] for i in cross_scheme.active_dims]
+    points = points_per_active_side[0]
+    if not all([torch.isclose(points_per_active_side[i], points).all() for i in range(len(points_per_active_side))]):
+        raise ValueError('The points_per_side must be the same for all active dimensions.')
+
+    num_active_dims = len(cross_scheme.active_dims)
     edges = torch.cat((torch.zeros(1), points[0:-1] + 0.5 * points.diff(), torch.ones(1).fill_(torch.inf)))
 
-    volume_ellipsoids = gaussian_ball_probability(edges, dim=cross_scheme.ndim_support)  
+    volume_ellipsoids = gaussian_ball_probability(edges, dim=num_active_dims)
     volume_shells = volume_ellipsoids[1:] - volume_ellipsoids[0:-1]
-    probs_per_side = volume_shells / (2 * cross_scheme.ndim_support)
+    probs_per_active_side = volume_shells / (2 * num_active_dims)
+
+    probs_per_side = [
+        probs_per_active_side if i in cross_scheme.active_dims else torch.zeros(1, dtype=probs_per_active_side.dtype)
+        for i in range(cross_scheme.ndim_support)
+    ]
 
     probs = dd_schemes.Cross.from_num_dims(probs_per_side, cross_scheme.ndim_support).points.abs().sum(-1)
     locs = cross_scheme.points

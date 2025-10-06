@@ -18,6 +18,9 @@ class AxesAlignedPoints(Axes, ABC):
         example: [torch.linspace(0, 1, 5), torch.tensor([0., 2., 4.])]
         """
 
+        if axes is not None and not len(points_per_dim) == axes.ndim_support:
+            raise ValueError("Number of dimensions in points_per_dim must match the ndim_support of the given axes.")
+
         batch_shapes = [p.shape[:-1] for p in points_per_dim]
         if len(set(batch_shapes)) != 1:
             raise ValueError("the points per dimension must have the same batch shape.")
@@ -106,6 +109,10 @@ class AxesAlignedPoints(Axes, ABC):
         points_per_dim, axes = self._rebase(axes)
         return self.__class__(points_per_dim, axes=axes)
     
+    @property
+    def shape(self):
+        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
+
     @abstractmethod
     def __len__(self) -> int:
         raise NotImplementedError
@@ -125,10 +132,10 @@ class Grid(AxesAlignedPoints):
     @classmethod
     def from_shape(
         cls,
-        grid_shape: torch.Size,
+        shape: torch.Size,
         domain: Cell
     ):
-        if len(grid_shape) != domain.ndim:
+        if len(shape) != domain.ndim:
             raise ValueError("Shape and number of domain dimensions do not match.")
         if torch.isinf(domain.lower_vertex).any() or torch.isinf(domain.upper_vertex).any():
             raise ValueError("Domain must be finite.")
@@ -136,8 +143,8 @@ class Grid(AxesAlignedPoints):
         center = 0.5 * (domain.lower_vertex + domain.upper_vertex)
 
         points_per_dim = [
-            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], grid_shape[dim]) if grid_shape[dim] > 1 
-            else center[dim] for dim in range(len(grid_shape))
+            torch.linspace(domain.lower_vertex[dim], domain.upper_vertex[dim], shape[dim]) if shape[dim] > 1
+            else center[dim] for dim in range(len(shape))
         ]
         return cls(points_per_dim, axes=domain)
     
@@ -151,61 +158,55 @@ class Grid(AxesAlignedPoints):
             idx = torch.as_tensor(idx)
             if idx.dim() == 0:
                 idx = idx.unsqueeze(0)
-            
-            unravelled = torch.unravel_index(idx, self.grid_shape)
+
+            unravelled = torch.unravel_index(idx, self.shape)
             points = [self.points_per_dim[d][..., unravelled[d]] for d in range(self.ndim_support)]
             points = torch.stack(points, dim=-1)
 
         return self.to_global(points)
-
-    @property
-    def grid_shape(self):
-        return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
     
     def __len__(self):
-        return int(torch.prod(torch.as_tensor(self.grid_shape)).item())
+        return int(torch.prod(torch.as_tensor(self.shape)).item())
 
 class Cross(AxesAlignedPoints):
     def __init__(
             self, 
             points_per_side: Union[List[torch.Tensor], torch.Tensor],
-            axes: Axes,
+            axes: Optional[Axes] = None
     ):
-        if isinstance(points_per_side, torch.Tensor) and points_per_side.ndim == 1:
-            points_per_side = [points_per_side]
+        active_dims = [i for i in range(len(points_per_side)) if points_per_side[i].shape[-1] > 1]
 
-        if (isinstance(points_per_side, torch.Tensor) and not points_per_side.size(-2) == 1) or \
-                (isinstance(points_per_side, list) and not len(points_per_side) == 1):
-            raise ValueError("points_per_side must be 1-dimensional, we're constructing a Cross with equal number of " \
-                "locations in each dimension") 
-
-        if not (points_per_side[0] >= 0.).all():
-            raise ValueError("points_per_side must be non-negative.") # TODO accept zeros (remove duplicates in query 
-        # (don't use unique, this applies a hidden sorting and ruins everything), and most importantly, account for 
-        # zero in computation of probabilities in discretize_multi_norm_using_cross_scheme)
+        if not (all([(points_per_side[i] > 0.).all() for i in active_dims]) and \
+           all([(points_per_side[i] == 0.).all() for i in range(len(points_per_side)) if i not in active_dims])):
+            raise ValueError("All points_per_side must be strictly positive, or zero if only one point is given.")
+        
+        points_per_dim = [
+            torch.cat((-points_per_side[i].flip(0), points_per_side[i]), dim=0) if i in active_dims else points_per_side[i]
+            for i in range(len(points_per_side))
+        ]
 
         super().__init__(
-            points_per_dim=points_per_side,
+            points_per_dim=points_per_dim,
             axes=axes
         )
 
-        self._parent_axes = axes.parent_axes if hasattr(axes, 'parent_axes') else axes # TODO fix this more fundamentally in AxesAlignedPoints by inherring DegenerateAxes, and enable rebasing
-    
-    @property
-    def parent_axes(self):
-        return self._parent_axes
+        self._points_per_side = points_per_side
 
     def rebase(self, axes: Axes):
         raise NotImplementedError("Rebasing not supported yet") 
     
     @property
     def points_per_side(self):
-        return self.points_per_dim[0]
+        return self._points_per_side
+
+    @property
+    def active_dims(self):
+        return [i for i in range(len(self.points_per_side)) if self.points_per_side[i].shape[-1] > 1]
 
     @classmethod
     def from_num_dims(
         cls, 
-        points_per_side: torch.Tensor, 
+        points_per_side: Union[List[torch.Tensor], torch.Tensor], 
         ndim: int
     ):
         return cls(
@@ -215,11 +216,10 @@ class Cross(AxesAlignedPoints):
 
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if idx == slice(None):
-            points_per_dim = torch.cat((-self.points_per_side.flip(0), self.points_per_side), dim=0)
             points = list()
-            for i in range(self.ndim_support):
-                points_to_append = torch.zeros(points_per_dim.shape + (self.ndim_support,))    
-                points_to_append[..., i] = points_per_dim
+            for i in self.active_dims:
+                points_to_append = torch.zeros(self.points_per_dim[i].shape + (self.ndim_support,))    
+                points_to_append[..., i] = self.points_per_dim[i]
                 points.append(points_to_append)
 
             points = torch.vstack(points)
@@ -228,12 +228,8 @@ class Cross(AxesAlignedPoints):
 
         return self.to_global(points)
     
-    @property
-    def cross_shape(self):
-        return torch.Size((len(self.points_per_dim),) * self.ndim_support)
-    
     def __len__(self):
-        return int(torch.sum(torch.as_tensor(self.cross_shape)).item())
+        return sum(self.shape[i] for i in self.active_dims)
     
 
 def check_grid_in_domain(
