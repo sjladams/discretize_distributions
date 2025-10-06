@@ -57,7 +57,7 @@ class AxesAlignedPoints(Axes, ABC):
             axes=self
         )
     
-    def _select_axes(self, idx: tuple):
+    def _select_points_per_dim(self, idx: tuple):
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
         indexed_points = [self.points_per_dim[d][..., i].view(self.batch_shape + (-1,)) for d, i in enumerate(idx)]
         return indexed_points
@@ -73,7 +73,7 @@ class AxesAlignedPoints(Axes, ABC):
         
         idx = idx + (slice(None),) * (self.ndim_support - len(idx))
 
-        return self.__class__(self._select_axes(idx), axes=self)
+        return self.__class__(self._select_points_per_dim(idx), axes=self)
 
     @abstractmethod
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
@@ -150,7 +150,7 @@ class Grid(AxesAlignedPoints):
     
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         if isinstance(idx, tuple):
-            selected_axes = self._select_axes(idx)
+            selected_axes = self._select_points_per_dim(idx)
             points = utils.batched_cartesian_product(selected_axes)
         elif isinstance(idx, slice):
             points = utils.batched_cartesian_product(self.points_per_dim)[..., idx, :]
