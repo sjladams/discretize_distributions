@@ -9,7 +9,6 @@ from matplotlib.patches import Circle
 
 import discretize_distributions as dd
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.generate_scheme as dd_gen
 
 COLORS = ['Blues', 'BuPu', 'PuRd', 'Greens', 'Oranges', 'Reds', 'Greys', 'Purples',
                       'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
@@ -50,7 +49,7 @@ def single_step(
         p_samples: Optional[torch.Tensor] = None,
 ):
     # Approximate the state distribution
-    scheme = dd_gen.generate_scheme(
+    scheme = dd.generate_scheme(
         q, 
         scheme_size=scheme_size, 
         prune_factor=0.01, 

@@ -2,7 +2,6 @@ import torch
 import discretize_distributions as dd
 
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.generate_scheme as dd_gen
 from matplotlib import pyplot as plt
 
 from plot import *
@@ -31,7 +30,7 @@ if __name__ == "__main__":
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
     # Discretize per mode:
-    scheme = dd_gen.generate_scheme(
+    scheme = dd.generate_scheme(
         gmm, 
         per_mode=True,
         scheme_size=10 * 2, 
@@ -47,10 +46,10 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat_float(ax, disc_gmm)
     ax = set_axis(ax)
-    ax.set_title(f'Discretization per Mode of the GMM (W2 Error: {w2:.2f}, |C|= {disc_gmm.num_components})')
+    ax.set_title(f'Discretization per Mode of the GMM (W2 Error: {w2:.2f}, Support size: {disc_gmm.num_components})')
     
     # Discretize per component:
-    scheme = dd_gen.generate_scheme(
+    scheme = dd.generate_scheme(
         gmm, 
         scheme_size=10*4, 
         per_mode=False
@@ -62,5 +61,5 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat_float(ax, disc_gmm)
     ax = set_axis(ax)
-    ax.set_title(f'Discretization per GMM Component (W2 Error: {w2:.2f}, |C|= {disc_gmm.num_components})')
+    ax.set_title(f'Discretization per GMM Component (W2 Error: {w2:.2f}, Support size: {disc_gmm.num_components})')
     plt.show()

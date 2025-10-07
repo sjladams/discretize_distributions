@@ -2,7 +2,6 @@ import torch
 import discretize_distributions as dd
 
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.generate_scheme as dd_gen
 from matplotlib import pyplot as plt
 
 from plot import *
@@ -15,7 +14,7 @@ if __name__ == "__main__":
         covariance_matrix=torch.tensor([[1., 0.8], [0.8, 1.]])
     )
 
-    cross_scheme = dd_gen.generate_scheme(
+    cross_scheme = dd.generate_scheme(
         norm, 
         scheme_size=16, 
         configuration='cross', 
@@ -53,7 +52,7 @@ if __name__ == "__main__":
     mixture_distribution = torch.distributions.Categorical(probs=probs)
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    scheme = dd_gen.generate_scheme(
+    scheme = dd.generate_scheme(
         gmm, 
         per_mode=False,
         scheme_size=10 * 4, 

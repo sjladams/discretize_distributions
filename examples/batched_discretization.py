@@ -2,7 +2,6 @@ import torch
 import discretize_distributions as dd
 
 import discretize_distributions.distributions as dd_dists
-import discretize_distributions.generate_scheme as dd_gen
 from matplotlib import pyplot as plt
 
 from plot import *
@@ -21,7 +20,7 @@ if __name__ == "__main__":
     mixture_distribution = torch.distributions.Categorical(probs=probs)
     gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
-    schemes = dd_gen.generate_scheme(
+    schemes = dd.generate_scheme(
         gmm, 
         per_mode=True,
         scheme_size=10 * 2, 
@@ -37,5 +36,5 @@ if __name__ == "__main__":
         ax = plot_2d_dist(ax, gmm[i])
         ax = plot_2d_cat_float(ax, disc_gmm[i])
         ax = set_axis(ax)
-        ax.set_title(f'W2 Error: {w2[i]:.2f} (|C|= {disc_gmm.num_components})')
+        ax.set_title(f'W2 Error: {w2[i]:.2f}, Support Size: {disc_gmm.num_components})')
     plt.show()
