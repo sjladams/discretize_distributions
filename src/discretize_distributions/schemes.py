@@ -9,10 +9,13 @@ from .points import Grid, Cross, check_grid_in_domain
 TOL = 1e-8
 
 # TODO: Investigate whether scheme objects should subclass torch.nn.Module (see GitHub issue #11)
-# TODO: Add batch support to `discretize` and `generate_scheme`.
-#       This is currently blocked by the fact that `Grid` assumes a fixed `shape` across the batch.
-#       See GitHub issue #9 for details.
 
+# REMARK: `AxesAlignedPoints` supports batching but only for identical grid configurations.
+# We use this to represent grid partitions encoded as batches of lower and upper vertices sharing equal configuration.
+# `Axes` remains non-batched, since identical grid configurations only make sense for a common reference frame.
+# It would be possible to extend `AxesAlignedPoints` to support batches of differing configurations, but this would 
+# require padding with NaNs to match the largest configuration in the batch, which is not desirable in practice.
+# Instead, we use a batch-wrapper to handle batches of multivariate distributions with distinct configurations.
 
 class GridPartition(Grid):
     def __init__(
