@@ -188,6 +188,10 @@ class CrossScheme(Scheme, Cross):
             points_per_side=cross_of_locs.points_per_side,
             axes=cross_of_locs
         )
+    
+    @property
+    def locs(self):
+        return self.points
 
 class MultiScheme:
     def __init__(
