@@ -226,6 +226,10 @@ class LayeredScheme:
 
         self.schemes = schemes
 
+    @property
+    def scheme_type(self):
+        return type(self.schemes[0])
+
     def __len__(self):
         return len(self.schemes)
 
@@ -234,28 +238,6 @@ class LayeredScheme:
 
     def __getitem__(self, idx: int):
         return self.schemes[idx]
-
-class LayeredGridScheme(LayeredScheme):
-    def __init__(
-            self, 
-            grid_schemes: List[GridScheme]
-    ):
-        super().__init__(grid_schemes)
-
-    @property
-    def grid_schemes(self):
-        return self.schemes
-
-class LayeredCrossScheme(LayeredScheme):
-    def __init__(
-            self,
-            cross_schemes: List[CrossScheme]
-    ):
-        super().__init__(cross_schemes)
-        
-    @property
-    def cross_schemes(self):
-        return self.schemes
 
 class BatchedScheme:
     def __init__(

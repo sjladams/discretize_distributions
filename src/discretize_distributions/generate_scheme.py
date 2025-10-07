@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Union, Optional, Callable
 import torch
 from importlib.resources import files
 import pickle
@@ -37,32 +37,33 @@ def generate_scheme(
     scheme_size: int,
     per_mode: bool = True,
     configuration: str = 'grid',
+    ndim_support: Optional[int] = None,
     **kwargs
-) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme, dd_schemes.CrossScheme, dd_schemes.BatchedScheme]:
-    if len(dist.batch_shape) == 0:
+) -> Union[dd_schemes.GridScheme, dd_schemes.CrossScheme, dd_schemes.LayeredScheme, dd_schemes.BatchedScheme]:
+    if len(dist.batch_shape) == 0:  # TODO merge grid and cross configurations
         if configuration == 'grid':
-            if isinstance(dist, dd_dists.MultivariateNormal):
-                return generate_grid_scheme_for_multivariate_normal(dist, grid_size=scheme_size, domain=None)
-            elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
-                if per_mode:
-                    return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, **kwargs)
-                else:
-                    return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, **kwargs)
-            else:
-                raise NotImplementedError(
-                    f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
-                    'Please implement a custom discretization function.'
-                )
+            def generator(norm: dd_dists.MultivariateNormal, size: int):
+                return generate_grid_scheme_for_multivariate_normal(norm, grid_size=size)
         elif configuration == 'cross':
-            if isinstance(dist, dd_dists.MultivariateNormal):
-                return generate_cross_scheme_for_multivariate_normal(dist, cross_size=scheme_size, domain=None, **kwargs)
-            else:
-                raise NotImplementedError(
-                    f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
-                    'Please implement a custom discretization function.'
-                )
+            def generator(norm: dd_dists.MultivariateNormal, size: int, ):
+                return generate_cross_scheme_for_multivariate_normal(norm, cross_size=size, ndim_support=ndim_support)
         else:
-            raise NotImplementedError
+            raise ValueError(f'Configuration {configuration} not recognized, should be "grid" or "cross".')
+        
+
+        if isinstance(dist, dd_dists.MultivariateNormal):
+            return generator(dist, scheme_size)
+        elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
+            if per_mode:
+                return generate_layered_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, generator_for_multivariate_normal=generator, **kwargs)
+            else:
+                return generate_layered_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, generator_for_multivariate_normal=generator, **kwargs)
+        else:
+            raise NotImplementedError(
+                f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
+                'Please implement a custom discretization function.'
+            )
+
     elif len(dist.batch_shape) == 1:
         schemes = list()
         for i in range(dist.batch_shape[0]):
@@ -151,29 +152,31 @@ def get_optimal_grid_shape(
     return opt_shape[sort_idxs]
 
 
-def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(
-    gmm: dd_dists.MixtureMultivariateNormal,
-    scheme_size: int
-) -> dd_schemes.LayeredGridScheme:
-    grid_schemes = list()
-    for i in range(gmm.num_components):
-        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(
-            norm=gmm.component_distribution[i], 
-            grid_size=int(scheme_size / gmm.num_components)
-            ))
-
-    return dd_schemes.LayeredGridScheme(grid_schemes)
-
-
-def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
+def generate_layered_scheme_for_mixture_multivariate_normal_per_component(
     gmm: dd_dists.MixtureMultivariateNormal,
     scheme_size: int, 
+    generator_for_multivariate_normal: Callable[[dd_dists.MultivariateNormal, int], Union[dd_schemes.GridScheme, dd_schemes.CrossScheme]]
+) -> dd_schemes.LayeredScheme:
+    schemes = []
+    for i in range(gmm.num_components):
+        schemes.append(generator_for_multivariate_normal(
+            gmm.component_distribution[i], 
+            int(scheme_size / gmm.num_components)
+        ))
+
+    return dd_schemes.LayeredScheme(schemes)
+
+
+def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
+    gmm: dd_dists.MixtureMultivariateNormal,
+    scheme_size: int, 
+    generator_for_multivariate_normal: Callable[[dd_dists.MultivariateNormal, int], Union[dd_schemes.GridScheme, dd_schemes.CrossScheme]],
     prune_factor: float = 0.5,
     n_iter: int = 500,
     lr: float = 0.01,
     eps: float = 1e-8, 
     use_analytical_hessian: bool = True
-) -> dd_schemes.LayeredGridScheme:
+) -> dd_schemes.LayeredScheme:
     if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
         raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
         "per_component method")
@@ -185,7 +188,7 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.log_prob(modes), prune_tol)
     
-    grid_schemes = list()
+    schemes = list()
     for mode in modes:
         cov = local_gaussian_covariance(gmm, mode, eps=eps, use_analytical_hessian=use_analytical_hessian)
 
@@ -199,9 +202,9 @@ def generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(
             eigvals=eigvals, 
             eigvecs=eigenbasis
         )
-        grid_schemes.append(generate_grid_scheme_for_multivariate_normal(local_norm, grid_size=int(scheme_size/len(modes))))
+        schemes.append(generator_for_multivariate_normal(local_norm, int(scheme_size/len(modes))))
 
-    return dd_schemes.LayeredGridScheme(grid_schemes)
+    return dd_schemes.LayeredScheme(schemes)
 
 
 def generate_cross_scheme_for_multivariate_normal(

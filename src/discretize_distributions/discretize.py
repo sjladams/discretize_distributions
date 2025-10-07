@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional, Tuple, List
+from typing import Union, Optional, Tuple, List, Callable
 
 from . import utils
 from . import distributions as dd_dists
@@ -18,12 +18,15 @@ def discretize(
         scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme, dd_schemes.BatchedScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     if len(dist.batch_shape) == 0:
-        if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.LayeredGridScheme)):
-            locs, probs, w2 = _discretize_grid(dist, scheme)
-        elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.LayeredCrossScheme)):
-            locs, probs, w2 = _discretize_cross(dist, scheme)
+        if isinstance(scheme, dd_schemes.GridScheme)  or (isinstance(scheme, dd_schemes.LayeredScheme) and scheme.scheme_type == dd_schemes.GridScheme):
+            generator = discretize_multi_norm_using_grid_scheme
+        elif isinstance(scheme, dd_schemes.CrossScheme) or (isinstance(scheme, dd_schemes.LayeredScheme) and scheme.scheme_type == dd_schemes.CrossScheme):
+            generator = discretize_multi_norm_using_cross_scheme
         else:
             raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
+        
+        locs, probs, w2 = _discretize(dist, scheme, generator_for_mult_norm=generator)
+
         return dd_dists.CategoricalFloat(locs, probs), w2
     elif len(dist.batch_shape) == 1 and isinstance(scheme, dd_schemes.BatchedScheme):
         if not dist.batch_shape[0] == len(scheme):
@@ -45,48 +48,33 @@ def discretize(
         raise NotImplementedError("Discretization for batched distributions with batch shape larger than 1 is not implemented yet.")
 
 
-def _discretize_cross(
-    dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-    scheme: Union[dd_schemes.CrossScheme, dd_schemes.LayeredCrossScheme]
-):
-    if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.CrossScheme):
-        locs, probs, w2 = discretize_multi_norm_using_cross_scheme(dist, scheme)
-    else:
-        raise NotImplementedError(f"Discretization for distribution {type(dist).__name__} "
-                                  f"and scheme {type(scheme).__name__} is not implemented yet.")
-
-    return locs, probs, w2
-
-def _discretize_grid(
+def _discretize(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-        scheme: Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme]
+        scheme: Union[dd_schemes.GridScheme, dd_schemes.LayeredScheme],
+        generator_for_mult_norm: Callable[[dd_dists.MultivariateNormal, Union[dd_schemes.GridScheme, dd_schemes.LayeredScheme]], Tuple[dd_dists.CategoricalGrid, torch.Tensor]]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
-        categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
-        locs, probs = categorical_grid.locs, categorical_grid.probs
-    elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
+    if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.CrossScheme)):
+        categorical_dist, w2 = generator_for_mult_norm(dist, scheme)
+        locs, probs = categorical_dist.locs, categorical_dist.probs
+    elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.CrossScheme)):
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):
-            _, probs_component, w2_component = _discretize_grid(dist.component_distribution[i], scheme)
+            _, probs_component, w2_component = _discretize(dist.component_distribution[i], scheme, generator_for_mult_norm)
             probs.append(probs_component * dist.mixture_distribution.probs[i])
             w2_sq += w2_component.pow(2) * dist.mixture_distribution.probs[i]
 
         probs = torch.stack(probs, dim=-1).sum(-1)
         locs = scheme.locs
         w2 = w2_sq.sqrt()
-    elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.LayeredGridScheme):
-
+    elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.LayeredScheme) and scheme.scheme_type in [dd_schemes.GridScheme, dd_schemes.CrossScheme]:
         if not dist.num_components >= len(scheme):
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
             )
-        assert all([dd_cell.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
-            'All grid schemes must span the full R^n domain.'
+        # assert all([dd_cell.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
+        #     'All grid schemes must span the full R^n domain.'
 
-        scheme_per_gmm_comp = torch.cdist(
-            torch.stack([elem.grid_of_locs.offset for elem in scheme], dim=0),
-            dist.component_distribution.loc, p=2
-        ).argmin(dim=0)
+        scheme_per_gmm_comp = assign_scheme_to_gmm_components(dist, scheme)
         
         probs, locs, w2_sq = [], [], torch.tensor(0.)
         for i in range(len(scheme)):
@@ -95,7 +83,7 @@ def _discretize_grid(
                 print(f'Warning: No GMM component assigned to scheme {i}, skipping this scheme.')
                 continue
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist.select_components(indices), scheme[i])
+            locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
@@ -108,8 +96,24 @@ def _discretize_grid(
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
                                   f"and scheme {type(scheme).__name__} is not implemented yet.")
     
-    assert not torch.isnan(w2).any(), (f'Wasserstein distance is NaN')
+    if isinstance(scheme, dd_schemes.GridScheme):
+        assert not torch.isnan(w2).any(), (f'Wasserstein distance is NaN')
+        
     return locs, probs, w2
+
+def assign_scheme_to_gmm_components(
+    dist: dd_dists.MixtureMultivariateNormal,
+    scheme: dd_schemes.LayeredScheme
+):
+    if scheme.scheme_type == dd_schemes.GridScheme:
+        off_sets = torch.stack([elem.grid_of_locs.offset for elem in scheme], dim=0)
+    else:
+        off_sets = torch.stack([elem.offset for elem in scheme], dim=0)
+
+    return torch.cdist(
+            off_sets,
+            dist.component_distribution.loc, p=2
+        ).argmin(dim=0)
 
 
 def discretize_multi_norm_using_grid_scheme(
@@ -172,7 +176,7 @@ def discretize_multi_norm_using_grid_scheme(
 def discretize_multi_norm_using_cross_scheme(
         dist: dd_dists.MultivariateNormal,
         cross_scheme: dd_schemes.CrossScheme
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     dist_axes = dd_gen.axes_from_norm(dist)
 
     if not dd_schemes.equal_axes(dist_axes, cross_scheme, atol=TOL):
@@ -202,7 +206,7 @@ def discretize_multi_norm_using_cross_scheme(
     assert probs.shape == locs.shape[:-1]
     assert torch.isclose(probs.sum(-1), torch.ones(cross_scheme.batch_shape))
 
-    return locs, probs, w2
+    return dd_dists.CategoricalFloat(locs, probs), w2
 
 
 def gaussian_ball_probability(radii: torch.Tensor, dim: int) -> torch.Tensor:
