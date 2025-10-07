@@ -162,7 +162,6 @@ def plot_2d_dynamics(dynamics,  xlim: Optional[list] = None, ylim: Optional[list
     plt.ylabel(r'$x_2$')
 
     plt.title('Vector Plot Dynamics')
-    plt.show()
 
 
 @torch.no_grad()
@@ -200,7 +199,6 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         ax[i].set_xlim(xlim) if xlim is not None else None
         ax[i].set_ylim(ylim) if ylim is not None else None
     plt.tight_layout()
-    plt.show()
 
             
 
@@ -220,6 +218,16 @@ def rot_mat(theta, rho, delta):
     return rho * torch.tensor([[torch.cos(theta), -torch.sin(theta)], [torch.sin(theta), torch.cos(theta)]]) + delta
 
 if __name__== '__main__':
+    """
+    This example demonstrates uncertainty propagation over a 2D linear system with additive noise,
+    providing formal guarantees in terms of the 2-Wasserstein distance using discretized distributions.
+
+    The methodology and results shown here are based on the paper:
+    "Provable Uncertainty Propagation with Discretized Distributions" (https://arxiv.org/pdf/2505.11219).
+
+    For theoretical background, detailed methodology, and further results, please refer to the publication.
+    """
+
     mat = rot_mat(theta=-math.pi / 8., rho=0.8, delta=0.)
     dynamics = LinearDynamics(global_lipschitz=torch.linalg.norm(mat, ord=2), mat=mat)
 
@@ -242,4 +250,4 @@ if __name__== '__main__':
     xlim, ylim = [-1., 1.], [-1., 1.]
     plot_2d_dynamics(dynamics, xlim=xlim, ylim=ylim)
     plot_2d_ambiguity_balls(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
-    
+    plt.show()    

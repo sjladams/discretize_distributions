@@ -37,5 +37,5 @@ if __name__ == "__main__":
         ax = plot_2d_dist(ax, gmm[i])
         ax = plot_2d_cat_float(ax, disc_gmm[i])
         ax = set_axis(ax)
-        ax.set_title(f'Mode-wise (2-Wasserstein distance: {w2[i]:.2f} / {disc_gmm.num_components})')
+        ax.set_title(f'W2 Error: {w2[i]:.2f} (|C|= {disc_gmm.num_components})')
     plt.show()
