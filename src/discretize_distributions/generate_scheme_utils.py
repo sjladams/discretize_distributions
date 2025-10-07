@@ -1,12 +1,12 @@
 import torch
 
 from .axes import Axes
-from . import distributions as dd_dists
+from .distributions import MultivariateNormal, MixtureMultivariateNormal
 from . import utils
 
 TOL = 1e-8
 
-def axes_from_norm(norm: dd_dists.MultivariateNormal) -> Axes:
+def axes_from_norm(norm: MultivariateNormal) -> Axes:
     """
     Converts a MultivariateNormal distribution to a discretization Axes object.
     The Axes object contains the grid of locations, rotation matrix, scales, and offset.
@@ -17,7 +17,7 @@ def axes_from_norm(norm: dd_dists.MultivariateNormal) -> Axes:
         offset=norm.loc
     )
 
-def default_prune_tol(gmm: dd_dists.MixtureMultivariateNormal, factor: float = 0.5):
+def default_prune_tol(gmm: MixtureMultivariateNormal, factor: float = 0.5):
     stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]
     weights = gmm.mixture_distribution.probs
     avg_std = (weights * stds).sum()
@@ -60,7 +60,7 @@ def prune_modes_weighted_averaging(modes: torch.Tensor, scores: torch.Tensor, to
 
 
 def find_modes_gradient_ascent(
-    gmm: dd_dists.MixtureMultivariateNormal,
+    gmm: MixtureMultivariateNormal,
     n_iter: int = 100,
     lr: float = 0.01,
     max_modes: int = 100,
@@ -101,7 +101,7 @@ def find_modes_gradient_ascent(
     return x_final
 
 def local_gaussian_covariance(
-        gmm: dd_dists.MixtureMultivariateNormal, 
+        gmm: MixtureMultivariateNormal, 
         mode: torch.Tensor, 
         eps: float = 1e-8, 
         use_analytical_hessian: bool = True
@@ -142,10 +142,10 @@ def local_gaussian_covariance(
     cov = 0.5 * (cov + cov.swapaxes(-1, -2))                         # numeric symmetrization
     return cov
 
-def detach_gmm(gmm: dd_dists.MixtureMultivariateNormal) -> dd_dists.MixtureMultivariateNormal:
-    return dd_dists.MixtureMultivariateNormal(
+def detach_gmm(gmm: MixtureMultivariateNormal) -> MixtureMultivariateNormal:
+    return MixtureMultivariateNormal(
         mixture_distribution=torch.distributions.Categorical(probs=gmm.mixture_distribution.probs.detach()),
-        component_distribution=dd_dists.MultivariateNormal(
+        component_distribution=MultivariateNormal(
             loc=gmm.component_distribution.loc.detach(),
             covariance_matrix=gmm.component_distribution.covariance_matrix.detach(),
         )

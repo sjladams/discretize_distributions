@@ -3,12 +3,10 @@ import torch
 from importlib.resources import files
 import pickle
 
-from . import cell as dd_cell
-from . import schemes as dd_schemes
-from . import distributions as dd_dists
+from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cell, Cross, Grid, GridPartition
+from .distributions import MultivariateNormal, MixtureMultivariateNormal, covariance_matrices_have_common_eigenbasis
 from . import utils
-from .generate_scheme_utils import (axes_from_norm, find_modes_gradient_ascent, default_prune_tol, 
-                                    prune_modes_weighted_averaging, local_gaussian_covariance)
+from .generate_scheme_utils import axes_from_norm, find_modes_gradient_ascent, default_prune_tol, prune_modes_weighted_averaging, local_gaussian_covariance
 
 with (files("discretize_distributions") / "data" / "grid_shapes.pickle").open("rb") as f:
     GRID_SHAPES = pickle.load(f)
@@ -33,27 +31,27 @@ class Info:
 info = Info(GRID_SHAPES, OPTIMAL_1D_GRIDS)
 
 def generate_scheme(
-    dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
+    dist: Union[MultivariateNormal, MixtureMultivariateNormal],
     scheme_size: int,
     per_mode: bool = True,
     configuration: str = 'grid',
     ndim_support: Optional[int] = None,
     **kwargs
-) -> Union[dd_schemes.GridScheme, dd_schemes.CrossScheme, dd_schemes.LayeredScheme, dd_schemes.BatchedScheme]:
-    if len(dist.batch_shape) == 0:  # TODO merge grid and cross configurations
+) -> Union[GridScheme, CrossScheme, LayeredScheme, BatchedScheme]:
+    if len(dist.batch_shape) == 0:
         if configuration == 'grid':
-            def generator(norm: dd_dists.MultivariateNormal, size: int):
+            def generator(norm: MultivariateNormal, size: int):
                 return generate_grid_scheme_for_multivariate_normal(norm, grid_size=size)
         elif configuration == 'cross':
-            def generator(norm: dd_dists.MultivariateNormal, size: int, ):
+            def generator(norm: MultivariateNormal, size: int, ):
                 return generate_cross_scheme_for_multivariate_normal(norm, cross_size=size, ndim_support=ndim_support)
         else:
             raise ValueError(f'Configuration {configuration} not recognized, should be "grid" or "cross".')
         
 
-        if isinstance(dist, dd_dists.MultivariateNormal):
+        if isinstance(dist, MultivariateNormal):
             return generator(dist, scheme_size)
-        elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
+        elif isinstance(dist, MixtureMultivariateNormal):
             if per_mode:
                 return generate_layered_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, generator_for_multivariate_normal=generator, **kwargs)
             else:
@@ -74,16 +72,16 @@ def generate_scheme(
                 configuration=configuration,
                 **kwargs
                 ))
-        return dd_schemes.BatchedScheme(schemes)
+        return BatchedScheme(schemes)
     else:
         raise NotImplementedError('Distributions with batch shape of more than 1 dimension are not supported yet.')
 
 
 def generate_grid_scheme_for_multivariate_normal(
-    norm: dd_dists.MultivariateNormal,
+    norm: MultivariateNormal,
     grid_size: int,
-    domain: Optional[dd_schemes.Cell] = None,
-) -> dd_schemes.GridScheme:
+    domain: Optional[Cell] = None,
+) -> GridScheme:
     grid_shape = get_optimal_grid_shape(eigvals=norm.eigvals, grid_size=grid_size)
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_shape]
 
@@ -99,13 +97,13 @@ def generate_grid_scheme_for_multivariate_normal(
             zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
         ]
 
-    grid_of_locs = dd_schemes.Grid(locs_per_dim, axes=axes_from_norm(norm))
+    grid_of_locs = Grid(locs_per_dim, axes=axes_from_norm(norm))
 
     # print(f'Requested grid size: {grid_size}, realized grid size over domain: {len(grid_of_locs)}')
 
-    grid_partition = dd_schemes.GridPartition.from_grid_of_points(grid_of_locs, domain)
+    grid_partition = GridPartition.from_grid_of_points(grid_of_locs, domain)
 
-    return dd_schemes.GridScheme(grid_of_locs, grid_partition)
+    return GridScheme(grid_of_locs, grid_partition)
 
 def get_optimal_grid_shape(
         eigvals: torch.Tensor,
@@ -153,10 +151,10 @@ def get_optimal_grid_shape(
 
 
 def generate_layered_scheme_for_mixture_multivariate_normal_per_component(
-    gmm: dd_dists.MixtureMultivariateNormal,
+    gmm: MixtureMultivariateNormal,
     scheme_size: int, 
-    generator_for_multivariate_normal: Callable[[dd_dists.MultivariateNormal, int], Union[dd_schemes.GridScheme, dd_schemes.CrossScheme]]
-) -> dd_schemes.LayeredScheme:
+    generator_for_multivariate_normal: Callable[[MultivariateNormal, int], Union[GridScheme, CrossScheme]]
+) -> LayeredScheme:
     schemes = []
     for i in range(gmm.num_components):
         schemes.append(generator_for_multivariate_normal(
@@ -164,20 +162,20 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_component(
             int(scheme_size / gmm.num_components)
         ))
 
-    return dd_schemes.LayeredScheme(schemes)
+    return LayeredScheme(schemes)
 
 
 def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
-    gmm: dd_dists.MixtureMultivariateNormal,
+    gmm: MixtureMultivariateNormal,
     scheme_size: int, 
-    generator_for_multivariate_normal: Callable[[dd_dists.MultivariateNormal, int], Union[dd_schemes.GridScheme, dd_schemes.CrossScheme]],
+    generator_for_multivariate_normal: Callable[[MultivariateNormal, int], Union[GridScheme, CrossScheme]],
     prune_factor: float = 0.5,
     n_iter: int = 500,
     lr: float = 0.01,
     eps: float = 1e-8, 
     use_analytical_hessian: bool = True
-) -> dd_schemes.LayeredScheme:
-    if not dd_dists.covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
+) -> LayeredScheme:
+    if not covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
         raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
         "per_component method")
 
@@ -196,7 +194,7 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
         eigvals = torch.diagonal(torch.einsum('ij,jk,kl->il', eigenbasis.swapaxes(-1, -2), cov, eigenbasis))
         cov = torch.einsum('ij,j,jk->ik', eigenbasis, eigvals, eigenbasis.swapaxes(-1, -2))
 
-        local_norm = dd_dists.MultivariateNormal(
+        local_norm = MultivariateNormal(
             loc=mode, 
             covariance_matrix=cov, 
             eigvals=eigvals, 
@@ -204,15 +202,15 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
         )
         schemes.append(generator_for_multivariate_normal(local_norm, int(scheme_size/len(modes))))
 
-    return dd_schemes.LayeredScheme(schemes)
+    return LayeredScheme(schemes)
 
 
 def generate_cross_scheme_for_multivariate_normal(
-    norm: dd_dists.MultivariateNormal,
+    norm: MultivariateNormal,
     cross_size: int,
-    domain: Optional[dd_schemes.Cell] = None,
+    domain: Optional[Cell] = None,
     ndim_support: Optional[int] = None
-) -> dd_schemes.CrossScheme:
+) -> CrossScheme:
     """
     The cross-scheme is a specific form of sigma-point approximation for a multivariate normal distribution.
     Instead of selecting points along the axes defined by the Cholesky decomposition of the covariance matrix,
@@ -229,19 +227,22 @@ def generate_cross_scheme_for_multivariate_normal(
         ndim=ndim_support
     )
 
-    idxs = torch.topk(norm.eigvals_sqrt, k=ndim_support, dim=-1).indices
+    if ndim_support < norm.ndim_support:
+        idxs = torch.topk(norm.eigvals_sqrt, k=ndim_support, dim=-1).indices
+    else:
+        idxs = torch.arange(ndim_support)
 
     points_per_side = [
         locs_active_side if i in idxs else torch.zeros(1, dtype=locs_active_side.dtype)
         for i in range(norm.ndim_support)
     ]
 
-    cross = dd_schemes.Cross(
+    cross = Cross(
         points_per_side=points_per_side, 
         axes=axes_from_norm(norm)
     )
         
-    return dd_schemes.CrossScheme(cross)
+    return CrossScheme(cross)
 
 
 def get_locations_active_side(num_points: int, ndim: int) -> torch.Tensor:
