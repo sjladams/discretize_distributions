@@ -190,7 +190,31 @@ class CrossScheme(Scheme, Cross):
         )
 
 class MultiScheme:
-    pass
+    def __init__(
+            self,
+            schemes: Union[List[CrossScheme], List[GridScheme]],
+            outer_loc: torch.Tensor,
+            domain: Optional[Cell] = None 
+    ):
+        if not all(gq.ndim == schemes[0].ndim for gq in schemes):
+            raise ValueError("All grid schemes must have the same number of dimensions.")
+
+        domains = [gq.domain for gq in schemes]
+        if any_cells_overlap(domains):
+            raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
+
+        self.schemes = schemes
+        self.outer_loc = outer_loc
+        self.domain = domain if domain is not None else create_cell_spanning_Rn(schemes[0].ndim)
+
+    def __len__(self):
+        return len(self.schemes)
+
+    def __iter__(self):
+        return iter(self.schemes)
+
+    def __getitem__(self, idx: int):
+        return self.schemes[idx]
 
 class MultiGridScheme(MultiScheme):
     def __init__(
@@ -199,53 +223,65 @@ class MultiGridScheme(MultiScheme):
             outer_loc: torch.Tensor,
             domain: Optional[Cell] = None 
     ):
-        if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
-            raise ValueError("All grid schemes must have the same number of dimensions.")
-
-        domains = [gq.domain for gq in grid_schemes]
-        if any_cells_overlap(domains):
-            raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
-
-        self.grid_schemes = grid_schemes
-        self.outer_loc = outer_loc
-        self.domain = domain if domain is not None else create_cell_spanning_Rn(grid_schemes[0].ndim)
-
-    def __len__(self):
-        return len(self.grid_schemes)
+        super().__init__(grid_schemes, outer_loc, domain)
     
-    def __iter__(self):
-        return iter(self.grid_schemes)
-    
-    def __getitem__(self, idx: int):
-        return self.grid_schemes[idx]
+    @property
+    def grid_schemes(self):
+        return self.schemes
 
 class MultiCrossScheme(MultiScheme):
-    pass
+    def __init__(
+            self,
+            cross_schemes: List[CrossScheme],
+            outer_loc: torch.Tensor,
+            domain: Optional[Cell] = None 
+    ):
+        super().__init__(cross_schemes, outer_loc, domain)
+    
+    @property
+    def cross_schemes(self):
+        return self.schemes
 
 class LayeredScheme:
-    pass
+    def __init__(
+            self, 
+            schemes: Union[List[GridScheme], List[CrossScheme]]
+    ):
+        if not all(gq.ndim == schemes[0].ndim for gq in schemes):
+            raise ValueError("All grid schemes must have the same number of dimensions.")
+
+        self.schemes = schemes
+
+    def __len__(self):
+        return len(self.schemes)
+
+    def __iter__(self):
+        return iter(self.schemes)
+
+    def __getitem__(self, idx: int):
+        return self.schemes[idx]
 
 class LayeredGridScheme(LayeredScheme):
     def __init__(
             self, 
             grid_schemes: List[GridScheme]
     ):
-        if not all(gq.ndim == grid_schemes[0].ndim for gq in grid_schemes):
-            raise ValueError("All grid schemes must have the same number of dimensions.")
+        super().__init__(grid_schemes)
 
-        self.grid_schemes = grid_schemes
+    @property
+    def grid_schemes(self):
+        return self.schemes
 
-    def __len__(self):
-        return len(self.grid_schemes)
-    
-    def __iter__(self):
-        return iter(self.grid_schemes)
-    
-    def __getitem__(self, idx: int):
-        return self.grid_schemes[idx]
-    
 class LayeredCrossScheme(LayeredScheme):
-    pass
+    def __init__(
+            self,
+            cross_schemes: List[CrossScheme]
+    ):
+        super().__init__(cross_schemes)
+        
+    @property
+    def cross_schemes(self):
+        return self.schemes
 
 class BatchedScheme:
     def __init__(
