@@ -246,3 +246,23 @@ class LayeredGridScheme(LayeredScheme):
     
 class LayeredCrossScheme(LayeredScheme):
     pass
+
+class BatchedScheme:
+    def __init__(
+            self,
+            schemes: List[Scheme]
+    ):
+        if not all(isinstance(scheme, type(schemes[0])) for scheme in schemes):
+            raise ValueError("All schemes must be of the same type.")
+
+        self.schemes = schemes
+        self.scheme_type = type(schemes[0])
+
+    def __len__(self):
+        return len(self.schemes)
+    
+    def __iter__(self):
+        return iter(self.schemes)
+    
+    def __getitem__(self, idx: int):
+        return self.schemes[idx]

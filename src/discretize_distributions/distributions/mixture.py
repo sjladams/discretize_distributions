@@ -30,40 +30,28 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
             validate_args=validate_args
         )
 
-    def __getitem__(self, index):
-        """
-        Get component distribution(s) at index.
-        
-        Args:
-            index: Can be an int or tensor of indices
-                  - int: Returns a single MultivariateNormal component
-                  - tensor: Returns a new MixtureMultivariateNormal with selected components
-        
-        Returns:
-            MultivariateNormal (for int index) or MixtureMultivariateNormal (for tensor index)
-        """
-        if isinstance(index, int):
-            # Original behavior for single component access
-            return MultivariateNormal(
-                loc=self.component_distribution.loc.select(-len(self.event_shape)-1, index),
-                covariance_matrix=self.component_distribution.covariance_matrix.select(-2 * len(self.event_shape)-1, index)
-            )
-        elif isinstance(index, torch.Tensor) and index.dtype == torch.long:
-            dim = -len(self.event_shape) - 1
-            selected_loc = torch.index_select(self.component_distribution.loc, dim, index)
-            selected_cov = torch.index_select(self.component_distribution.covariance_matrix, 
-                                            -2 * len(self.event_shape) - 1, index)
-            selected_probs = torch.index_select(self.mixture_distribution.probs, -1, index)
-            
-            # Renormalize probabilities
-            selected_probs = selected_probs / selected_probs.sum(dim=-1, keepdim=True)
-            
-            return MixtureMultivariateNormal(
-                mixture_distribution=torch.distributions.Categorical(probs=selected_probs),
-                component_distribution=MultivariateNormal(loc=selected_loc, covariance_matrix=selected_cov)
-            )
+    def __getitem__(self, idx):
+        return self._select(idx, dim=-2)
+
+    def select_components(self, idx: Union[int, torch.Tensor]):
+        return self._select(idx, dim=-1)
+    
+    def _select(self, idx: Union[int, torch.Tensor], dim: int = -1):
+        if isinstance(idx, int):
+            selected_loc = torch.select(self.component_distribution.loc, dim - len(self.event_shape), idx)
+            selected_cov = torch.select(self.component_distribution.covariance_matrix, dim - 2 * len(self.event_shape), idx)
+            selected_probs = torch.select(self.mixture_distribution.probs, dim, idx)
+        elif isinstance(idx, torch.Tensor):
+            selected_loc = torch.index_select(self.component_distribution.loc, dim - len(self.event_shape), idx)
+            selected_cov = torch.index_select(self.component_distribution.covariance_matrix, dim - 2 * len(self.event_shape), idx)
+            selected_probs = torch.index_select(self.mixture_distribution.probs, dim, idx)
         else:
-            raise TypeError(f"Index must be int or tensor of indices, got {type(index)}")
+            raise TypeError(f"Index must be int or torch.Tensor, got {type(idx)}")
+
+        return MixtureMultivariateNormal(
+            mixture_distribution=torch.distributions.Categorical(probs=selected_probs),
+            component_distribution=MultivariateNormal(loc=selected_loc, covariance_matrix=selected_cov)
+        )
 
     @property
     def covariance_matrix(self):

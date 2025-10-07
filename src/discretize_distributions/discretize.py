@@ -15,18 +15,35 @@ __all__ = ['discretize']
 
 def discretize(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-        scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme]
+        scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme, dd_schemes.BatchedScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
-    if not dist.batch_shape == torch.Size([]):
-        raise NotImplementedError('Discretization of batched distributions is not supported yet.')
-    
-    if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.MultiGridScheme, dd_schemes.LayeredGridScheme)):
-        locs, probs, w2 = _discretize_grid(dist, scheme)
-    elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme)):
-        locs, probs, w2 = _discretize_cross(dist, scheme)
+    if len(dist.batch_shape) == 0:
+        if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.MultiGridScheme, dd_schemes.LayeredGridScheme)):
+            locs, probs, w2 = _discretize_grid(dist, scheme)
+        elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme)):
+            locs, probs, w2 = _discretize_cross(dist, scheme)
+        else:
+            raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
+        return dd_dists.CategoricalFloat(locs, probs), w2
+    elif len(dist.batch_shape) == 1 and isinstance(scheme, dd_schemes.BatchedScheme):
+        if not dist.batch_shape[0] == len(scheme):
+            raise ValueError("The batch size of the distribution and the number of schemes must be the same.")
+        
+        locs_list, probs_list, w2_list = [], [], []
+        for i in range(len(scheme)):
+            disc_dist_i, w2_i = discretize(dist[i], scheme[i])
+            locs_list.append(disc_dist_i.locs)
+            probs_list.append(disc_dist_i.probs)
+            w2_list.append(w2_i)
+
+        locs_list, probs_list = utils.pad_zeros(locs_list), utils.pad_zeros(probs_list)
+
+        locs, probs, w2 = torch.stack(locs_list, dim=0), torch.stack(probs_list, dim=0), torch.stack(w2_list, dim=0)
+
+        return dd_dists.CategoricalFloat(locs, probs), w2
     else:
-        raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
-    return dd_dists.CategoricalFloat(locs, probs), w2
+        raise NotImplementedError("Discretization for batched distributions with batch shape larger than 1 is not implemented yet.")
+
 
 def _discretize_cross(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
@@ -102,7 +119,7 @@ def _discretize_grid(
                 print(f'Warning: No GMM component assigned to scheme {i}, skipping this scheme.')
                 continue
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist[indices], scheme[i])
+            locs_scheme, probs_scheme, w2_scheme = _discretize_grid(dist.select_components(indices), scheme[i])
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
