@@ -174,7 +174,7 @@ class Cross(AxesAlignedPoints):
             points_per_side: Union[List[torch.Tensor], torch.Tensor],
             axes: Optional[Axes] = None
     ):
-        active_dims = [i for i in range(len(points_per_side)) if points_per_side[i].shape[-1] > 1]
+        active_dims = [i for i in range(len(points_per_side)) if not torch.equal(points_per_side[i], torch.tensor([0.]))]
 
         if not (all([(points_per_side[i] > 0.).all() for i in active_dims]) and \
            all([(points_per_side[i] == 0.).all() for i in range(len(points_per_side)) if i not in active_dims])):
@@ -201,7 +201,7 @@ class Cross(AxesAlignedPoints):
 
     @property
     def active_dims(self):
-        return [i for i in range(len(self.points_per_side)) if self.points_per_side[i].shape[-1] > 1]
+        return [i for i in range(len(self.points_per_side)) if not torch.equal(self.points_per_side[i], torch.tensor([0.]))]
 
     @classmethod
     def from_num_dims(
