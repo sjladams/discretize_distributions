@@ -2,7 +2,7 @@ import torch
 import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
-from typing import Union, Optional, Tuple
+from typing import Union, Optional, Tuple, List
 from torch_kmeans import KMeans
 from xitorch.linalg import symeig
 from xitorch import LinearOperator
@@ -200,6 +200,14 @@ def batched_cartesian_product(points_per_dim):
         for i in range(batch_shape[0]):
             batch_of_points.append(batched_cartesian_product([p[i] for p in points_per_dim]))
         return torch.stack(batch_of_points, dim=0)
+
+def pad_zeros(tensor_list: List[torch.Tensor]) -> List[torch.Tensor]:
+    max_num_locs = max([len(locs) for locs in tensor_list])
+    out = [
+        torch.cat([elem, torch.zeros((max_num_locs - len(elem),) + elem.shape[1:], dtype=elem.dtype, device=elem.device)], dim=0)
+        if len(elem) < max_num_locs else elem for elem in tensor_list
+    ]
+    return out
 
 def pickle_load(tag):
     if not (".pickle" in tag or ".pkl" in tag):

@@ -38,33 +38,44 @@ def generate_scheme(
     per_mode: bool = True,
     configuration: str = 'grid',
     **kwargs
-) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme, dd_schemes.CrossScheme]:
-    if configuration == 'grid':
-        if not dist.batch_shape == torch.Size([]):
-            raise ValueError('batching not supported yet')
-
-        if isinstance(dist, dd_dists.MultivariateNormal):
-            return generate_grid_scheme_for_multivariate_normal(dist, grid_size=scheme_size, domain=None)
-        elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
-            if per_mode:
-                return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, **kwargs)
+) -> Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme, dd_schemes.CrossScheme, dd_schemes.BatchedScheme]:
+    if len(dist.batch_shape) == 0:
+        if configuration == 'grid':
+            if isinstance(dist, dd_dists.MultivariateNormal):
+                return generate_grid_scheme_for_multivariate_normal(dist, grid_size=scheme_size, domain=None)
+            elif isinstance(dist, dd_dists.MixtureMultivariateNormal):
+                if per_mode:
+                    return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_mode(dist, scheme_size=scheme_size, **kwargs)
+                else:
+                    return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, **kwargs)
             else:
-                return generate_layered_grid_scheme_for_mixture_multivariate_normal_per_component(dist, scheme_size=scheme_size, **kwargs)
+                raise NotImplementedError(
+                    f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
+                    'Please implement a custom discretization function.'
+                )
+        elif configuration == 'cross':
+            if isinstance(dist, dd_dists.MultivariateNormal):
+                return generate_cross_scheme_for_multivariate_normal(dist, cross_size=scheme_size, domain=None, **kwargs)
+            else:
+                raise NotImplementedError(
+                    f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
+                    'Please implement a custom discretization function.'
+                )
         else:
-            raise NotImplementedError(
-                f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
-                'Please implement a custom discretization function.'
-            )
-    elif configuration == 'cross':
-        if isinstance(dist, dd_dists.MultivariateNormal):
-            return generate_cross_scheme_for_multivariate_normal(dist, cross_size=scheme_size, domain=None, **kwargs)
-        else:
-            raise NotImplementedError(
-                f'Discretization of {dist.__class__.__name__} is not implemented yet for configuration {configuration}. '
-                'Please implement a custom discretization function.'
-            )
+            raise NotImplementedError
+    elif len(dist.batch_shape) == 1:
+        schemes = list()
+        for i in range(dist.batch_shape[0]):
+            schemes.append(generate_scheme(
+                dist=dist[i], 
+                scheme_size=scheme_size, 
+                per_mode=per_mode,
+                configuration=configuration,
+                **kwargs
+                ))
+        return dd_schemes.BatchedScheme(schemes)
     else:
-        raise NotImplementedError
+        raise NotImplementedError('Distributions with batch shape of more than 1 dimension are not supported yet.')
 
 
 def generate_grid_scheme_for_multivariate_normal(
