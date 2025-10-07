@@ -18,9 +18,9 @@ def discretize(
         scheme: Union[dd_schemes.Scheme, dd_schemes.MultiScheme,  dd_schemes.LayeredScheme, dd_schemes.BatchedScheme]
 ) -> Tuple[dd_dists.CategoricalFloat, torch.Tensor]:
     if len(dist.batch_shape) == 0:
-        if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.MultiGridScheme, dd_schemes.LayeredGridScheme)):
+        if isinstance(scheme, (dd_schemes.GridScheme, dd_schemes.LayeredGridScheme)):
             locs, probs, w2 = _discretize_grid(dist, scheme)
-        elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme)):
+        elif isinstance(scheme, (dd_schemes.CrossScheme, dd_schemes.LayeredCrossScheme)):
             locs, probs, w2 = _discretize_cross(dist, scheme)
         else:
             raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
@@ -47,7 +47,7 @@ def discretize(
 
 def _discretize_cross(
     dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-    scheme: Union[dd_schemes.CrossScheme, dd_schemes.MultiCrossScheme, dd_schemes.LayeredCrossScheme]
+    scheme: Union[dd_schemes.CrossScheme, dd_schemes.LayeredCrossScheme]
 ):
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.CrossScheme):
         locs, probs, w2 = discretize_multi_norm_using_cross_scheme(dist, scheme)
@@ -59,35 +59,11 @@ def _discretize_cross(
 
 def _discretize_grid(
         dist: Union[dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal],
-        scheme: Union[dd_schemes.GridScheme, dd_schemes.MultiGridScheme,  dd_schemes.LayeredGridScheme]
+        scheme: Union[dd_schemes.GridScheme, dd_schemes.LayeredGridScheme]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(dist, dd_dists.MultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         categorical_grid, w2 = discretize_multi_norm_using_grid_scheme(dist, scheme)
         locs, probs = categorical_grid.locs, categorical_grid.probs
-    elif (isinstance(dist, (dd_dists.MultivariateNormal, dd_dists.MixtureMultivariateNormal)) and 
-          isinstance(scheme, dd_schemes.MultiGridScheme)):
-        
-        assert dd_cell.domain_spans_Rn(scheme.domain), 'The grid scheme must span the full R^n domain.'
-
-        locs, probs, w2_sq, w2_sq_outer = [], [], torch.tensor(0.), torch.tensor(0.)
-        for grid_scheme in scheme:
-            locs_component, probs_component, w2_component = _discretize_grid(dist, grid_scheme)
-            locs.append(locs_component)
-            probs.append(probs_component)
-            w2_sq += w2_component.pow(2)
-            w2_sq_outer -= _discretize_grid(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, grid_scheme.domain))[2].pow(2)
-
-        locs = torch.cat(locs, dim=0)
-        probs = torch.cat(probs, dim=0)
-
-        _, prob_domain, w2_domain =_discretize_grid(dist, dd_schemes.GridScheme.from_point(scheme.outer_loc, scheme.domain))
-
-        w2_sq_outer += w2_domain.pow(2)
-        assert (prob_domain - probs.sum()) >= -TOL, (f"The sum of probabilities on the subdomains should be equal or "
-                                                     "less than the probability over the full domain.")
-        probs = torch.cat([probs, (prob_domain - probs.sum()).clip(min=0.)], dim=0)
-        locs = torch.cat([locs, scheme.outer_loc.unsqueeze(0)], dim=0)
-        w2 = w2_sq.sqrt() + w2_sq_outer.sqrt()
     elif isinstance(dist, dd_dists.MixtureMultivariateNormal) and isinstance(scheme, dd_schemes.GridScheme):
         probs, w2_sq = [], torch.tensor(0.)
         for i in range(dist.num_components):

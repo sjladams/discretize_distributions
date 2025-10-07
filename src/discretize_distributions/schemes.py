@@ -216,32 +216,6 @@ class MultiScheme:
     def __getitem__(self, idx: int):
         return self.schemes[idx]
 
-class MultiGridScheme(MultiScheme):
-    def __init__(
-            self,
-            grid_schemes: List[GridScheme],
-            outer_loc: torch.Tensor,
-            domain: Optional[Cell] = None 
-    ):
-        super().__init__(grid_schemes, outer_loc, domain)
-    
-    @property
-    def grid_schemes(self):
-        return self.schemes
-
-class MultiCrossScheme(MultiScheme):
-    def __init__(
-            self,
-            cross_schemes: List[CrossScheme],
-            outer_loc: torch.Tensor,
-            domain: Optional[Cell] = None 
-    ):
-        super().__init__(cross_schemes, outer_loc, domain)
-    
-    @property
-    def cross_schemes(self):
-        return self.schemes
-
 class LayeredScheme:
     def __init__(
             self, 
