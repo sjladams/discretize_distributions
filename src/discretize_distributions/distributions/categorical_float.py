@@ -83,6 +83,8 @@ class CategoricalFloat(Distribution):
         samples = samples.view(*sample_shape, *self.batch_shape, *self.event_shape)
         return samples
 
+    def __getitem__(self, idx):
+        return CategoricalFloat(self.locs[idx], self.probs[idx])
 
 class CategoricalGrid(Distribution):
     _validate_args = False
