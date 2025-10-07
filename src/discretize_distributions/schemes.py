@@ -246,13 +246,16 @@ class LayeredScheme:
 class BatchedScheme:
     def __init__(
             self,
-            schemes: List[Scheme]
+            schemes: Union[List[GridScheme], List[CrossScheme], List[LayeredScheme]]
     ):
         if not all(isinstance(scheme, type(schemes[0])) for scheme in schemes):
             raise ValueError("All schemes must be of the same type.")
 
         self.schemes = schemes
-        self.scheme_type = type(schemes[0])
+
+    @property
+    def scheme_type(self):
+        return type(self.schemes[0])
 
     def __len__(self):
         return len(self.schemes)
