@@ -80,11 +80,11 @@ A key feature of the package is the ability to **generate, orient, and combine d
 <figure>
   <div style="display: flex; justify-content: center; gap: 20px;">
     <figure>
-      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="300">
+      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="250">
       <figcaption><b>(a)</b> Per-component (W2 Error: 0.45).</figcaption>
     </figure>
     <figure>
-      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="300">
+      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="250">
       <figcaption><b>(b)</b> Per-mode (W2 Error: 0.45).</figcaption>
     </figure>
   </div>
