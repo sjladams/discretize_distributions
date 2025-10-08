@@ -196,33 +196,6 @@ class CrossScheme(Scheme, Cross):
     def locs(self):
         return self.points
 
-class MultiScheme:
-    def __init__(
-            self,
-            schemes: Union[List[CrossScheme], List[GridScheme]],
-            outer_loc: torch.Tensor,
-            domain: Optional[Cell] = None 
-    ):
-        if not all(gq.ndim == schemes[0].ndim for gq in schemes):
-            raise ValueError("All grid schemes must have the same number of dimensions.")
-
-        domains = [gq.domain for gq in schemes]
-        if any_cells_overlap(domains):
-            raise ValueError("Grid schemes overlap, which is not allowed for the Wasserstein discretization.")
-
-        self.schemes = schemes
-        self.outer_loc = outer_loc
-        self.domain = domain if domain is not None else create_cell_spanning_Rn(schemes[0].ndim)
-
-    def __len__(self):
-        return len(self.schemes)
-
-    def __iter__(self):
-        return iter(self.schemes)
-
-    def __getitem__(self, idx: int):
-        return self.schemes[idx]
-
 class LayeredScheme:
     def __init__(
             self, 
