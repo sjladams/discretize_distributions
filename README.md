@@ -41,11 +41,11 @@ For more examples (grid vs. cross schemes, degenerate mixtures, batched discreti
 <figure>
   <div style="display: flex; justify-content: center; gap: 20px;">
     <figure>
-      <img src="assets/signature_gaussian.png" alt="grid" width="400">
+      <img src="assets/signature_gaussian.png" alt="grid" width="350">
       <figcaption><b>(a)</b> Grid scheme.</figcaption>
     </figure>
     <figure>
-      <img src="assets/cross_signature_gaussian.png" alt="cross" width="400">
+      <img src="assets/cross_signature_gaussian.png" alt="cross" width="350">
       <figcaption><b>(b)</b> Cross scheme.</figcaption>
     </figure>
   </div>
@@ -78,11 +78,11 @@ A key feature of the package is the ability to **generate, orient, and combine d
 <figure>
   <div style="display: flex; justify-content: center; gap: 20px;">
     <figure>
-      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="400">
+      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="300">
       <figcaption><b>(a)</b> Per-component (W2 Error: 0.45).</figcaption>
     </figure>
     <figure>
-      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="400">
+      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="300">
       <figcaption><b>(b)</b> Per-mode (W2 Error: 0.45).</figcaption>
     </figure>
   </div>
