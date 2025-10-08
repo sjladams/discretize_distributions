@@ -38,25 +38,23 @@ pip install git+https://github.com/sjladams/discretize_distributions
 For more examples (grid vs. cross schemes, degenerate mixtures, batched discretization, uncertainty propagation application, and plotting utilities), see the [`examples/`](./examples) folder.
 
 ## Method Overview
-<figure>
-  <div style="display: flex; justify-content: center; gap: 16px; align-items: flex-start;">
-    <div style="text-align: center;">
-      <img src="assets/signature_gaussian.png" alt="grid" width="300">
-      <div><b>(a)</b> Grid scheme.</div>
-    </div>
-    <div style="text-align: center;">
-      <img src="assets/cross_signature_gaussian.png" alt="cross" width="300">
-      <div><b>(b)</b> Cross scheme.</div>
-    </div>
+<div style="display: flex; justify-content: center; gap: 16px; align-items: flex-start;">
+  <div style="text-align: center;">
+    <img src="assets/signature_gaussian.png" alt="grid" width="300">
+    <div><b>(a)</b> Grid scheme.</div>
   </div>
+  <div style="text-align: center;">
+    <img src="assets/cross_signature_gaussian.png" alt="cross" width="300">
+    <div><b>(b)</b> Cross scheme.</div>
+  </div>
+</div>
 
-  <p style="text-align: center; margin-top: 8px;">
-    <b>Figure 1:</b> Discretization of a 2D Gaussian distribution (black dots) using a standard Gaussian (blue dots) as a template for grid and cross configurations.
-    In the eigenbasis T of the covariance matrix (orange arrows), the Gaussian’s dimensions are independent, allowing efficient construction of the discrete support.
-    In <b>(a)</b>, the support is obtained by taking the cross-product of one-dimensional signatures of each univariate marginal, while in <b>(b)</b> symmetric points are placed along each principal axis (green markers).
-    The final signature in the original space follows by mapping these points through T<sup>-1</sup>. Blue and black lines indicate the Voronoi partitions in the transformed and original spaces, respectively.
-  </p>
-</figure>
+<p style="text-align: center; margin-top: 8px;">
+  <b>Figure 1:</b> Discretization of a 2D Gaussian distribution (black dots) using a standard Gaussian (blue dots) as a template for grid and cross configurations.
+  In the eigenbasis T of the covariance matrix (orange arrows), the Gaussian’s dimensions are independent, allowing efficient construction of the discrete support.
+  In <b>(a)</b>, the support is obtained by taking the cross-product of one-dimensional signatures of each univariate marginal, while in <b>(b)</b> symmetric points are placed along each principal axis (green markers).
+  The final signature in the original space follows by mapping these points through T<sup>-1</sup>. Blue and black lines indicate the Voronoi partitions in the transformed and original spaces, respectively.
+</p>
 
 Given a continuous distribution $p$ and a set of points $\mathcal{C} = \{x_i\}_{i=1}^N$, we aim to construct a discrete distribution of the form  
 $$
@@ -76,23 +74,23 @@ This efficient construction of discrete approximations of Gaussian distributions
 
 A key feature of the package is the ability to **generate, orient, and combine different schemes** with distinct geometries. This functionality is enabled by the `Axes` and `AxesAlignedPoints` objects, which provide a unified representation of scheme orientations and transformations. An introduction to these classes and their operations is provided in [`intro_axes_points_schemes.py`](`examples/intro_axes_points_schemes.py`).
 
-<figure>
-  <div style="display: flex; justify-content: center; gap: 16px; align-items: flex-start;">
-    <div style="text-align: center;">
-      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="280">
-      <div><b>(a)</b> Per-component (W2 Error: 0.45).</div>
-    </div>
-    <div style="text-align: center;">
-      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="280">
-      <div><b>(b)</b> Per-mode (W2 Error: 0.45).</div>
-    </div>
+
+<div style="display: flex; justify-content: center; gap: 16px; align-items: flex-start;">
+  <div style="text-align: center;">
+    <img src="assets/disc_gmm_per_comp.png" alt="grid" width="280">
+    <div><b>(a)</b> Per-component (W2 Error: 0.45).</div>
   </div>
-  <p style="text-align: center; margin-top: 8px;">
-    <b>Figure 2:</b> Discretization of a 2D Gaussian mixture with four components sharing a commuting eigenbasis and two modes.  
-    In <b>(a)</b>, each component is discretized individually using a grid scheme, and the resulting supports are combined.  
-    In <b>(b)</b>, a single grid discretization is used for the components closest to each mode, based on a local Gaussian approximation around that mode.
-  </p>
-</figure>
+  <div style="text-align: center;">
+    <img src="assets/disc_gmm_per_mode.png" alt="cross" width="280">
+    <div><b>(b)</b> Per-mode (W2 Error: 0.45).</div>
+  </div>
+</div>
+<p style="text-align: center; margin-top: 8px;">
+  <b>Figure 2:</b> Discretization of a 2D Gaussian mixture with four components sharing a commuting eigenbasis and two modes.  
+  In <b>(a)</b>, each component is discretized individually using a grid scheme, and the resulting supports are combined.  
+  In <b>(b)</b>, a single grid discretization is used for the components closest to each mode, based on a local Gaussian approximation around that mode.
+</p>
+
 
 
 ## Citation
