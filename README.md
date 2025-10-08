@@ -41,11 +41,11 @@ For more examples (grid vs. cross schemes, degenerate mixtures, batched discreti
 <figure>
   <div style="display: flex; justify-content: center; gap: 16px; align-items: flex-start;">
     <div style="text-align: center;">
-      <img src="assets/signature_gaussian.png" alt="grid" width="350">
+      <img src="assets/signature_gaussian.png" alt="grid" width="300">
       <div><b>(a)</b> Grid scheme.</div>
     </div>
     <div style="text-align: center;">
-      <img src="assets/cross_signature_gaussian.png" alt="cross" width="350">
+      <img src="assets/cross_signature_gaussian.png" alt="cross" width="300">
       <div><b>(b)</b> Cross scheme.</div>
     </div>
   </div>
@@ -79,11 +79,11 @@ A key feature of the package is the ability to **generate, orient, and combine d
 <figure>
   <div style="display: flex; justify-content: center; gap: 16px; align-items: flex-start;">
     <div style="text-align: center;">
-      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="300">
+      <img src="assets/disc_gmm_per_comp.png" alt="grid" width="280">
       <div><b>(a)</b> Per-component (W2 Error: 0.45).</div>
     </div>
     <div style="text-align: center;">
-      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="300">
+      <img src="assets/disc_gmm_per_mode.png" alt="cross" width="280">
       <div><b>(b)</b> Per-mode (W2 Error: 0.45).</div>
     </div>
   </div>
