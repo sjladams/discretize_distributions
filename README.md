@@ -42,9 +42,11 @@ For more examples (grid vs. cross schemes, degenerate mixtures, batched discreti
   <div style="display: flex; justify-content: center; gap: 20px;">
     <figure>
       <img src="assets/signature_gaussian.png" alt="grid" width="350">
+      <img src="assets/signature_gaussian.png" alt="grid" width="350">
       <figcaption><b>(a)</b> Grid scheme.</figcaption>
     </figure>
     <figure>
+      <img src="assets/cross_signature_gaussian.png" alt="cross" width="350">
       <img src="assets/cross_signature_gaussian.png" alt="cross" width="350">
       <figcaption><b>(b)</b> Cross scheme.</figcaption>
     </figure>
