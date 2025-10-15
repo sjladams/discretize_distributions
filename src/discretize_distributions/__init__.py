@@ -2,6 +2,7 @@ from .discretize import discretize
 from .generate_scheme import info
 
 from . import distributions
+from .distributions import CategoricalFloat, MultivariateNormal, MixtureMultivariateNormal
 from . import schemes
 from .generate_scheme import generate_scheme
 
@@ -10,6 +11,9 @@ __all__ = [
     'distributions', 
     'schemes', 
     'info',
-    'generate_scheme'
+    'generate_scheme', 
+    'CategoricalFloat',
+    'MultivariateNormal',
+    'MixtureMultivariateNormal',
 ]
 
