@@ -121,13 +121,14 @@ def local_gaussian_covariance(
 
     if use_analytical_hessian:
         H = gmm.log_prob_hessian(mode.unsqueeze(0)).squeeze(0)
+        if H.isnan().any():
+            print(
+                "Warning: Analytical Hessian contains NaN values (possibly due to the mode approximation being off " \
+                "support). Falling back to numerical Hessian."
+            )
+            H = numerical_log_prob_hessian(gmm, mode)  # [d, d]
     else:
-        mode = mode.detach().requires_grad_(True)
-
-        def log_density_fn(x: torch.Tensor):
-            return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
-
-        H = torch.autograd.functional.hessian(log_density_fn, mode)  # [d, d]
+        H = numerical_log_prob_hessian(gmm, mode)  # [d, d]
 
     P = -(0.5 * (H + H.swapaxes(-1, -2))) # symmetrize and flip sign
 
@@ -159,3 +160,11 @@ def nearest_spd(P, eps=1e-6):
     # clamp eigenvalues
     eigvals = torch.clamp(eigvals, min=eps)
     return (eigvecs * eigvals) @ eigvecs.T
+
+def numerical_log_prob_hessian(gmm: MixtureMultivariateNormal, value: torch.Tensor):
+    value = value.detach().requires_grad_(True)
+
+    def log_density_fn(x: torch.Tensor):
+        return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
+
+    return torch.autograd.functional.hessian(log_density_fn, value)  # [d, d]

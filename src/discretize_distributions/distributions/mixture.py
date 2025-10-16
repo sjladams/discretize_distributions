@@ -120,13 +120,17 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
         log_pi = self._log_mixture_weights()                 # [..., K]
         logp_k, s_k, _ = self._component_scores_and_hessians(value)
 
-        # Compute masked mixture logits: invalid components → -inf
-        masked_logits = (log_pi + logp_k).masked_fill(~torch.isfinite(logp_k), -torch.inf)
+        in_support = torch.isfinite(logp_k)                  # [..., K]
+        assert not s_k.masked_select(in_support.unsqueeze(-1)).isnan().any(), "Score contains NaN values in support"
 
+        masked_logits = (log_pi + logp_k).masked_fill(~in_support, -torch.inf)
         denom = torch.logsumexp(masked_logits, dim=-1)       # [...], mixture normalizer
         off_all = ~torch.isfinite(denom)                     # true if no valid components
 
         r = torch.softmax(masked_logits, dim=-1)             # responsibilities [..., K]
+
+        s_k = s_k.masked_fill((~in_support).unsqueeze(-1), 0.0)   # zero out scores off support
+
         grad = (r.unsqueeze(-1) * s_k).sum(dim=-2)           # weighted sum of component scores
 
         return grad.masked_fill(off_all.unsqueeze(-1), torch.nan)
@@ -156,13 +160,16 @@ class MixtureMultivariateNormal(torch.distributions.MixtureSameFamily):
         log_pi = self._log_mixture_weights()                  # [..., K]
         logp_k, s_k, H_k = self._component_scores_and_hessians(value)
 
-        # Mask invalid components (non-finite log-probs)
-        masked_logits = (log_pi + logp_k).masked_fill(~torch.isfinite(logp_k), -torch.inf)
+        in_support = torch.isfinite(logp_k)                  # [..., K]
+        assert not s_k.masked_select(in_support.unsqueeze(-1)).isnan().any(), "Score contains NaN values in support"
 
+        masked_logits = (log_pi + logp_k).masked_fill(~in_support, -torch.inf)
         denom = torch.logsumexp(masked_logits, dim=-1)        # [...], mixture normalizer
         off_all = ~torch.isfinite(denom)                      # True if all components invalid
 
         r = torch.softmax(masked_logits, dim=-1)              # responsibilities [..., K]
+
+        s_k = s_k.masked_fill((~in_support).unsqueeze(-1), 0.0) # zero out scores off support
 
         # Σ r_k H_k
         term1 = (r.unsqueeze(-1).unsqueeze(-1) * H_k).sum(dim=-3)

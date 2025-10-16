@@ -9,7 +9,8 @@ from plot import *
 
 if __name__ == "__main__":
     locs = torch.tensor([[-2.01, -2.01], [-1.99, -1.99], [1.99, 1.99], [2.01, 2.01]])
-    covariance_matrices = torch.ones((4, 2, 2))
+    # covariance_matrices = torch.ones((4, 2, 2))
+    covariance_matrices = torch.diag(torch.tensor([0.1, 0.0])).repeat(4, 1, 1)
     probs = torch.tensor([0.25, 0.25, 0.25, 0.25])
 
     component_distribution = dd_dists.MultivariateNormal(loc=locs, covariance_matrix=covariance_matrices)
