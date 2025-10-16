@@ -14,7 +14,8 @@ def rotation_matrix(angle: float) -> torch.Tensor:
     Returns a 2D rotation matrix for a given angle in radians.
     """
     return torch.tensor([[math.cos(angle), -math.sin(angle)],
-                         [math.sin(angle), math.cos(angle)]])
+                         [math.sin(angle), math.cos(angle)]],
+                        dtype=torch.float32)
 
 
 def plot_2d(ax, grid, partition, xlim, ylim, title=""):
@@ -33,7 +34,7 @@ def plot_2d(ax, grid, partition, xlim, ylim, title=""):
 
 if __name__ == '__main__':
     ## Intro to Axes, Grids and Partitions -----------------------------------------------------------------------------
-    rot_mat = rotation_matrix(math.pi / 4)  # 45 degrees rotation
+    rot_mat = rotation_matrix(math.pi / 2)  # 45 degrees rotation - gives error?
     axes0 = dd_schemes.Axes(
         rot_mat=rot_mat,
         scales=torch.tensor([1., 1.]),

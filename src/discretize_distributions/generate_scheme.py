@@ -3,6 +3,7 @@ import torch
 from importlib.resources import files
 import pickle
 
+from .axes import Axes, equal_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cell, Cross, Grid, GridPartition
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, covariance_matrices_have_common_eigenbasis
 from . import utils
@@ -81,8 +82,12 @@ def generate_grid_scheme_for_multivariate_normal(
     norm: MultivariateNormal,
     grid_size: int,
     domain: Optional[Cell] = None,
+    grid_shape: Optional[Cell] = None,
 ) -> GridScheme:
-    grid_shape = get_optimal_grid_shape(eigvals=norm.eigvals, grid_size=grid_size)
+
+    if grid_shape is None:
+        grid_shape = get_optimal_grid_shape(eigvals=norm.eigvals, grid_size=grid_size)
+
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_shape]
 
     if domain is not None:
@@ -176,8 +181,48 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
     use_analytical_hessian: bool = True
 ) -> LayeredScheme:
     if not covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
-        raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
-        "per_component method")
+        ## 1. find modes
+        modes = find_modes_gradient_ascent(gmm, n_iter=n_iter, lr=lr)
+        prune_tol = default_prune_tol(gmm, factor=prune_factor)
+        modes = prune_modes_weighted_averaging(modes, gmm.log_prob(modes), prune_tol)
+
+        n_modes = len(modes)
+        per_mode_size = max(1, int(scheme_size / n_modes))
+
+        ## 2. generate general Axes using gaussian approximation per mode
+        for mode in modes:
+            cov = local_gaussian_covariance(gmm, mode, eps=eps, use_analytical_hessian=use_analytical_hessian)
+            eigvals, eigvecs = torch.linalg.eigh(cov)
+            rot = eigvecs
+            scales = torch.sqrt(eigvals)
+            axes = Axes(rot_mat=rot, scales=scales, offset=mode)
+            mode_grid_shape = get_optimal_grid_shape(eigvals, grid_size=per_mode_size)
+
+            ## 3. build grid for mode
+            mode_norm = MultivariateNormal(loc=mode, covariance_matrix=cov, eigvals=eigvals, eigvecs=eigvecs)
+            main_grid = generate_grid_scheme_for_multivariate_normal(mode_norm, grid_size=per_mode_size)
+
+            ## 4. Then per component in the respective mode generate grids with same shape using axes from mode
+            component_schemes = []
+            merge_maps = {}
+            for norm_id, norm in enumerate(gmm.component_distribution):
+                norm_grid = generate_grid_scheme_for_multivariate_normal(
+                    norm,
+                    grid_size=per_mode_size,
+                    grid_shape=mode_grid_shape,  # fixed shape from mode grid
+                )
+                # can only rebase with same eigenbasis
+                norm_grid = norm_grid.rebase(axes)  # TODO - need new rebase function for non-equal eigenbasis
+                component_schemes.append(norm_grid)
+
+                dists = torch.cdist(norm_grid.points, main_grid.points)
+                nearest_idx = torch.argmin(dists, dim=1)
+                merge_maps[norm_id] = nearest_idx.cpu()  # which point of norm grid is closest to main mode gird
+
+            ## 5. Move indices from per component grids to mode grid to create one grid per mode, calc added w2 in discretize
+
+        # raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
+        # "per_component method")
 
     eigenbasis = gmm.component_distribution[0].eigvecs
 
