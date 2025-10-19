@@ -2,7 +2,7 @@ import torch
 
 from . import utils
 
-TOL = 1e-8
+TOL = 1e-6  # original was 1e-8 but caused error for small numerical discrepencies
 
 class Axes:
     def __init__(

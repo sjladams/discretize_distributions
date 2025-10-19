@@ -88,7 +88,10 @@ class AxesAlignedPoints(Axes, ABC):
         new_scale_mat = torch.einsum('ij, jk, k->ik', axes.rot_mat.T, self.rot_mat, self.scales)
 
         # Extract scales in the source eigenbasis
-        permute_mat = (new_scale_mat != 0).to(new_scale_mat.dtype)
+        # permute_mat = (new_scale_mat != 0).to(new_scale_mat.dtype)
+        # TODO check this ?
+        # (elize) too strict, causes errors for very small numerical differences
+        permute_mat = (new_scale_mat.abs() > 1e-6).to(new_scale_mat.dtype)
         if not utils.is_permuted_eye(permute_mat):
             raise ValueError("Can only rebase axes to an axes (i.e. rotation matrix) that has the same eigenbasis.")
 
