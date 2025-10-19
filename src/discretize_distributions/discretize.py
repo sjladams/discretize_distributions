@@ -7,6 +7,8 @@ from . import axes as dd_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cross, Grid, equal_axes
 from . import generate_scheme as dd_gen
 
+import ot
+
 TOL = 1e-8
 
 __all__ = ['discretize']
@@ -72,25 +74,69 @@ def _discretize(
             )
         # assert all([dd_cell.domain_spans_Rn(elem.grid_partition.domain) for elem in scheme]), \
         #     'All grid schemes must span the full R^n domain.'
-
-        scheme_per_gmm_comp = assign_scheme_to_gmm_components(dist, scheme)
-        
         probs, locs, w2_sq = [], [], torch.tensor(0.)
-        for i in range(len(scheme)):
-            indices = torch.where(scheme_per_gmm_comp==i)[0]
-            if len(indices) == 0:
-                print(f'Warning: No GMM component assigned to scheme {i}, skipping this scheme.')
-                continue
-            prob_scheme = dist.mixture_distribution.probs[indices].sum()
-            locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
 
-            probs.append(probs_scheme * prob_scheme)
-            locs.append(locs_scheme)
-            w2_sq += w2_scheme.pow(2) * prob_scheme
+        if any(hasattr(s, "component_schemes") for s in scheme):
+            # for each mode gird defined
+            for i, mode_grid in enumerate(scheme):
+                locs_mode = mode_grid.locs
+                n_target = locs_mode.shape[0]
+                probs_mode = torch.zeros(n_target, device=locs_mode.device)
 
-        probs = torch.cat(probs, dim=0)
-        locs = torch.cat(locs, dim=0)
-        w2 = w2_sq.sqrt()
+                for comp_grid in mode_grid.component_schemes: # each component in that mode has a separate grid
+                    comp_id = getattr(comp_grid, "comp_id", None)
+                    comp_weight = dist.mixture_distribution.probs[comp_id]
+                    comp = dist.component_distribution[comp_id]
+
+                    # debugging
+                    print("Rebase check:",
+                          torch.allclose(comp_grid.rot_mat.T @ comp.eigvecs,
+                                         torch.eye(comp.eigvecs.shape[0]), atol=1e-6))
+
+                    # discretize components separately by grids
+                    locs_comp, probs_comp, w2_comp = _discretize(comp, comp_grid, generator_for_mult_norm)
+
+                    # probs by nearest loc on mode grid
+                    target_probs = torch.zeros_like(probs_mode) # temporary probs for mode for each component separately
+                    C = torch.cdist(locs_comp, locs_mode).pow(2)
+                    T = torch.argmin(C, dim=1)
+                    target_probs.index_add_(0, T, probs_comp) # defines transport of locs comp to closest neighbour in locs mode
+
+                    # w2 calc via OT - OPTION A
+                    M = ot.dist(locs_comp, locs_mode, metric='sqeuclidean')
+                    res = ot.solve(M, probs_comp, target_probs)  # how to define target probs locs, with zero mass
+                    w2_comp_added_sq = res.value
+
+                    # w2 calc possible OPTION B Instead calc cost of projection - check with w2 above using OT
+                    proj_cost = (probs_comp * C.gather(1, T.unsqueeze(1)).squeeze(1)).sum() # W2^2
+
+                    probs_mode += comp_weight * target_probs
+                    probs.append(probs_mode) # all mode locs with mass of each comp
+                    locs.append(locs_mode)  # final locs are mode locs
+                    w2_sq += comp_weight * (w2_comp_added_sq.pow(2)+w2_comp.pow(2))
+
+            probs = torch.cat(probs, dim=0)
+            locs = torch.cat(locs, dim=0)
+            w2 = w2_sq.sqrt()
+
+        else:
+            scheme_per_gmm_comp = assign_scheme_to_gmm_components(dist, scheme)
+            for i in range(len(scheme)):
+                indices = torch.where(scheme_per_gmm_comp==i)[0]
+                if len(indices) == 0:
+                    print(f'Warning: No GMM component assigned to scheme {i}, skipping this scheme.')
+                    continue
+
+                prob_scheme = dist.mixture_distribution.probs[indices].sum()
+                locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
+
+                probs.append(probs_scheme * prob_scheme)
+                locs.append(locs_scheme)
+                w2_sq += w2_scheme.pow(2) * prob_scheme
+
+            probs = torch.cat(probs, dim=0)
+            locs = torch.cat(locs, dim=0)
+            w2 = w2_sq.sqrt()
     else:
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
                                   f"and scheme {type(scheme).__name__} is not implemented yet.")

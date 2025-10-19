@@ -2,6 +2,7 @@ from typing import Union, Optional, Callable
 import torch
 from importlib.resources import files
 import pickle
+import ot
 
 from .axes import Axes, equal_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cell, Cross, Grid, GridPartition
@@ -181,6 +182,44 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
     use_analytical_hessian: bool = True
 ) -> LayeredScheme:
     if not covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
+        ### OPTION A ###
+        modes = find_modes_gradient_ascent(gmm, n_iter=n_iter, lr=lr)
+        prune_tol = default_prune_tol(gmm, factor=prune_factor)
+        modes = prune_modes_weighted_averaging(modes, gmm.log_prob(modes), prune_tol)
+
+        n_modes = len(modes)
+        per_mode_size = max(1, int(scheme_size / n_modes))
+        mode_schemes = []
+
+        ## 2. mode grids
+        for mode in modes:
+            cov = local_gaussian_covariance(gmm, mode, eps=eps, use_analytical_hessian=use_analytical_hessian)
+            eigvals, eigvecs = torch.linalg.eigh(cov)
+            rot = eigvecs
+            scales = torch.sqrt(eigvals)
+            mode_grid_shape = get_optimal_grid_shape(eigvals, grid_size=per_mode_size)
+
+            mode_norm = MultivariateNormal(loc=mode, covariance_matrix=cov, eigvals=eigvals, eigvecs=eigvecs)
+            mode_grid = generate_grid_scheme_for_multivariate_normal(mode_norm, grid_size=per_mode_size)
+
+            ## 3. component grids
+            component_schemes = []
+            for comp_id, comp in enumerate(gmm.component_distribution):
+                comp_grid = generate_grid_scheme_for_multivariate_normal(
+                    comp,
+                    grid_size=per_mode_size,
+                    grid_shape=mode_grid_shape,  # fixed shape from mode grid
+                )
+                comp_grid.rot_mat = comp.eigvecs.clone() # ensure matching rotation
+                comp_grid.comp_id = comp_id
+                component_schemes.append(comp_grid)
+
+            mode_grid.component_schemes = component_schemes
+            mode_schemes.append(mode_grid)
+
+        return LayeredScheme(mode_schemes)
+
+        #### OPTION B ###
         ## 1. find modes
         modes = find_modes_gradient_ascent(gmm, n_iter=n_iter, lr=lr)
         prune_tol = default_prune_tol(gmm, factor=prune_factor)
@@ -205,19 +244,19 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
             ## 4. Then per component in the respective mode generate grids with same shape using axes from mode
             component_schemes = []
             merge_maps = {}
-            for norm_id, norm in enumerate(gmm.component_distribution):
+            for norm_id, comp in enumerate(gmm.component_distribution):
                 norm_grid = generate_grid_scheme_for_multivariate_normal(
-                    norm,
+                    comp,
                     grid_size=per_mode_size,
                     grid_shape=mode_grid_shape,  # fixed shape from mode grid
                 )
-                # can only rebase with same eigenbasis
-                norm_grid = norm_grid.rebase(axes)  # TODO - need new rebase function for non-equal eigenbasis
+                # can only rebase with same eigenbasis ... need different approach
+                norm_grid = norm_grid.rebase(axes)
                 component_schemes.append(norm_grid)
 
                 dists = torch.cdist(norm_grid.points, main_grid.points)
                 nearest_idx = torch.argmin(dists, dim=1)
-                merge_maps[norm_id] = nearest_idx.cpu()  # which point of norm grid is closest to main mode gird
+                merge_maps[norm_id] = nearest_idx.cpu()  # which point of comp grid is closest to main mode gird
 
             ## 5. Move indices from per component grids to mode grid to create one grid per mode, calc added w2 in discretize
 

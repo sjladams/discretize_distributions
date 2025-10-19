@@ -62,3 +62,4 @@ if __name__ == "__main__":
     ax = plot_2d_cat_float(ax, disc_gmm)
     ax = set_axis(ax)
     ax.set_title(f'Discretization per Mode of the GMM (W2 Error: {w2:.2f}, Support size: {disc_gmm.num_components})')
+    plt.show()
