@@ -2,10 +2,11 @@ import torch
 from typing import Union, Optional, Tuple, List, Callable
 
 from . import utils
-from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid
+from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid, covariance_matrices_have_common_eigenbasis
 from . import axes as dd_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cross, Grid, equal_axes
 from . import generate_scheme as dd_gen
+from . import generate_scheme_utils as dd_gen_utils
 
 import ot
 
@@ -76,44 +77,50 @@ def _discretize(
         #     'All grid schemes must span the full R^n domain.'
         probs, locs, w2_sq = [], [], torch.tensor(0.)
 
-        if any(hasattr(s, "component_schemes") for s in scheme):
-            # for each mode gird defined
-            for i, mode_grid in enumerate(scheme):
-                locs_mode = mode_grid.locs
+        if not covariance_matrices_have_common_eigenbasis(dist.component_distribution):
+            scheme_per_gmm_comp = assign_scheme_to_gmm_components(dist, scheme)
+            for i in range(len(scheme)):
+                indices = torch.where(scheme_per_gmm_comp==i)[0]
+                locs_mode = scheme[i].locs
                 n_target = locs_mode.shape[0]
+                mode_grid_shape = scheme[i].grid_partition.shape
                 probs_mode = torch.zeros(n_target, device=locs_mode.device)
 
-                for comp_grid in mode_grid.component_schemes: # each component in that mode has a separate grid
-                    comp_id = getattr(comp_grid, "comp_id", None)
-                    comp_weight = dist.mixture_distribution.probs[comp_id]
-                    comp = dist.component_distribution[comp_id]
+                for j in indices:
+                    comp_weight = dist.mixture_distribution.probs[j]
+                    comp = MultivariateNormal(
+                        loc=dist.component_distribution.loc[j],
+                        covariance_matrix=dist.component_distribution.covariance_matrix[j]
+                    )
 
-                    # debugging
-                    print("Rebase check:",
-                          torch.allclose(comp_grid.rot_mat.T @ comp.eigvecs,
-                                         torch.eye(comp.eigvecs.shape[0]), atol=1e-6))
+                    # OPTION A - make unique grids , for option B i need to replace this part
+                    comp_grid = dd_gen.generate_grid_scheme_for_multivariate_normal(
+                        comp,
+                        grid_size=locs_mode.shape[0],
+                        grid_shape=mode_grid_shape
+                    )
 
-                    # discretize components separately by grids
-                    locs_comp, probs_comp, w2_comp = _discretize(comp, comp_grid, generator_for_mult_norm)
+                    # OPTION B
+                    comp_grid = dd_gen_utils.generate_similar_shaped_grids(scheme[i], comp)
 
-                    # probs by nearest loc on mode grid
-                    target_probs = torch.zeros_like(probs_mode) # temporary probs for mode for each component separately
-                    C = torch.cdist(locs_comp, locs_mode).pow(2)
-                    T = torch.argmin(C, dim=1)
-                    target_probs.index_add_(0, T, probs_comp) # defines transport of locs comp to closest neighbour in locs mode
+                    # discretize components
+                    locs_comp, probs_comp, w2_comp = _discretize(
+                        comp,
+                        comp_grid,
+                        generator_for_mult_norm
+                    )
 
-                    # w2 calc via OT - OPTION A
-                    M = ot.dist(locs_comp, locs_mode, metric='sqeuclidean')
-                    res = ot.solve(M, probs_comp, target_probs)  # how to define target probs locs, with zero mass
-                    w2_comp_added_sq = res.value
+                    # OPTION A
+                    w2_added, target_probs = utils.compute_discrete_w2(locs_comp, probs_comp, locs_mode, probs_mode)
 
-                    # w2 calc possible OPTION B Instead calc cost of projection - check with w2 above using OT
-                    proj_cost = (probs_comp * C.gather(1, T.unsqueeze(1)).squeeze(1)).sum() # W2^2
+                    # OPTION B
+                    w2_added, target_probs = utils.compute_w2_projection(locs_comp, probs_comp, locs_mode)
 
                     probs_mode += comp_weight * target_probs
+
                     probs.append(probs_mode) # all mode locs with mass of each comp
                     locs.append(locs_mode)  # final locs are mode locs
-                    w2_sq += comp_weight * (w2_comp_added_sq.pow(2)+w2_comp.pow(2))
+                    w2_sq += comp_weight * (w2_added.pow(2) + w2_comp.pow(2))
 
             probs = torch.cat(probs, dim=0)
             locs = torch.cat(locs, dim=0)

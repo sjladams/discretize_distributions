@@ -3,6 +3,7 @@ import torch
 from .axes import Axes
 from .distributions import MultivariateNormal, MixtureMultivariateNormal
 from . import utils
+from .schemes import Grid, GridScheme, GridPartition
 
 TOL = 1e-8
 
@@ -159,3 +160,54 @@ def nearest_spd(P, eps=1e-6):
     # clamp eigenvalues
     eigvals = torch.clamp(eigvals, min=eps)
     return (eigvecs * eigvals) @ eigvecs.T
+
+def generate_similar_shaped_grids(scheme, dist):
+    """
+    Generate similar shaped grids for component based on given scheme's grid.
+    Args:
+        scheme:
+        dist:
+    Returns:
+        grid:
+    """
+
+    # component properties
+    cov = dist.covariance_matrix
+    loc = dist.loc
+    eigvals, eigvecs = torch.linalg.eigh(cov)
+    scales_comp = eigvals.sqrt()
+
+    # scheme's grid axes and shape
+    rot_mat = scheme.domain.rot_mat # rot_mat, scales, offset
+    offset = scheme.domain.offset
+    scales = scheme.domain.scales
+
+    # create axes for scheme
+    scheme_axes = Axes(rot_mat, scales, offset)
+
+    # normalize scaling of scheme grid
+    rel_shape = scheme_axes.scales / scheme_axes.scales.mean()
+
+    # new axes
+    comp_axes = Axes(
+        rot_mat=eigvecs,  # true eigenbasis
+        scales=scales_comp * rel_shape,  # shape from mode grid
+        offset=loc  # true component mean
+    )
+
+    points_per_dim = [p.clone() for p in scheme.grid_of_locs.points_per_dim]
+
+    comp_grid = Grid(
+        axes=comp_axes,
+        points_per_dim=points_per_dim  # same points per dim strcuture as the scheme
+    )
+
+    comp_partition = GridPartition.from_grid_of_points(comp_grid)
+
+    comp_scheme = GridScheme(
+        grid_of_locs=comp_grid,
+        grid_partition=comp_partition
+    )
+
+    return comp_scheme
+

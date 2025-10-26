@@ -222,3 +222,43 @@ def pickle_dump(obj, tag):
         tag = f"{tag}.pickle"
     with open(tag, "wb") as pickle_out:
         pickle.dump(obj, pickle_out)
+
+def compute_discrete_w2(locs_comp, probs_comp, locs_mode, probs_mode):
+    """
+    Computes discrete to discrete Wasserstein distance between locs_comp and locs_mode by nearest-neighbour strategy
+    """
+    target_probs = torch.zeros_like(probs_mode)
+    C = torch.cdist(locs_comp, locs_mode).pow(2)  # adds complexity O(NMd) for N component locs and M mode locs in dimension d
+    T = torch.argmin(C, dim=1)  # adds complexity O(NM) for N component locs and M mode locs
+    target_probs.index_add_(0, T, probs_comp)  # defines transport of locs comp to closest neighbour in locs mode
+
+    # w2 calc
+    w2_disc = (probs_comp * C.gather(1, T.unsqueeze(1)).squeeze(1)).sum()  # W2^2
+
+    return w2_disc.sqrt(), target_probs
+
+def compute_w2_projection(locs_comp, probs_comp, locs_mode):
+    """
+    Computes W2 pojection of location [i] in the component' grid, to the location [i] in the mode's grid
+    """
+    # squared distance between matching locations
+    sq_dists = (locs_comp - locs_mode).pow(2).sum(dim=1)  # linear complexity O(Nd)
+
+    # W2^2 = prob mass * distance
+    w2_proj = (probs_comp * sq_dists).sum()  # W2^2
+
+    # mass moved directly between matching locs
+    target_probs = probs_comp.clone()
+
+    # checking
+    C = torch.cdist(locs_comp, locs_mode).pow(2)
+    T = torch.argmin(C, dim=1)
+    identity = torch.arange(len(T), device=T.device)
+    mismatches = (T != identity).sum().item()
+
+    if mismatches > 0:
+        max_diff = (C[identity, identity] - C[identity, T]).abs().max().sqrt().item()
+        print(f"{mismatches}/{len(T)} grid points are not nearest neighbors "
+              f"(max distance difference ~{max_diff:.3e}).")
+
+    return w2_proj.sqrt(), target_probs
