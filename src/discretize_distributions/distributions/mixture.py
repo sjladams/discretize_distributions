@@ -201,7 +201,7 @@ def compress_mixture_multivariate_normal(dist: MixtureMultivariateNormal, n_max:
         if dist.num_components <= n_max:
             pass
         else:
-            labels = kmean_clustering_batches(dist.component_distribution.loc, n_max)
+            labels = kmean_clustering_batches(dist.component_distribution.loc, n_max) # TODO Use weighted_kmeans
             n = len(labels.unique())
             if n > 1:
                 labels = torch.zeros(labels.shape + (n, )).scatter_(
