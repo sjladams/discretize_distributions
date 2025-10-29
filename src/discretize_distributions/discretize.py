@@ -5,7 +5,7 @@ from . import utils
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid
 from . import axes as dd_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cross, Grid, equal_axes
-from . import generate_scheme as dd_gen
+from .generate_scheme import axes_from_norm
 
 TOL = 1e-8
 
@@ -120,7 +120,7 @@ def discretize_multi_norm_using_grid_scheme(
         grid_scheme: GridScheme,
         use_corollary_10: Optional[bool] = True
 ) -> Tuple[CategoricalGrid, torch.Tensor]:
-    dist_axes = dd_gen.axes_from_norm(dist)
+    dist_axes = axes_from_norm(dist)
 
     if not dd_axes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       
@@ -176,7 +176,7 @@ def discretize_multi_norm_using_cross_scheme(
         dist: MultivariateNormal,
         cross_scheme: CrossScheme
 ) -> Tuple[CategoricalFloat, torch.Tensor]:
-    dist_axes = dd_gen.axes_from_norm(dist)
+    dist_axes = axes_from_norm(dist)
 
     if not equal_axes(dist_axes, cross_scheme, atol=TOL):
         raise ValueError('The distribution and the cross partition do not share the same axes.')
