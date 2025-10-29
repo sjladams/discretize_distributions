@@ -148,17 +148,30 @@ class CategoricalGrid(Distribution):
 
 
 ### Utility functions for CategoricalFloat distributions --------------------------- ###
-def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
+def compress_categorical_floats(dist: CategoricalFloat, n_max: int) -> CategoricalFloat:
     """
     Compress CategoricalFloat from n support locations to n_max.
     """
-    if dist.num_components <= n_max:
-        probs, locs = dist.probs, dist.locs
+    locs, probs = compress_locs_and_probs(dist.locs, dist.probs, n_max)
+    return CategoricalFloat(locs, probs)
+
+
+def compress_locs_and_probs(locs: torch.Tensor, probs: torch.Tensor, n_max: int):
+    bs = locs.shape[:-2]
+
+    if not probs.shape[:-1] == bs:
+        raise ValueError("locs and probs must have the same batch shape.")
+
+    if not locs.size(-2) == probs.size(-1):
+        raise ValueError("locs and probs must have the same number of support points.")
+
+    if locs.size(-2) <= n_max:
+        pass
     elif n_max == 1:
-        probs = torch.ones(dist.probs.shape[:-2]).unsqueeze(-1)
-        locs = torch.einsum('...ij,...i->...j', dist.locs, dist.probs).unsqueeze(-2)
+        probs = torch.ones(bs).unsqueeze(-1)
+        locs = torch.einsum('...ij,...i->...j', locs, probs).unsqueeze(-2)
     else:
-        labels = kmean_clustering_batches(dist.locs, n_max)
+        labels = kmean_clustering_batches(locs, n_max)
         n = len(labels.unique())
 
         labels = torch.zeros(labels.shape + (n,)).scatter_(
@@ -167,10 +180,10 @@ def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
             src=torch.ones(labels.shape).unsqueeze(-1)
         )
 
-        locs = labels.T @ dist.locs / labels.sum(dim=0).unsqueeze(1)
-        probs = labels.T @ dist.probs
+        locs = labels.swapaxes(-1, -2) @ locs / labels.sum(dim=-2).unsqueeze(-1)
+        probs = torch.einsum('...ij, ...j->...i', labels.swapaxes(-1, -2), probs)
 
-    return CategoricalFloat(locs, probs)
+    return locs, probs
 
 
 def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: CategoricalFloat):
