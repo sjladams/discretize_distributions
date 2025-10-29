@@ -86,7 +86,8 @@ def _discretize(
             locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
         
             if scheme.scheme_type == LayeredScheme:
-                locs_scheme, probs_scheme = compress_locs_and_probs(locs=locs_scheme, probs=probs_scheme, n_max=len(probs_scheme) // len(scheme[i]))
+                locs_scheme, probs_scheme, w2_compr = compress_locs_and_probs(locs=locs_scheme, probs=probs_scheme, n_max=len(probs_scheme) // len(scheme[i]), use_weighted_kmeans=True)
+                w2_sq += w2_compr.pow(2) * prob_scheme    
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
