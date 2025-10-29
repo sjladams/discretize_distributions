@@ -3,6 +3,7 @@ from typing import Union, Optional, Tuple, List, Callable
 
 from . import utils
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid
+from .distributions.categorical_float import compress_locs_and_probs
 from . import axes as dd_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cross, Grid, equal_axes
 from .generate_scheme import axes_from_norm
@@ -17,9 +18,9 @@ def discretize(
         scheme: Union[GridScheme, CrossScheme, LayeredScheme, BatchedScheme]
 ) -> Tuple[CategoricalFloat, torch.Tensor]:
     if len(dist.batch_shape) == 0:
-        if isinstance(scheme, GridScheme)  or (isinstance(scheme, LayeredScheme) and scheme.scheme_type == GridScheme):
+        if isinstance(scheme, GridScheme)  or (isinstance(scheme, LayeredScheme) and scheme.base_scheme_type == GridScheme):
             generator = discretize_multi_norm_using_grid_scheme
-        elif isinstance(scheme, CrossScheme) or (isinstance(scheme, LayeredScheme) and scheme.scheme_type == CrossScheme):
+        elif isinstance(scheme, CrossScheme) or (isinstance(scheme, LayeredScheme) and scheme.base_scheme_type == CrossScheme):
             generator = discretize_multi_norm_using_cross_scheme
         else:
             raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
@@ -65,7 +66,7 @@ def _discretize(
         probs = torch.stack(probs, dim=-1).sum(-1)
         locs = scheme.locs
         w2 = w2_sq.sqrt()
-    elif isinstance(dist, MixtureMultivariateNormal) and isinstance(scheme, LayeredScheme) and scheme.scheme_type in [GridScheme, CrossScheme]:
+    elif isinstance(dist, MixtureMultivariateNormal) and isinstance(scheme, LayeredScheme) and scheme.scheme_type in [GridScheme, CrossScheme, LayeredScheme]:
         if not dist.num_components >= len(scheme):
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
@@ -83,14 +84,20 @@ def _discretize(
                 continue
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
             locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
-
+        
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
             w2_sq += w2_scheme.pow(2) * prob_scheme
 
-        probs = torch.cat(probs, dim=0)
-        locs = torch.cat(locs, dim=0)
-        w2 = w2_sq.sqrt()
+        if scheme.scheme_type == LayeredScheme:
+            locs, probs = torch.stack(locs, dim=0), torch.stack(probs, dim=0)
+            locs, probs = compress_locs_and_probs(locs=locs, probs=probs, n_max=probs.size(-1) // probs.size(-2))
+            locs, probs = locs.flatten(0, 1), probs.flatten(0, 1)
+            w2 = w2_sq.sqrt()
+        else:
+            locs, probs = torch.cat(locs, dim=0), torch.cat(probs, dim=0)
+            w2 = w2_sq.sqrt()
+
     else:
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
                                   f"and scheme {type(scheme).__name__} is not implemented yet.")
@@ -106,6 +113,11 @@ def assign_scheme_to_gmm_components(
 ):
     if scheme.scheme_type == GridScheme:
         off_sets = torch.stack([elem.grid_of_locs.offset for elem in scheme], dim=0)
+    elif scheme.scheme_type == LayeredScheme and scheme.base_scheme_type == GridScheme:
+        off_sets = list()
+        for layered_elem in scheme.schemes:
+            off_sets.append(torch.stack([elem.grid_of_locs.offset for elem in layered_elem], dim=0).mean(0))
+        off_sets = torch.stack(off_sets, dim=0)
     else:
         off_sets = torch.stack([elem.offset for elem in scheme], dim=0)
 

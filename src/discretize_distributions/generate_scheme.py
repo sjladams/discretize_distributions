@@ -175,34 +175,47 @@ def generate_layered_scheme_for_mixture_multivariate_normal_per_mode(
     eps: float = 1e-8, 
     use_analytical_hessian: bool = True
 ) -> LayeredScheme:
-    if not covariance_matrices_have_common_eigenbasis(gmm.component_distribution):
-        raise ValueError("The components of the GMM do not share a common eigenbasis, set 'per_mode=False', to use the " \
-        "per_component method")
-
     eigenbasis = gmm.component_distribution[0].eigvecs
 
     modes = find_modes_gradient_ascent(gmm, n_iter=n_iter, lr=lr)
 
     prune_tol = default_prune_tol(gmm, factor=prune_factor)
     modes = prune_modes_weighted_averaging(modes, gmm.log_prob(modes), prune_tol)
-    
-    schemes = list()
-    for mode in modes:
-        cov = local_gaussian_covariance(gmm, mode, eps=eps, use_analytical_hessian=use_analytical_hessian)
 
-        # project to the eigenbasis (to compute the W2 w.r.t the gmm, all local_domains should have: rot_mat = eigenbasis):
-        eigvals = torch.diagonal(torch.einsum('ij,jk,kl->il', eigenbasis.swapaxes(-1, -2), cov, eigenbasis))
-        cov = torch.einsum('ij,j,jk->ik', eigenbasis, eigvals, eigenbasis.swapaxes(-1, -2))
+    if covariance_matrices_have_common_eigenbasis(gmm.component_distribution):    
+        schemes = list()
+        for mode in modes:
+            cov = local_gaussian_covariance(gmm, mode, eps=eps, use_analytical_hessian=use_analytical_hessian)
 
-        local_norm = MultivariateNormal(
-            loc=mode, 
-            covariance_matrix=cov, 
-            eigvals=eigvals, 
-            eigvecs=eigenbasis
-        )
-        schemes.append(generator_for_multivariate_normal(local_norm, int(scheme_size/len(modes))))
+            # project to the eigenbasis (to compute the W2 w.r.t the gmm, all local_domains should have: rot_mat = eigenbasis):
+            eigvals = torch.diagonal(torch.einsum('ij,jk,kl->il', eigenbasis.swapaxes(-1, -2), cov, eigenbasis))
+            cov = torch.einsum('ij,j,jk->ik', eigenbasis, eigvals, eigenbasis.swapaxes(-1, -2))
 
-    return LayeredScheme(schemes)
+            local_norm = MultivariateNormal(
+                loc=mode, 
+                covariance_matrix=cov, 
+                eigvals=eigvals, 
+                eigvecs=eigenbasis
+            )
+            schemes.append(generator_for_multivariate_normal(local_norm, int(scheme_size/len(modes))))
+
+        return LayeredScheme(schemes)
+    else:
+        mode_per_gmm_comp = torch.cdist(
+            modes,
+            gmm.component_distribution.loc, p=2
+        ).argmin(dim=0)
+        
+        schemes = list()
+        for i, mode in enumerate(modes):
+            indices = torch.where(mode_per_gmm_comp==i)[0]
+            if len(indices) == 0:
+                continue
+            
+            schemes.append(
+                generate_layered_scheme_for_mixture_multivariate_normal_per_component(gmm.select_components(indices), int(scheme_size/len(modes) * len(indices)), generator_for_multivariate_normal)
+            )
+        return LayeredScheme(schemes)
 
 
 def generate_cross_scheme_for_multivariate_normal(
