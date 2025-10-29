@@ -85,18 +85,15 @@ def _discretize(
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
             locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
         
+            if scheme.scheme_type == LayeredScheme:
+                locs_scheme, probs_scheme = compress_locs_and_probs(locs=locs_scheme, probs=probs_scheme, n_max=len(probs_scheme) // len(scheme[i]))
+
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
             w2_sq += w2_scheme.pow(2) * prob_scheme
 
-        if scheme.scheme_type == LayeredScheme:
-            locs, probs = torch.stack(locs, dim=0), torch.stack(probs, dim=0)
-            locs, probs = compress_locs_and_probs(locs=locs, probs=probs, n_max=probs.size(-1) // probs.size(-2))
-            locs, probs = locs.flatten(0, 1), probs.flatten(0, 1)
-            w2 = w2_sq.sqrt()
-        else:
-            locs, probs = torch.cat(locs, dim=0), torch.cat(probs, dim=0)
-            w2 = w2_sq.sqrt()
+        locs, probs = torch.cat(locs, dim=0), torch.cat(probs, dim=0)
+        w2 = w2_sq.sqrt()
 
     else:
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
