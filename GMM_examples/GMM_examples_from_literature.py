@@ -81,3 +81,34 @@ mixture_distribution = torch.distributions.Categorical(probs=weights_torch)
 gmm_Y = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
 
 ### ----------------------------------------- Example 3 ----------------------------------------- ###
+# Paper: Zamani, B., Kennedy, J., Chapman, A., Dower, P., Manzie, C., & Crase, S. (2025).
+# GMM-Based Time-Varying Coverage Control. arXiv preprint arXiv:2507.18938.
+# This paper uses the GMM as a density function to describe the region agents must follow. The agents' locations are
+# optimized wrt to the density of the GMM such that they are spread out over the "plume". Additionally the control
+# is optimized wrt the centroid of a Voronoi region in the GMM. This could be an interesting field to use
+# our discretization method instead.
+
+from simulated_plume import get_gmm_parameters
+
+times = [0, 25, 75, 149]
+gmm_parameters = {t: get_gmm_parameters(t) for t in times}
+gmm_torch_objects = {}
+
+for t, params in gmm_parameters.items():
+    means_torch = torch.tensor(params["means"], dtype=torch.float32)        # (5, 2)
+    covs_torch = torch.tensor(params["covariances"], dtype=torch.float32)   # (5, 2, 2)
+    weights_torch = torch.tensor(params["weights"], dtype=torch.float32)    # (5,)
+
+    component_distribution = dd_dists.MultivariateNormal(
+        loc=means_torch,
+        covariance_matrix=covs_torch
+    )
+    mixture_distribution = torch.distributions.Categorical(probs=weights_torch)
+
+    gmm = dd_dists.MixtureMultivariateNormal(mixture_distribution, component_distribution)
+    gmm_torch_objects[t] = gmm
+
+fig, ax = plt.subplots(figsize=(8, 8))
+ax = plot_2d_dist(ax, gmm_torch_objects[0]) # choose which time t you want to simulate
+ax = set_axis(ax)
+plt.show()
