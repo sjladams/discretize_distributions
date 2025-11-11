@@ -199,9 +199,12 @@ class CrossScheme(Scheme, Cross):
 class LayeredScheme:
     def __init__(
             self, 
-            schemes: Union[List[GridScheme], List[CrossScheme]]
+            schemes: Union[List[GridScheme], List[CrossScheme], List['LayeredScheme']]
     ):
-        if not all(gq.ndim == schemes[0].ndim for gq in schemes):
+        if not all(isinstance(scheme, type(schemes[0])) for scheme in schemes):
+            raise ValueError("All schemes must be of the same type.")
+
+        if not isinstance(schemes[0], LayeredScheme) and not all(gq.ndim == schemes[0].ndim for gq in schemes):
             raise ValueError("All grid schemes must have the same number of dimensions.")
 
         self.schemes = schemes
@@ -209,6 +212,17 @@ class LayeredScheme:
     @property
     def scheme_type(self):
         return type(self.schemes[0])
+
+    @property
+    def base_scheme_type(self):
+        return self._scheme_type(self.schemes)
+    
+    @staticmethod
+    def _scheme_type(schemes):
+        if isinstance(schemes[0], LayeredScheme):
+            return LayeredScheme._scheme_type(schemes[0].schemes)
+        else:
+            return type(schemes[0])
 
     def __len__(self):
         return len(self.schemes)

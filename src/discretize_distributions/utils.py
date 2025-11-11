@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import pickle
 import math
 from stable_trunc_gaussian import TruncatedGaussian
@@ -50,6 +51,86 @@ def is_sym(mat: torch.Tensor, atol: float = 1e-8) -> torch.Tensor:
     """
     return torch.allclose(mat, mat.transpose(-1, -2), atol=atol)
 
+
+@torch.no_grad()
+def weighted_kmeans(locs: torch.Tensor, probs: torch.Tensor, n_max: int, iters: int = 20, normalize_for_w2: bool = True):
+    """
+    locs : (B, N, d) or (N, d)
+    probs: (B, N)   or (N,)
+    n_max: number of clusters
+    Returns:
+      c   : (B, n_max, d)   centers
+      p   : (B, n_max)      masses per cluster (sum to 1 per batch)
+      w2  : (B,)            Wasserstein-2 distance (uses normalized weights if normalize_for_w2=True)
+    """
+    if locs.dim() == 2:
+        locs, probs = locs.unsqueeze(0), probs.unsqueeze(0)
+        squeeze_back = True
+    else:
+        squeeze_back = False
+
+    B, N, d = locs.shape
+    device, dtype = locs.device, locs.dtype
+
+    # Safety: nonnegative, keep original scaling for sampling (torch.multinomial normalizes internally)
+    probs = probs.clamp_min(0)
+
+    # --- k-means++ init (weighted), fill all n_max centers ---
+    idx = torch.multinomial(probs, num_samples=1)                          # (B,1)
+    c = locs.gather(1, idx.unsqueeze(-1).expand(B, 1, d)).clone()          # (B,1,d)
+
+    for _ in range(1, n_max):
+        d2_min = torch.cdist(locs, c, p=2).pow(2).min(dim=2).values        # (B,N)
+        # torch.multinomial auto-normalizes along dim 1
+        idx = torch.multinomial((probs * d2_min), num_samples=1)           # (B,1)
+        new_c = locs.gather(1, idx.unsqueeze(-1).expand(B, 1, d))          # (B,1,d)
+        c = torch.cat([c, new_c], dim=1)
+
+    # --- Lloyd iterations ---
+    for _ in range(iters):
+        d2 = torch.cdist(locs, c, p=2).pow(2)                               # (B,N,k)
+        assign = d2.argmin(dim=2)                                           # (B,N)
+
+        H = F.one_hot(assign, num_classes=n_max).to(dtype=dtype, device=device)  # (B,N,k) float
+
+        p = (probs.unsqueeze(-1) * H).sum(dim=1)                            # (B,k)
+        num = torch.einsum('bnd,bnk->bkd', locs, probs.unsqueeze(-1) * H)   # (B,k,d)
+
+        new_c = torch.where(p.unsqueeze(-1) > 0, num / (p.unsqueeze(-1) + 1e-20), c)
+
+        if torch.allclose(new_c, c, rtol=0.0, atol=1e-6):
+            c = new_c
+            break
+        c = new_c
+
+    # Final masses from assignment
+    d2 = torch.cdist(locs, c, p=2).pow(2)                                   # (B,N,k)
+    assign = d2.argmin(dim=2)                                               # (B,N)
+    H = F.one_hot(assign, num_classes=n_max).to(dtype=dtype, device=device) # (B,N,k)
+
+    p = (probs.unsqueeze(-1) * H).sum(dim=1)                                # (B,k)
+    total_mass = p.sum(dim=1, keepdim=True).clamp_min(1e-20)                # (B,1)
+    p = p / total_mass                                                      # normalize cluster masses
+
+    # W2 computation
+    d2_min = d2.gather(2, assign.unsqueeze(-1)).squeeze(-1)                 # (B,N)
+
+    if normalize_for_w2:
+        # Normalize probs per batch to true probabilities for the objective
+        mass = probs.sum(dim=1, keepdim=True).clamp_min(1e-20)
+        probs_norm = probs / mass
+        w2_sq = (probs_norm * d2_min).sum(dim=1)                            # (B,)
+    else:
+        # Uses raw weights; equals mass-weighted MSE, not a true W2² unless mass==1
+        w2_sq = (probs * d2_min).sum(dim=1)
+
+    w2 = torch.sqrt(w2_sq)
+
+    if squeeze_back:
+        return c[0], p[0], w2[0]
+    else:
+        return c, p, w2
+
 def kmean_clustering_batches(x: torch.Tensor, n: int):
     """
     Do K-means clustering for batches of samples
@@ -59,17 +140,20 @@ def kmean_clustering_batches(x: torch.Tensor, n: int):
     """
     kmeans_torch = KMeans(n_clusters=n, verbose=False)
     if len(x.shape) == 2:
-        labels = kmeans_torch(x.unsqueeze(0)).labels.squeeze(0)
+        print("remapping for batched inputs not implemented")
+        kmeans_result = kmeans_torch(x.unsqueeze(0))
+        labels = kmeans_result.labels.squeeze(0)
     else:
-        labels = kmeans_torch(x).labels
+        kmeans_result = kmeans_torch(x)
+        labels = kmeans_result.labels
 
-    # Ensure labels are consecutive integers
-    # There were cases where a particular cluster was empty, generating issues later
-    unique_labels = torch.unique(labels, sorted=True)
-    remap = {old_label.item(): new_label for new_label, old_label in enumerate(unique_labels)}
-    remapped_labels = labels.clone().apply_(lambda x: remap[x])
-
-    return remapped_labels
+        # Ensure labels are consecutive integers # This doesn't work for batches
+        # There were cases where a particular cluster was empty, generating issues later
+        unique_labels = torch.unique(labels, sorted=True)
+        remap = {old_label.item(): new_label for new_label, old_label in enumerate(unique_labels)}
+        labels = labels.clone().apply_(lambda l: remap[l])
+        
+    return labels
 
 def symmetrize_vector(vec: torch.Tensor) -> torch.Tensor:
     """

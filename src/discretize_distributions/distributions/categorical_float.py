@@ -2,7 +2,7 @@ import torch
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 
-from ..utils import kmean_clustering_batches
+from ..utils import kmean_clustering_batches, weighted_kmeans
 from ..points import Grid
 from ..axes import identity_axes
 
@@ -148,29 +148,33 @@ class CategoricalGrid(Distribution):
 
 
 ### Utility functions for CategoricalFloat distributions --------------------------- ###
-def compress_categorical_floats(dist: CategoricalFloat, n_max: int):
+def compress_categorical_floats(dist: CategoricalFloat, n_max: int) -> CategoricalFloat:
     """
     Compress CategoricalFloat from n support locations to n_max.
     """
-    if dist.num_components <= n_max:
-        probs, locs = dist.probs, dist.locs
-    elif n_max == 1:
-        probs = torch.ones(dist.probs.shape[:-2]).unsqueeze(-1)
-        locs = torch.einsum('...ij,...i->...j', dist.locs, dist.probs).unsqueeze(-2)
-    else:
-        labels = kmean_clustering_batches(dist.locs, n_max)
-        n = len(labels.unique())
-
-        labels = torch.zeros(labels.shape + (n,)).scatter_(
-            dim=-1,
-            index=labels.unsqueeze(-1),
-            src=torch.ones(labels.shape).unsqueeze(-1)
-        )
-
-        locs = labels.T @ dist.locs / labels.sum(dim=0).unsqueeze(1)
-        probs = labels.T @ dist.probs
-
+    locs, probs, w2 = compress_locs_and_probs(dist.locs, dist.probs, n_max)
     return CategoricalFloat(locs, probs)
+
+
+def compress_locs_and_probs(locs: torch.Tensor, probs: torch.Tensor, n_max: int):
+    bs = locs.shape[:-2]
+
+    if not probs.shape[:-1] == bs:
+        raise ValueError("locs and probs must have the same batch shape.")
+
+    if not locs.size(-2) == probs.size(-1):
+        raise ValueError("locs and probs must have the same number of support points.")
+
+    if locs.size(-2) <= n_max:
+        w2 = torch.zeros(bs)
+    elif n_max == 1:
+        probs = torch.ones(bs).unsqueeze(-1)
+        locs_new = torch.einsum('...ij,...i->...j', locs, probs).unsqueeze(-2)
+        w2 = (probs * (locs - locs_new).pow(2)).sum(-1)
+        locs = locs_new
+    else:
+        locs, probs, w2 = weighted_kmeans(locs, probs, n_max)
+    return locs, probs, w2
 
 
 def cross_product_categorical_floats(dist0: CategoricalFloat, dist1: CategoricalFloat):

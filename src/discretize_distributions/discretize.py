@@ -3,9 +3,10 @@ from typing import Union, Optional, Tuple, List, Callable
 
 from . import utils
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid
+from .distributions.categorical_float import compress_locs_and_probs
 from . import axes as dd_axes
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cross, Grid, equal_axes
-from . import generate_scheme as dd_gen
+from .generate_scheme import axes_from_norm
 
 TOL = 1e-8
 
@@ -17,9 +18,9 @@ def discretize(
         scheme: Union[GridScheme, CrossScheme, LayeredScheme, BatchedScheme]
 ) -> Tuple[CategoricalFloat, torch.Tensor]:
     if len(dist.batch_shape) == 0:
-        if isinstance(scheme, GridScheme)  or (isinstance(scheme, LayeredScheme) and scheme.scheme_type == GridScheme):
+        if isinstance(scheme, GridScheme)  or (isinstance(scheme, LayeredScheme) and scheme.base_scheme_type == GridScheme):
             generator = discretize_multi_norm_using_grid_scheme
-        elif isinstance(scheme, CrossScheme) or (isinstance(scheme, LayeredScheme) and scheme.scheme_type == CrossScheme):
+        elif isinstance(scheme, CrossScheme) or (isinstance(scheme, LayeredScheme) and scheme.base_scheme_type == CrossScheme):
             generator = discretize_multi_norm_using_cross_scheme
         else:
             raise NotImplementedError(f"Discretization for scheme {type(scheme).__name__} is not implemented yet.")
@@ -65,7 +66,7 @@ def _discretize(
         probs = torch.stack(probs, dim=-1).sum(-1)
         locs = scheme.locs
         w2 = w2_sq.sqrt()
-    elif isinstance(dist, MixtureMultivariateNormal) and isinstance(scheme, LayeredScheme) and scheme.scheme_type in [GridScheme, CrossScheme]:
+    elif isinstance(dist, MixtureMultivariateNormal) and isinstance(scheme, LayeredScheme) and scheme.scheme_type in [GridScheme, CrossScheme, LayeredScheme]:
         if not dist.num_components >= len(scheme):
             raise ValueError(
                 f'Number of components {dist.num_components} should be larger or equal to the number of grid schemes {len(scheme)}.'
@@ -83,14 +84,18 @@ def _discretize(
                 continue
             prob_scheme = dist.mixture_distribution.probs[indices].sum()
             locs_scheme, probs_scheme, w2_scheme = _discretize(dist.select_components(indices), scheme[i], generator_for_mult_norm)
+        
+            if scheme.scheme_type == LayeredScheme:
+                locs_scheme, probs_scheme, w2_compr = compress_locs_and_probs(locs=locs_scheme, probs=probs_scheme, n_max=len(probs_scheme) // len(scheme[i]), use_weighted_kmeans=True)
+                w2_sq += w2_compr.pow(2) * prob_scheme    
 
             probs.append(probs_scheme * prob_scheme)
             locs.append(locs_scheme)
             w2_sq += w2_scheme.pow(2) * prob_scheme
 
-        probs = torch.cat(probs, dim=0)
-        locs = torch.cat(locs, dim=0)
+        locs, probs = torch.cat(locs, dim=0), torch.cat(probs, dim=0)
         w2 = w2_sq.sqrt()
+
     else:
         raise NotImplementedError(f"Discretization for distribution {type(dist).__name__}"
                                   f"and scheme {type(scheme).__name__} is not implemented yet.")
@@ -106,6 +111,11 @@ def assign_scheme_to_gmm_components(
 ):
     if scheme.scheme_type == GridScheme:
         off_sets = torch.stack([elem.grid_of_locs.offset for elem in scheme], dim=0)
+    elif scheme.scheme_type == LayeredScheme and scheme.base_scheme_type == GridScheme:
+        off_sets = list()
+        for layered_elem in scheme.schemes:
+            off_sets.append(torch.stack([elem.grid_of_locs.offset for elem in layered_elem], dim=0).mean(0))
+        off_sets = torch.stack(off_sets, dim=0)
     else:
         off_sets = torch.stack([elem.offset for elem in scheme], dim=0)
 
@@ -120,7 +130,7 @@ def discretize_multi_norm_using_grid_scheme(
         grid_scheme: GridScheme,
         use_corollary_10: Optional[bool] = True
 ) -> Tuple[CategoricalGrid, torch.Tensor]:
-    dist_axes = dd_gen.axes_from_norm(dist)
+    dist_axes = axes_from_norm(dist)
 
     if not dd_axes.axes_have_common_eigenbasis(dist_axes, grid_scheme.grid_partition, atol=TOL):
         raise ValueError('The distribution and the grid partition do not share a common eigenbasis.')       
@@ -176,7 +186,7 @@ def discretize_multi_norm_using_cross_scheme(
         dist: MultivariateNormal,
         cross_scheme: CrossScheme
 ) -> Tuple[CategoricalFloat, torch.Tensor]:
-    dist_axes = dd_gen.axes_from_norm(dist)
+    dist_axes = axes_from_norm(dist)
 
     if not equal_axes(dist_axes, cross_scheme, atol=TOL):
         raise ValueError('The distribution and the cross partition do not share the same axes.')
