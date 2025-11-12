@@ -6,7 +6,7 @@ import pickle
 from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cell, Cross, Grid, GridPartition
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, covariance_matrices_have_common_eigenbasis
 from . import utils
-from .generate_scheme_utils import axes_from_norm, find_modes_gradient_ascent, default_prune_tol, prune_modes_weighted_averaging, local_gaussian_covariance
+from .generate_scheme_utils import axes_from_norm, find_modes_gradient_ascent, default_prune_tol, prune_modes_weighted_averaging, local_gaussian_covariance, closest_smaller_or_equal
 
 with (files("discretize_distributions") / "data" / "grid_shapes.pickle").open("rb") as f:
     GRID_SHAPES = pickle.load(f)
