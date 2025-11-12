@@ -21,6 +21,7 @@ class Info:
     def __init__(self, grid_shapes, optimal_1d_grids):
         self.grid_size_options = torch.tensor(list(grid_shapes.keys()), dtype=torch.int)
         self.max_grid_size_per_dim = torch.tensor(list(optimal_1d_grids['locs'].keys()), dtype=torch.int).max()
+        self.grid_size_per_dim_options = torch.tensor(list(optimal_1d_grids['locs'].keys()), dtype=torch.int)
 
     def __str__(self):
         return (
@@ -83,6 +84,7 @@ def generate_grid_scheme_for_multivariate_normal(
     domain: Optional[Cell] = None,
 ) -> GridScheme:
     grid_shape = get_optimal_grid_shape(eigvals=norm.eigvals, grid_size=grid_size)
+    grid_shape = [closest_smaller_or_equal(info.grid_size_per_dim_options.tolist(), int(dim)) for dim in grid_shape]
     locs_per_dim = [OPTIMAL_1D_GRIDS['locs'][int(grid_size_dim)] for grid_size_dim in grid_shape]
 
     if domain is not None:
