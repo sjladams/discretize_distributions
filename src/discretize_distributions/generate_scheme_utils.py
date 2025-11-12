@@ -1,4 +1,5 @@
 import torch
+import bisect
 
 from .axes import Axes
 from .distributions import MultivariateNormal, MixtureMultivariateNormal
@@ -168,3 +169,7 @@ def numerical_log_prob_hessian(gmm: MixtureMultivariateNormal, value: torch.Tens
         return gmm.log_prob(x.unsqueeze(0)).squeeze(0)
 
     return torch.autograd.functional.hessian(log_density_fn, value)  # [d, d]
+
+def closest_smaller_or_equal(lst, x):
+    i = bisect.bisect_right(lst, x)
+    return lst[i - 1] if i > 0 else lst[0]
