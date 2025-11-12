@@ -33,7 +33,7 @@ if __name__ == "__main__":
     scheme = dd.generate_scheme(
         gmm, 
         per_mode=True,
-        scheme_size=100000 * 2, 
+        scheme_size=10 * 2, 
         prune_factor=0.01, 
         n_iter=1000,
         lr=0.01,
