@@ -171,5 +171,6 @@ def numerical_log_prob_hessian(gmm: MixtureMultivariateNormal, value: torch.Tens
     return torch.autograd.functional.hessian(log_density_fn, value)  # [d, d]
 
 def closest_smaller_or_equal(lst, x):
+    lst = sorted(lst)
     i = bisect.bisect_right(lst, x)
     return lst[i - 1] if i > 0 else lst[0]
