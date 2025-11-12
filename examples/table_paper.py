@@ -9,6 +9,16 @@ import torch
 import discretize_distributions as dd
 import discretize_distributions.distributions as dd_dists
 
+import pickle
+
+def pickle_load(tag):
+    if not ".pickle" in tag:
+        tag = f"{tag}.pickle"
+    pickle_in = open(tag, "rb")
+    to_return = pickle.load(pickle_in)
+    pickle_in.close()
+    return to_return
+
 @dataclass
 class Benchmarks:
     data: Dict[str, dd_dists.MixtureMultivariateNormal] = field(default_factory=dict)
@@ -96,49 +106,74 @@ if __name__ == "__main__":
     torch.manual_seed(0)
 
     benchmarks = Benchmarks()
-    # Paper: Assa, A., & Plataniotis, K. N. (2018). Wasserstein-distance-based Gaussian mixture reduction. IEEE Signal
-    # Processing Letters, 25(10), 1465-1469.
-    # Parameters from the paper representing a GMM used in their experiments (Fig. 2) to show-case the working of their
-    # GMM compression method
+    # Assa, A., & Plataniotis, K. N. (2018). Wasserstein-distance-based Gaussian mixture reduction. - Figure 2
     benchmarks.append(
-        "asa et al", 
+        "assa2018wasserstein", 
         locs=torch.tensor([1.45, 2.20, 0.67, 0.48, 1.49, 0.91, 1.01, 1.42, 2.77, 0.89]).view(-1, 1),
         covs=torch.tensor([0.0487, 0.0305, 0.1171, 0.0174, 0.0295, 0.0102, 0.0323, 0.0380, 0.0115, 0.0679]).view(-1,1,1),
         probs=torch.tensor([0.03, 0.18, 0.12, 0.19, 0.02, 0.16, 0.06, 0.10, 0.08, 0.06]),
         num_modes=5
     )
-
-    # Double-spiral
+    # Xu, L. & Korba, A. & Slepcev, D. (2022). Accurate Quantization of Measures via Interacting Particle-based Optimization - Figure 10
     benchmarks.append(
-        "double-spiral", 
-        locs = torch.tensor([[1.0, 1.0], [1.1, 1.3], [-1.0, -1.0], [-1.1, -1.3], [-0.9, -0.8]]),
-        covs = torch.diag_embed(torch.tensor([[0.5, 0.6],[0.2, 0.3],[0.2, 0.4],[0.4, 0.8],[0.5, 0.6]])),
-        probs = torch.tensor([0.25, 0.25, 0.1, 0.2, 0.2]),
+        "xu2022accurate", 
+        locs=torch.tensor([[1., 0.], [-1., 0.]]),
+        covs=torch.diag_embed(torch.ones(2,2)) * 0.3,
+        probs=torch.tensor([0.5, 0.5]),
         num_modes=2
     )
-    # State bayesian network, example from the paper: Adams2024
+    # Terejanu, G. & Singla, P. & Singh, T. & Scott, P. D. (2008). Uncertainty Propagation for Nonlinear Dynamic Systems Using Gaussian Mixture Models
     benchmarks.append(
-        "bnn", 
-        locs=torch.stack((torch.zeros(128), torch.zeros(128))),
-        covs=torch.stack((
-            torch.diag(torch.cat((torch.ones(4) * 0.24**0.5, torch.ones(124) * 1e-5))),
-            torch.diag(torch.cat((torch.ones(4) * 0.24**0.5, torch.ones(124) * 1e-5)))
-            )),
-        probs=torch.tensor([0.5, 0.5]), 
+        "terejanu2008uncertainty", 
+        locs=torch.tensor([-0.5, 0.1]).view(-1, 1),
+        covs=torch.tensor([0.1, 1.]).view(-1, 1, 1),
+        probs=torch.tensor([0.1, 0.9]),
+        num_modes=2
+    )
+    # Runnalls & Andrew R (2007). Kullback-Leibler approach to Gaussian mixture reduction
+    benchmarks.append(
+        "runnalls2007kullback-example 4.1", 
+        locs=torch.tensor([[0., 0.], [0.0001, 0.0001], [-0.0001, -0.0001]]),
+        covs=torch.tensor([[[1., 0.9], [0.9, 1.]], [[1., 0.9], [0.9, 1.]], [[1., -0.9], [-0.9, 1.]]]),
+        probs=torch.ones(3),
+        num_modes=1
+    )
+    benchmarks.append(
+        "runnalls2007kullback-example 4.2", 
+        locs=torch.tensor([[0.661, 1.], [1.339, -1.], [-0.692, 1.1], [-1.308, -1.1]]),
+        covs=torch.diag_embed(torch.ones(4,2)),
+        probs=torch.ones(4),
+        num_modes=4
+    )
+    # Adams S. & Figueiredo E. & L. Laurenti (2025) Formal Uncertainty Propagation for Stochastic Dynamical Systems with Additive Noise - Double Spiral time step 8
+    benchmarks.append(
+        "double-spiral", 
+        locs = torch.tensor([[ 0.5111,  0.4806], [ 0.5192,  0.5002], [ 0.5297,  0.4729], [ 0.5378,  0.4925], [-0.5288,  0.4708], [-0.5348,  0.4853], [-0.5108,  0.4782], [-0.5168,  0.4928]]),
+        covs = torch.ones((8, 2, 2)) * 1e-4,
+        probs = torch.tensor([0.0782, 0.0568, 0.0868, 0.0608, 0.2060, 0.1504, 0.1941, 0.1670]),
+        num_modes=2
+    )
+    # State after first linear layer of a trained BNN, example from the paper: Adams2024
+    bnn_layer_data = pickle_load(os.path.join(os.path.dirname(__file__), "bnn_layer_data"))
+    benchmarks.append(
+        "BNN Layer", 
+        locs=bnn_layer_data["mean"].view(1, -1),
+        covs=torch.diag(bnn_layer_data["stddev"]**2).unsqueeze(0),
+        probs=torch.ones(1), 
         num_modes=1
     )
     # Degenerative 
     benchmarks.append(
         "degenerative", 
         locs = torch.tensor([[-2.01, -2.01], [-1.99, -1.99], [1.99, 1.99], [2.01, 2.01]]),
-        covs = torch.diag(torch.tensor([0.1, 0.0])).repeat(4, 1, 1),
+        covs = torch.ones((4, 2, 2)),
         probs = torch.tensor([0.25, 0.25, 0.25, 0.25]),
         num_modes=2
     )
 
     per_mode = True
 
-    scheme_size_options = [10, 100, 1000]
+    scheme_size_options = [10, 100, 1000, 10000]
 
     table = Table()
     for name in benchmarks.keys():
