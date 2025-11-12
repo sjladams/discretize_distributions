@@ -106,14 +106,6 @@ if __name__ == "__main__":
     torch.manual_seed(0)
 
     benchmarks = Benchmarks()
-    # Assa, A., & Plataniotis, K. N. (2018). Wasserstein-distance-based Gaussian mixture reduction. - Figure 2
-    benchmarks.append(
-        "assa2018wasserstein", 
-        locs=torch.tensor([1.45, 2.20, 0.67, 0.48, 1.49, 0.91, 1.01, 1.42, 2.77, 0.89]).view(-1, 1),
-        covs=torch.tensor([0.0487, 0.0305, 0.1171, 0.0174, 0.0295, 0.0102, 0.0323, 0.0380, 0.0115, 0.0679]).view(-1,1,1),
-        probs=torch.tensor([0.03, 0.18, 0.12, 0.19, 0.02, 0.16, 0.06, 0.10, 0.08, 0.06]),
-        num_modes=5
-    )
     # Xu, L. & Korba, A. & Slepcev, D. (2022). Accurate Quantization of Measures via Interacting Particle-based Optimization - Figure 10
     benchmarks.append(
         "xu2022accurate", 
@@ -122,6 +114,29 @@ if __name__ == "__main__":
         probs=torch.tensor([0.5, 0.5]),
         num_modes=2
     )
+    # Runnalls & Andrew R (2007). Kullback-Leibler approach to Gaussian mixture reduction
+    # benchmarks.append(
+    #     "runnalls2007kullback-example 4.1", 
+    #     locs=torch.tensor([[0., 0.], [0.0001, 0.0001], [-0.0001, -0.0001]]),
+    #     covs=torch.tensor([[[1., 0.9], [0.9, 1.]], [[1., 0.9], [0.9, 1.]], [[1., -0.9], [-0.9, 1.]]]),
+    #     probs=torch.ones(3),
+    #     num_modes=1
+    # )
+    benchmarks.append(
+        "runnalls2007kullback-example 4.2", 
+        locs=torch.tensor([[0.661, 1.], [1.339, -1.], [-0.692, 1.1], [-1.308, -1.1]]),
+        covs=torch.diag_embed(torch.ones(4,2)),
+        probs=torch.ones(4),
+        num_modes=4
+    )
+    # Assa, A., & Plataniotis, K. N. (2018). Wasserstein-distance-based Gaussian mixture reduction. - Figure 2
+    benchmarks.append(
+        "assa2018wasserstein", 
+        locs=torch.tensor([1.45, 2.20, 0.67, 0.48, 1.49, 0.91, 1.01, 1.42, 2.77, 0.89]).view(-1, 1),
+        covs=torch.tensor([0.0487, 0.0305, 0.1171, 0.0174, 0.0295, 0.0102, 0.0323, 0.0380, 0.0115, 0.0679]).view(-1,1,1),
+        probs=torch.tensor([0.03, 0.18, 0.12, 0.19, 0.02, 0.16, 0.06, 0.10, 0.08, 0.06]),
+        num_modes=5
+    )
     # Terejanu, G. & Singla, P. & Singh, T. & Scott, P. D. (2008). Uncertainty Propagation for Nonlinear Dynamic Systems Using Gaussian Mixture Models
     benchmarks.append(
         "terejanu2008uncertainty", 
@@ -129,21 +144,6 @@ if __name__ == "__main__":
         covs=torch.tensor([0.1, 1.]).view(-1, 1, 1),
         probs=torch.tensor([0.1, 0.9]),
         num_modes=2
-    )
-    # Runnalls & Andrew R (2007). Kullback-Leibler approach to Gaussian mixture reduction
-    benchmarks.append(
-        "runnalls2007kullback-example 4.1", 
-        locs=torch.tensor([[0., 0.], [0.0001, 0.0001], [-0.0001, -0.0001]]),
-        covs=torch.tensor([[[1., 0.9], [0.9, 1.]], [[1., 0.9], [0.9, 1.]], [[1., -0.9], [-0.9, 1.]]]),
-        probs=torch.ones(3),
-        num_modes=1
-    )
-    benchmarks.append(
-        "runnalls2007kullback-example 4.2", 
-        locs=torch.tensor([[0.661, 1.], [1.339, -1.], [-0.692, 1.1], [-1.308, -1.1]]),
-        covs=torch.diag_embed(torch.ones(4,2)),
-        probs=torch.ones(4),
-        num_modes=4
     )
     # Adams S. & Figueiredo E. & L. Laurenti (2025) Formal Uncertainty Propagation for Stochastic Dynamical Systems with Additive Noise - Double Spiral time step 8
     benchmarks.append(
