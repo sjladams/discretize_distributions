@@ -6,12 +6,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setuptools.setup(
     name="discretize_distributions",
     version="2.0.0",
-    author="Steven Adams",
-    author_email="stevenjladams@gmail.com",
+    author="Anonymous",
     description="Signatures of Probability Distributions",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/sjladams/discretize_distributions",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
