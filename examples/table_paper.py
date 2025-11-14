@@ -165,8 +165,8 @@ if __name__ == "__main__":
     # Degenerative 
     benchmarks.append(
         "degenerative", 
-        locs = torch.tensor([[-2.01, -2.01], [-1.99, -1.99], [1.99, 1.99], [2.01, 2.01]]),
-        covs = torch.ones((4, 2, 2)),
+        locs = torch.cat((torch.tensor([[-2.01, -2.01], [-1.99, -1.99], [1.99, 1.99], [2.01, 2.01]]), torch.zeros(4, 8)), dim=1),
+        covs = torch.block_diag(torch.ones((2, 2)), torch.zeros(8,8)).unsqueeze(0).repeat(4,1,1),
         probs = torch.tensor([0.25, 0.25, 0.25, 0.25]),
         num_modes=2
     )
