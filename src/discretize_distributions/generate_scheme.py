@@ -132,7 +132,7 @@ def get_optimal_grid_shape(
         grid_size_options = torch.tensor(list(GRID_SHAPES.keys()), dtype=torch.int)
         idx_closest_option = torch.where(grid_size_options <= grid_size)[0][-1]
         grid_size = int(grid_size_options[idx_closest_option])
-        print(f'Grid optimized for size: {grid_size}, requested grid size not available in lookuptables')
+        # print(f'Grid optimized for size: {grid_size}, requested grid size not available in lookuptables')
 
     if grid_size == 1:
         opt_shape = torch.empty(batch_shape + (0,)).to(torch.int64)
