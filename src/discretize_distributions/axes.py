@@ -26,8 +26,8 @@ class Axes:
         if not batch_shape == torch.Size([]):
             raise ValueError("Batching is not supported for Axes yet.")
 
-        if not torch.allclose(rot_mat.swapaxes(-2, -1) @ rot_mat, torch.eye(ndim_support), atol=TOL):
-            raise ValueError("Rotation matrix must be orthogonal.")
+        if not is_orthonormal_columns(rot_mat):
+            raise ValueError("Rotation matrix must be orthogonal.")        
 
         self._ndim_support = ndim_support
         self._ndim = ndim
@@ -108,3 +108,14 @@ def equal_axes(axes0: Axes, axes1: Axes, atol=TOL) -> bool:
 
 def identity_axes(axes: Axes, atol=TOL) -> bool:
     return equal_axes(axes, IdentityAxes(ndim_support=axes.ndim_support), atol=atol)
+
+def is_orthonormal_columns(rot_mat: torch.Tensor, *, fudge: float = 1e4) -> bool:
+    ndim_support = rot_mat.shape[-1]
+    G = (rot_mat.transpose(-2, -1).double() @ rot_mat.double())
+    I = torch.eye(ndim_support, dtype=G.dtype, device=G.device)
+
+    # Use an infinity-norm style bound
+    err = (G - I).abs().max().item()
+    eps = torch.finfo(rot_mat.dtype).eps
+    tol = fudge * eps * (ndim_support + 1)
+    return err <= tol

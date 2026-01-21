@@ -202,6 +202,18 @@ def is_permuted_eye(mat: torch.Tensor) -> bool:
 
     return True
 
+def permute_indicator_from_scale_mat(new_scale_mat: torch.Tensor, *, rtol: float = 1e-6) -> torch.Tensor:
+    """
+    Returns a 0/1 matrix indicating "significant" entries of new_scale_mat relative to each row's maximum magnitude.
+    """
+    A = new_scale_mat.double().abs()
+    row_max = A.max(dim=-1, keepdim=True).values
+    # If a row is all zeros, cannot define a permutation support
+    if torch.any(row_max == 0):
+        return torch.zeros_like(new_scale_mat, dtype=new_scale_mat.dtype)
+
+    return (A > (rtol * row_max)).to(dtype=new_scale_mat.dtype)
+
 def cdf(x: Union[torch.Tensor, float], mu: Union[torch.Tensor, float] = 0., scale: Union[torch.Tensor, float] = 1.):
     """
     cdf normal distribution
