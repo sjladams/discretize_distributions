@@ -2,7 +2,6 @@ from typing import Union, Callable, Optional
 
 import torch
 import math
-import ot
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from matplotlib.patches import Circle
@@ -45,7 +44,6 @@ def single_step(
         num_samples: int,
         scheme_size: int,
         w2_p__q_global_lipschitz: float = 0.,
-        run_empirical: bool = False,
         p_samples: Optional[torch.Tensor] = None,
 ):
     # Approximate the state distribution
@@ -74,16 +72,9 @@ def single_step(
     # Propagate wasserstein error, i.e., compute W_2(p_1, q_1) = W_2(f#p_k, f#\Delta_C#q_k)
     w2_p1__q1_global_lipschitz =dynamics.global_lipschitz * (w2_q__disc_q + w2_p__q_global_lipschitz)
 
-    if run_empirical:
-        w2_p1__q1_empirical = ot.solve_sample(p1_samples.view(-1, p1_samples.shape[-1]),
-                                                 q1_samples.view(-1, q1_samples.shape[-1])
-                                                 ).value.sqrt()
-    else:
-        w2_p1__q1_empirical = torch.nan
-
     return (
         w2_q__disc_q, 
-        dict(w2_p1__q1_empirical=w2_p1__q1_empirical, w2_p1__q1_global_lipschitz=w2_p1__q1_global_lipschitz),  
+        dict(w2_p1__q1_global_lipschitz=w2_p1__q1_global_lipschitz),  
         dict(q1=q1, q=q), 
         dict(q1_samples=q1_samples, p1_samples=p1_samples)
     )
@@ -96,7 +87,6 @@ def multi_step(
     num_time_steps: int,
     num_samples: int,
     scheme_size: int,
-    run_empirical: bool = False
 ):
     w2_p1__q1_store = {-1: dict(w2_p1__q1_global_lipschitz=0.)}
     w2_q__sign_q_store = dict()
@@ -115,7 +105,6 @@ def multi_step(
             w2_p__q_global_lipschitz=w2_p1__q1_store[k-1]['w2_p1__q1_global_lipschitz'],
             num_samples=num_samples,
             scheme_size=scheme_size, 
-            run_empirical=run_empirical
         )
 
         print(
@@ -243,7 +232,6 @@ if __name__== '__main__':
         num_time_steps=6,
         num_samples=100,
         scheme_size=10, 
-        run_empirical=False
     )
 
     xlim, ylim = [-1., 1.], [-1., 1.]
