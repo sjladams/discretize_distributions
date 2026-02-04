@@ -1,14 +1,10 @@
 import setuptools
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
-
 setuptools.setup(
     name="discretize_distributions",
     version="2.0.0",
     author="Anonymous",
     description="Signatures of Probability Distributions",
-    long_description=long_description,
     long_description_content_type="text/markdown",
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -23,7 +19,8 @@ setuptools.setup(
         'torch-kmeans>=0.2.0',
         'xitorch>=0.3.0',
         'stable-trunc-gaussian>=1.3.9',
-        'tqdm'
+        'tqdm',
+        'matplotlib',
     ],
     package_data = {
         "discretize_distributions": ["data/*.pickle"],  # Include the pickle file
