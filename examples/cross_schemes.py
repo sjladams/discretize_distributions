@@ -33,7 +33,7 @@ if __name__ == "__main__":
     ax = plot_2d_dist(ax, norm)
     ax = plot_2d_cat_float(ax, disc_norm)
     ax = set_axis(ax)
-    plt.savefig(os.path.join(dirname, 'f5_cross_gauss.png'))
+    plt.savefig(os.path.join(dirname, 'f4_cross_gauss.png'))
         
     ## Mixture
     locs = torch.tensor([

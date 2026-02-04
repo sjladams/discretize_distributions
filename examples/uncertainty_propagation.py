@@ -157,6 +157,7 @@ def plot_2d_dynamics(dynamics,  xlim: Optional[list] = None, ylim: Optional[list
     plt.ylabel(r'$x_2$')
 
     # plt.title('Vector Plot Dynamics')
+    plt.tight_layout()
     plt.savefig(os.path.join(dirname, 'f5_dyn.png'))
 
 
@@ -194,6 +195,7 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         ax[i].set_title(f"{'Approximation' if tag == 'q1_samples' else 'Empirical'}")  # samples and ambiguity sets over time steps
         ax[i].set_xlim(xlim) if xlim is not None else None
         ax[i].set_ylim(ylim) if ylim is not None else None
+    plt.tight_layout()
     fig.savefig(os.path.join(dirname, 'f5_uq.png'))
 
             
