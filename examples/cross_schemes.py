@@ -1,10 +1,16 @@
 import torch
 import discretize_distributions as dd
+import os
+from pathlib import Path
 
 import discretize_distributions.distributions as dd_dists
 from matplotlib import pyplot as plt
 
 from plot import *
+
+dirname = Path("results")
+if not dirname.is_dir():
+    dirname.mkdir(parents=True, exist_ok=False)
 
 
 if __name__ == "__main__":
@@ -23,12 +29,11 @@ if __name__ == "__main__":
 
     disc_norm, _ = dd.discretize(norm, cross_scheme)
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(6, 6))
     ax = plot_2d_dist(ax, norm)
     ax = plot_2d_cat_float(ax, disc_norm)
     ax = set_axis(ax)
-    ax.set_title(f'Cross-Shaped Discretization of a Gaussian')
-    plt.show()
+    plt.savefig(os.path.join(dirname, 'f5_cross_gauss.png'))
         
     ## Mixture
     locs = torch.tensor([
@@ -62,9 +67,8 @@ if __name__ == "__main__":
 
     disc_gmm, w2 = dd.discretize(gmm, scheme)
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(6, 6))
     ax = plot_2d_dist(ax, gmm)
     ax = plot_2d_cat_float(ax, disc_gmm)
     ax = set_axis(ax)
-    ax.set_title(f'Cross-Shaped Discretization of GMM (Per Component)')
-    plt.show()
+    plt.savefig(os.path.join(dirname, 'f4_cross_mix.png'))

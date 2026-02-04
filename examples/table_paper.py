@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import os
+from pathlib import Path
 import time
 
 import csv
@@ -10,6 +11,10 @@ import discretize_distributions as dd
 import discretize_distributions.distributions as dd_dists
 
 import pickle
+
+dirname = Path("results")
+if not dirname.is_dir():
+    dirname.mkdir(parents=True, exist_ok=False)
 
 def pickle_load(tag):
     if not ".pickle" in tag:
@@ -89,7 +94,7 @@ def generate_csv(
         rows.append(row)
 
     # Write to CSV
-    csv_path = os.path.join(os.path.dirname(__file__), "table.csv")
+    csv_path = os.path.join(dirname, "f2_table_1.csv")
     with open(csv_path, mode="w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=rows[0].keys(), delimiter=';')
         writer.writeheader()
@@ -115,13 +120,6 @@ if __name__ == "__main__":
         num_modes=2
     )
     # Runnalls & Andrew R (2007). Kullback-Leibler approach to Gaussian mixture reduction
-    # benchmarks.append(
-    #     "runnalls2007kullback-example 4.1", 
-    #     locs=torch.tensor([[0., 0.], [0.0001, 0.0001], [-0.0001, -0.0001]]),
-    #     covs=torch.tensor([[[1., 0.9], [0.9, 1.]], [[1., 0.9], [0.9, 1.]], [[1., -0.9], [-0.9, 1.]]]),
-    #     probs=torch.ones(3),
-    #     num_modes=1
-    # )
     benchmarks.append(
         "runnalls2007kullback-example 4.2", 
         locs=torch.tensor([[0.661, 1.], [1.339, -1.], [-0.692, 1.1], [-1.308, -1.1]]),

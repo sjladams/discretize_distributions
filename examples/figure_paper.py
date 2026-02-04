@@ -1,11 +1,17 @@
 import torch
 from matplotlib import pyplot as plt
+import os
+from pathlib import Path
 
 import discretize_distributions as dd
 import discretize_distributions.distributions as dd_dists
 
 from plot import *
 
+
+dirname = Path("results")
+if not dirname.is_dir():
+    dirname.mkdir(parents=True, exist_ok=False)
 
 if __name__ == "__main__":
     torch.manual_seed(0)
@@ -36,26 +42,28 @@ if __name__ == "__main__":
     disc_per_comp, w2 = dd.discretize(gmm, scheme_per_comp)
 
     # Print stats
-    print(f'W2 Error (per mode): {w2_per_mode:.4f}, Support size: {disc_per_mode.num_components}')
-    print(f'W2 Error (per component): {w2:.4f}, Support size: {disc_per_comp.num_components}')
+    # print(f'Figure 3a: W2 Error: {w2_per_mode:.2f}, Support size: {disc_per_mode.num_components}')
+    # print(f'Figure 3b: W2 Error: {w2:.2f}, Support size: {disc_per_comp.num_components}')
 
     # Plotting
     samples = gmm.sample((100000,))
+
 
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.hist2d(samples[:, 0], samples[:, 1], bins=[100, 100], density=True, edgecolor='none')
     ax = plot_2d_cat_float(ax, disc_per_mode)
     set_axis(ax, xlim=[-3., 2.5], ylim=[-3., 2.5])
     ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title(f'W2 Error: {w2_per_mode:.2f}, Support size: {disc_per_mode.num_components}')
     fig.tight_layout()
-    plt.savefig('per_mode.png')
+    plt.savefig(os.path.join(dirname, 'f1_figure_3a.png'))
 
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.hist2d(samples[:,0], samples[:,1], bins=[100, 100], density=True, edgecolor='none')
     ax = plot_2d_cat_float(ax, disc_per_comp)
     set_axis(ax, xlim=[-3., 2.5], ylim=[-3., 2.5])
     ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title(f'W2 Error: {w2:.2f}, Support size: {disc_per_comp.num_components}')
     fig.tight_layout()
-    plt.savefig('per_component.png')
+    plt.savefig(os.path.join(dirname, 'f1_figure_3b.png'))
 
-    # plt.show()

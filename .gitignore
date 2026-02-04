@@ -20,7 +20,7 @@ dist/
 .venv/
 venv/
 
-# Test files
+# Test / Output files
 tests/
-
 playground/
+results/

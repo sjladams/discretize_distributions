@@ -1,11 +1,16 @@
 import torch
 import discretize_distributions as dd
+import os
+from pathlib import Path
 
 import discretize_distributions.distributions as dd_dists
 from matplotlib import pyplot as plt
 
 from plot import *
 
+dirname = Path("results")
+if not dirname.is_dir():
+    dirname.mkdir(parents=True, exist_ok=False)
 
 if __name__ == "__main__":
     locs = torch.tensor([[[-1.0, 1.0], [1.0, -1.0]], [[1.0, 1.0], [-1.0, -1.0]]])
@@ -31,10 +36,11 @@ if __name__ == "__main__":
 
     disc_gmm, w2 = dd.discretize(gmm, schemes)
 
-    fig, axs = plt.subplots(ncols=gmm.batch_shape[-1], figsize=(8 * 2, 8))
+    fig, axs = plt.subplots(ncols=gmm.batch_shape[-1], figsize=(5 * 2, 5))
     for i, ax in enumerate(axs):
         ax = plot_2d_dist(ax, gmm[i])
         ax = plot_2d_cat_float(ax, disc_gmm[i])
         ax = set_axis(ax)
-        ax.set_title(f'W2 Error: {w2[i]:.2f}, Support Size: {disc_gmm.num_components})')
-    plt.show()
+        ax.set_title(f'W2 Error: {w2[i]:.2f}, Support Size: {disc_gmm.num_components}')
+
+    plt.savefig(os.path.join(dirname, 'f4_batch.png'))
