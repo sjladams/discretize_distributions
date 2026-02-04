@@ -15,9 +15,6 @@ def random_pd_mat(d: int, batch_shape=(), eps: float = 1e-3) -> torch.Tensor:
 
 
 if __name__ == "__main__":
-
-    # TODO have to add some filtering to the distributions class to avoid 'double' gaussians with for instance same means
-
     torch.manual_seed(0)
 
     locs = torch.tensor([
@@ -31,7 +28,7 @@ if __name__ == "__main__":
         [[0.5, 0.05], [0.05, 1.0]],
         [[0.4, 0.15], [0.15, 0.8]],
         [[0.2, 0.1], [0.1, 1.0]],
-        [[0.6, 0.2], [0.2, 1.6]],     # [ # TODO isssue #24 (partly non-degenerate covariances) is triggerd for [0.4, 0.8], [0.8, 1.6]]
+        [[0.6, 0.2], [0.2, 1.6]],
     ])
     probs = torch.tensor([0.25, 0.25, 0.2, 0.3])
 
