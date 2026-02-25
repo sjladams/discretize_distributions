@@ -43,11 +43,14 @@ def generate_scheme(
         if configuration == 'grid':
             def generator(norm: MultivariateNormal, size: int):
                 return generate_grid_scheme_for_multivariate_normal(norm, grid_size=size)
+        elif configuration == 'uniform_grid':
+            def generator(norm: MultivariateNormal, size: int):
+                return generate_uniform_grid_scheme_for_multivariate_normal(norm, grid_size=size)
         elif configuration == 'cross':
             def generator(norm: MultivariateNormal, size: int, ):
                 return generate_cross_scheme_for_multivariate_normal(norm, cross_size=size, ndim_support=ndim_support)
         else:
-            raise ValueError(f'Configuration {configuration} not recognized, should be "grid" or "cross".')
+            raise ValueError(f'Configuration {configuration} not recognized, should be "grid", "uniform_grid", or "cross".')
         
 
         if isinstance(dist, MultivariateNormal):
@@ -106,6 +109,40 @@ def generate_grid_scheme_for_multivariate_normal(
     grid_partition = GridPartition.from_grid_of_points(grid_of_locs, domain)
 
     return GridScheme(grid_of_locs, grid_partition)
+
+
+def generate_uniform_grid_scheme_for_multivariate_normal(
+    norm: MultivariateNormal,
+    grid_size: int,
+    domain: Optional[Cell] = None,
+) -> GridScheme:
+    grid_size_dim = int(grid_size ** (1 / norm.ndim_support))
+
+    optimal_locs_dim = OPTIMAL_1D_GRIDS['locs'][grid_size_dim]
+    locs_dim = torch.linspace(optimal_locs_dim[0], optimal_locs_dim[-1], steps=grid_size_dim)
+
+    locs_per_dim = [locs_dim] * norm.ndim_support
+
+    if domain is not None:
+        if not torch.allclose(norm.inv_mahalanobis_mat, domain.trans_mat, atol=TOL):
+            raise ValueError('The domain transform matrix does not match the inverse mahalanobis matrix of the ' \
+            'distribution.')
+        if not torch.allclose(norm.loc, domain.offset, atol=TOL):
+            raise ValueError('The domain offset does not match the location of the distribution.')
+        
+        locs_per_dim = [
+            torch.unique(torch.clip(c, min=l, max=u)) for c, l, u in 
+            zip(locs_per_dim, domain.lower_vertex, domain.upper_vertex)
+        ]
+
+    grid_of_locs = Grid(locs_per_dim, axes=axes_from_norm(norm))
+
+    # print(f'Requested grid size: {grid_size}, realized grid size over domain: {len(grid_of_locs)}')
+
+    grid_partition = GridPartition.from_grid_of_points(grid_of_locs, domain)
+
+    return GridScheme(grid_of_locs, grid_partition)
+
 
 def get_optimal_grid_shape(
         eigvals: torch.Tensor,
