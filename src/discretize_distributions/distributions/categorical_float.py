@@ -170,7 +170,7 @@ def compress_locs_and_probs(locs: torch.Tensor, probs: torch.Tensor, n_max: int)
     elif n_max == 1:
         probs = torch.ones(bs).unsqueeze(-1)
         locs_new = torch.einsum('...ij,...i->...j', locs, probs).unsqueeze(-2)
-        w2 = (probs * (locs - locs_new).pow(2)).sum(-1)
+        w2 = torch.sqrt((probs * (locs - locs_new).pow(2)).sum(-1))
         locs = locs_new
     else:
         locs, probs, w2 = weighted_kmeans(locs, probs, n_max)
