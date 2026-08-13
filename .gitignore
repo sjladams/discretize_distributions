@@ -24,3 +24,5 @@ venv/
 tests/
 playground/
 results/
+.claude
+CLAUDE.md
