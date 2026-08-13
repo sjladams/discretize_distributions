@@ -1,4 +1,6 @@
 from typing import Union, Callable, Optional
+import os
+from pathlib import Path
 
 import torch
 import math
@@ -12,6 +14,11 @@ import discretize_distributions.distributions as dd_dists
 COLORS = ['Blues', 'BuPu', 'PuRd', 'Greens', 'Oranges', 'Reds', 'Greys', 'Purples',
                       'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
                       'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
+
+
+dirname = Path("results")
+if not dirname.is_dir():
+    dirname.mkdir(parents=True, exist_ok=False)
 
 class Dynamics:
     def __init__(self, global_lipschitz: float):
@@ -130,7 +137,7 @@ def plot_2d_dynamics(dynamics,  xlim: Optional[list] = None, ylim: Optional[list
         next_states = dynamics(grid_points)
         deltas = next_states - grid_points
 
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(5, 5))
     plt.quiver(
         grid_points[:, 0].numpy(),  # X coordinates
         grid_points[:, 1].numpy(),  # Y coordinates
@@ -149,7 +156,9 @@ def plot_2d_dynamics(dynamics,  xlim: Optional[list] = None, ylim: Optional[list
     plt.xlabel(r'$x_1$')
     plt.ylabel(r'$x_2$')
 
-    plt.title('Vector Plot Dynamics')
+    # plt.title('Vector Plot Dynamics')
+    plt.tight_layout()
+    plt.savefig(os.path.join(dirname, 'f5_dyn.png'))
 
 
 @torch.no_grad()
@@ -165,7 +174,7 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         samples_options, w2_p1__q1_store_options, q_store_options = [samples], [w2_p1__q1_store], [q_store]
 
 
-    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
     for i, tag in enumerate(['p1_samples', 'q1_samples']):
         for samples, w2_p1__q1_store, q_store in zip(samples_options, w2_p1__q1_store_options, q_store_options):
             time_steps = list(q_store.keys())[::step_size][:-1]
@@ -183,10 +192,11 @@ def plot_2d_ambiguity_balls(samples: Union[dict, list], w2_p1__q1_store: Union[d
         ax[i].yaxis.set_major_locator(MaxNLocator(integer=True))
         ax[i].set_xlabel(r'$x_1$')
         ax[i].set_ylabel(r'$x_2$')
-        ax[i].set_title(f"{'Approximation' if tag == 'q1_samples' else 'Empirical'} samples and ambiguity sets over time steps")
+        ax[i].set_title(f"{'Approximation' if tag == 'q1_samples' else 'Empirical'}")  # samples and ambiguity sets over time steps
         ax[i].set_xlim(xlim) if xlim is not None else None
         ax[i].set_ylim(ylim) if ylim is not None else None
     plt.tight_layout()
+    fig.savefig(os.path.join(dirname, 'f5_uq.png'))
 
             
 
@@ -237,4 +247,4 @@ if __name__== '__main__':
     xlim, ylim = [-1., 1.], [-1., 1.]
     plot_2d_dynamics(dynamics, xlim=xlim, ylim=ylim)
     plot_2d_ambiguity_balls(samples_store, w2_p1__q1_store, q_store, xlim=xlim, ylim=ylim)
-    plt.show()    
+    # plt.show()    
