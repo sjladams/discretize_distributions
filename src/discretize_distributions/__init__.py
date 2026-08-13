@@ -1,4 +1,5 @@
 from .discretize import discretize
+from .evaluation import compute_local_mse
 from .generate_scheme import info
 
 from . import distributions
@@ -8,7 +9,8 @@ from .generate_scheme import generate_scheme
 
 __all__ = [
     'discretize',
-    'distributions', 
+    'compute_local_mse',
+    'distributions',
     'schemes', 
     'info',
     'generate_scheme', 
