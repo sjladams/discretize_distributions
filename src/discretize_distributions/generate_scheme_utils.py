@@ -125,6 +125,13 @@ def find_modes_mean_shift(
     mean-shift step is a bound-optimization (EM-style) update that never decreases
     log p(x), so no step size is needed and convergence is monotonic.
 
+    Rank-deficient covariances are supported: a component whose affine support does not
+    contain the current iterate has density exactly zero there, hence responsibility zero.
+    Masking those components out keeps every iterate on the support it started on (the
+    update is a convex combination of the means it is still on-support for), which is what
+    the pseudoinverse Mahalanobis distance alone would miss - it ignores displacements
+    orthogonal to the support and would blend components living on disjoint supports.
+
     Args:
         gmm: MixtureMultivariateNormal, with equal component covariances
         n_iter: Maximum number of mean-shift iterations
@@ -141,14 +148,22 @@ def find_modes_mean_shift(
     mask_init_locs = torch.randperm(gmm.num_components)[: min(max_modes, gmm.num_components)]
     locs = gmm.component_distribution.loc.detach()  # [K, d]
     log_weights = gmm.mixture_distribution.probs.detach().log()  # [K]
-    precision = torch.linalg.pinv(gmm.component_distribution.covariance_matrix[0].detach(), hermitian=True)  # [d, d]
+    # shared covariance Sigma = U diag(eigvals) U^T, restricted to its column space (support)
+    eigvecs = gmm.component_distribution.eigvecs[0].detach()  # [d, k]
+    eigvals = gmm.component_distribution.eigvals[0].detach().clamp_min(TOL)  # [k]
+    degenerate = gmm.component_distribution.event_shape != gmm.component_distribution.event_shape_support
 
     x = locs[mask_init_locs].clone()  # [n_init, d]
 
     for i in range(n_iter):
         diff = x.unsqueeze(-2) - locs  # [n_init, K, d]
-        mahal = torch.einsum('nkd,de,nke->nk', diff, precision, diff)  # [n_init, K]
-        resp = torch.softmax(log_weights - 0.5 * mahal, dim=-1)  # [n_init, K]
+        proj = torch.einsum('nkd,dj->nkj', diff, eigvecs)  # [n_init, K, k]
+        mahal = proj.square().div(eigvals).sum(-1)  # [n_init, K]
+        logits = log_weights - 0.5 * mahal  # [n_init, K]
+        if degenerate:
+            perp = diff - torch.einsum('nkj,dj->nkd', proj, eigvecs)  # [n_init, K, d]
+            logits = logits.masked_fill(perp.norm(dim=-1) > tol, -torch.inf)
+        resp = torch.softmax(logits, dim=-1)  # [n_init, K]
         x_new = torch.einsum('nk,kd->nd', resp, locs)  # [n_init, d]
         shift = (x_new - x).norm(dim=-1).max()
         x = x_new
@@ -179,8 +194,18 @@ def local_gaussian_covariance(
 
     Returns:
         covariance: local Gaussian covariance [d, d]
+
+    Raises:
+        ValueError: if `mode` lies outside the support of `gmm`, or if the log-density is
+            locally flat there - in both cases the local Gaussian is undefined.
     """
-    d = mode.shape[0]
+    log_prob_mode = gmm.log_prob(mode.unsqueeze(0)).squeeze(0)
+    if not log_prob_mode.isfinite():
+        raise ValueError(
+            f"Mode {mode.tolist()} lies outside the support of the GMM (log p = {log_prob_mode.item()}), so the "
+            f"local Gaussian covariance is undefined. This points at the mode-finding step returning a point off "
+            f"the affine support of a degenerate component."
+        )
 
     if use_analytical_hessian:
         H = gmm.log_prob_hessian(mode.unsqueeze(0)).squeeze(0)
@@ -194,6 +219,13 @@ def local_gaussian_covariance(
         H = numerical_log_prob_hessian(gmm, mode)  # [d, d]
 
     P = -(0.5 * (H + H.swapaxes(-1, -2))) # symmetrize and flip sign
+
+    # `utils.eigh` reports a rank-0 `P` as a non-Hermitian operator, which hides the actual cause
+    if torch.linalg.matrix_rank(P, hermitian=True) == 0:
+        raise ValueError(
+            f"The log-density of the GMM is flat at mode {mode.tolist()} (its Hessian vanishes), so the local "
+            f"Gaussian covariance is undefined."
+        )
 
     eigvals, eigvecs = utils.eigh(P)
     eigvals.clamp_(min=0.0)
