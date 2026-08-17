@@ -18,6 +18,17 @@ def axes_from_norm(norm: MultivariateNormal) -> Axes:
         offset=norm.loc
     )
 
+def norm_has_axes(norm: MultivariateNormal, axes: Axes, atol: float = TOL) -> bool:
+    """
+    Whether the axes of `norm` equal `axes`. This is the batched counterpart of `equal_axes(axes_from_norm(norm), axes)`,
+    which is restricted to a single distribution since `Axes` does not support batching.
+    """
+    return (
+        torch.allclose(norm.eigvecs, axes.rot_mat, atol=atol) and
+        torch.allclose(norm.eigvals_sqrt, axes.scales, atol=atol) and
+        torch.allclose(norm.loc, axes.offset, atol=atol)
+    )
+
 def default_prune_tol(gmm: MixtureMultivariateNormal, factor: float = 0.5):
     stds = gmm.component_distribution.variance.mean(dim=-1).sqrt()  # [K]
     weights = gmm.mixture_distribution.probs

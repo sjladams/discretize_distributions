@@ -79,36 +79,7 @@ class AxesAlignedPoints(Axes, ABC):
     def query(self, idx: Union[int, torch.Tensor, list, slice, tuple]):
         raise NotImplementedError
     
-    def _rebase(self, axes: Axes):
-        """
-        Aligns the reference-frame (axes) the current grid to the given `axes`, WITHOUT modifying the offset. The 
-        rebasing is only possible if the new axes share the same eigenbasis as the current axes
-        """
-        # Compute projected transform in source basis
-        new_scale_mat = torch.einsum('ij, jk, k->ik', axes.rot_mat.T, self.rot_mat, self.scales)
 
-        # Extract scales in the source eigenbasis
-        permute_mat = utils.permute_indicator_from_scale_mat(new_scale_mat)
-        if not utils.is_permuted_eye(permute_mat):
-            raise ValueError("Can only rebase axes to an axes (i.e. rotation matrix) that has the same eigenbasis.")
-
-        indices = permute_mat.argmax(dim=-1)
-        points_per_dim = [self.points_per_dim[i] for i in indices]
-
-        rel_scaling_diff = new_scale_mat.sum(-1) / axes.scales
-        points_per_dim = [p * rel_scaling_diff[i] for i, p in enumerate(points_per_dim)]
-
-        axes = Axes(
-                rot_mat=axes.rot_mat.clone(), 
-                scales=axes.scales.clone(), 
-                offset=self.offset.clone()
-        )
-        return points_per_dim, axes
-    
-    def rebase(self, axes: Axes):
-        points_per_dim, axes = self._rebase(axes)
-        return self.__class__(points_per_dim, axes=axes)
-    
     @property
     def shape(self):
         return torch.Size(tuple(p.shape[-1] for p in self.points_per_dim))
@@ -192,9 +163,6 @@ class Cross(AxesAlignedPoints):
 
         self._points_per_side = points_per_side
 
-    def rebase(self, axes: Axes):
-        raise NotImplementedError("Rebasing not supported yet") 
-    
     @property
     def points_per_side(self):
         return self._points_per_side
@@ -239,8 +207,7 @@ def check_grid_in_domain(
     """
     Checks if the grid is fully contained within the domain.
     """
-    if not equal_axes(grid, domain):
-        raise ValueError("Grid and domain must have the same axes (rot_mat, scales, offset).")
+    equal_axes(grid, domain)
     if not len(domain) == 1:
         raise ValueError("Domain must be a single cell.")
     

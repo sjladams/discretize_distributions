@@ -58,8 +58,8 @@ class GridPartition(Grid):
 
         if domain is None:
             domain = create_cell_spanning_Rn(grid_of_points.ndim_support,  axes=grid_of_points)
-        elif not equal_axes(domain, grid_of_points):
-            raise ValueError("Domain axes must match the grid axes.")
+        else:
+            equal_axes(domain, grid_of_points)
 
         # This is not an unavoidable check, but simplifies the implementation. To relax this, saturate the vertices.
         if not check_grid_in_domain(grid_of_points, domain):
@@ -97,19 +97,6 @@ class GridPartition(Grid):
             axes=self
         )
     
-    def rebase(self, axes: Axes):
-        """
-        Aligns the reference-frame (axes) the current partition to the given `axes`, WITHOUT modifying the offset. The 
-        rebasing is only possible if the new axes share the same eigenbasis as the current axes
-        """
-        points_per_dim, axes = self._rebase(axes)
-
-        return self.__class__.from_vertices(
-            lower_vertices_per_dim=[p.min(dim=0).values for p in points_per_dim],
-            upper_vertices_per_dim=[p.max(dim=0).values for p in points_per_dim],
-            axes=axes
-        )
-
 class Scheme:
     pass
 
@@ -119,10 +106,9 @@ class GridScheme(Scheme):
             grid_of_locs: Grid,
             grid_partition: GridPartition 
     ):
-        if grid_of_locs.ndim != grid_partition.ndim:
-            raise ValueError("Locations and partitions must be defined in the same number of dimensions.")
         if len(grid_of_locs) != len(grid_partition):
             raise ValueError("Number of locations must match the number of partitions.")
+        equal_axes(grid_of_locs, grid_partition)
 
         self._grid_of_locs = grid_of_locs
         self._grid_partition = grid_partition
@@ -156,12 +142,6 @@ class GridScheme(Scheme):
     def __len__(self):
         return len(self._grid_of_locs)
     
-    def rebase(self, axes: Axes):
-        return self.__class__(
-            self._grid_of_locs.rebase(axes),
-            self._grid_partition.rebase(axes)
-        )
-
     @staticmethod
     def from_point(
         point: torch.Tensor, 

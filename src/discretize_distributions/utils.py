@@ -186,34 +186,6 @@ def mats_commute(mat1: torch.Tensor, mat2: torch.Tensor, atol: float = 1e-6) -> 
     commutator = mat1 @ mat2 - mat2 @ mat1
     return torch.allclose(commutator, torch.zeros_like(commutator), atol=atol)
 
-def is_permuted_eye(mat: torch.Tensor) -> bool:
-    if mat.ndim != 2 or mat.shape[0] != mat.shape[1]:
-        return False  # Must be square
-
-    # All elements must be 0 or 1
-    if not torch.all((mat == 0) | (mat == 1)):
-        return False
-
-    # Each row and each column must sum to 1
-    if not torch.all(mat.sum(dim=0) == 1):
-        return False
-    if not torch.all(mat.sum(dim=1) == 1):
-        return False
-
-    return True
-
-def permute_indicator_from_scale_mat(new_scale_mat: torch.Tensor, *, rtol: float = 1e-6) -> torch.Tensor:
-    """
-    Returns a 0/1 matrix indicating "significant" entries of new_scale_mat relative to each row's maximum magnitude.
-    """
-    A = new_scale_mat.double().abs()
-    row_max = A.max(dim=-1, keepdim=True).values
-    # If a row is all zeros, cannot define a permutation support
-    if torch.any(row_max == 0):
-        return torch.zeros_like(new_scale_mat, dtype=new_scale_mat.dtype)
-
-    return (A > (rtol * row_max)).to(dtype=new_scale_mat.dtype)
-
 def cdf(x: Union[torch.Tensor, float], mu: Union[torch.Tensor, float] = 0., scale: Union[torch.Tensor, float] = 1.):
     """
     cdf normal distribution
@@ -285,17 +257,33 @@ def compute_w2_disc_uni_stand_normal(locs: torch.Tensor) -> torch.Tensor:
     w2_sq = torch.einsum('i,i->', trunc_var + (trunc_mean - locs).pow(2), probs)
     return w2_sq.sqrt()
 
-def batched_cartesian_product(points_per_dim):
-    batch_shape = points_per_dim[0].shape[:-1]
-    if len(batch_shape) == 0:
-        mesh = torch.meshgrid(*points_per_dim, indexing='ij')
-        points = torch.stack([m.reshape(-1) for m in mesh], dim=-1)
-        return points
-    else:
-        batch_of_points = []
-        for i in range(batch_shape[0]):
-            batch_of_points.append(batched_cartesian_product([p[i] for p in points_per_dim]))
-        return torch.stack(batch_of_points, dim=0)
+def batched_cartesian_product(points_per_dim: List[torch.Tensor]) -> torch.Tensor:
+    """
+    Cartesian product over the last dimension of each element of `points_per_dim`, broadcasting over the leading batch
+    dimensions, i.e. a list of tensors of shape (batch_shape, n_d) maps to a tensor of shape
+    (batch_shape, prod_d n_d, ndim). The points are ordered row-major (matching torch.meshgrid's 'ij' indexing), i.e.
+    the last dimension varies fastest.
+    """
+    batch_shape = torch.broadcast_shapes(*[p.shape[:-1] for p in points_per_dim])
+    shape = tuple(p.shape[-1] for p in points_per_dim)
+    ndim = len(points_per_dim)
+
+    points = [
+        p.reshape(p.shape[:-1] + tuple(shape[dim] if dim == d else 1 for dim in range(ndim))).expand(batch_shape + shape)
+        for d, p in enumerate(points_per_dim)
+    ]
+    return torch.stack([p.reshape(batch_shape + (-1,)) for p in points], dim=-1)
+
+def batched_tensor_product(values_per_dim: List[torch.Tensor]) -> torch.Tensor:
+    """
+    Product over the Cartesian product of the last dimension of each element of `values_per_dim`, i.e. a list of
+    tensors of shape (batch_shape, n_d) maps to a tensor of shape (batch_shape, prod_d n_d). Equals
+    `batched_cartesian_product(values_per_dim).prod(-1)`, without materializing the intermediate stack.
+    """
+    out = values_per_dim[0]
+    for values in values_per_dim[1:]:
+        out = (out.unsqueeze(-1) * values.unsqueeze(-2)).flatten(-2)
+    return out
 
 def pad_zeros(tensor_list: List[torch.Tensor]) -> List[torch.Tensor]:
     max_num_locs = max([len(locs) for locs in tensor_list])
