@@ -92,7 +92,6 @@ def project_grid_scheme_onto_norm_axes(
 def _discretize_norms_using_grid_scheme(
         dist: MultivariateNormal,
         grid_scheme: GridScheme,
-        use_corollary_10: Optional[bool] = True
 ) -> Tuple[List[torch.Tensor], torch.Tensor]:
     """
     Discretizes a (possibly batched) `MultivariateNormal` over `grid_scheme`. Grid cells are axis-aligned
@@ -111,25 +110,15 @@ def _discretize_norms_using_grid_scheme(
         utils.compute_mean_var_trunc_norm(l, u) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)
     ]
 
-    if use_corollary_10:
-        domain_prob = torch.stack([p.sum(-1) for p in probs_per_dim], dim=-1).prod(-1)
-        # the normalization is only meaningful where the domain carries mass; elsewhere the W2 error is set to zero
-        normalized_probs_per_dim = [p / p.sum(-1, keepdim=True).clamp_min(TOL) for p in probs_per_dim]
-        w2_sq_per_dim = torch.stack([
-            ((v + (m - l).pow(2)) * p).sum(-1) * e for (l, (m, v), p, e)
-            in zip(locs_per_dim, trunc_mean_var_per_dim, normalized_probs_per_dim, var_per_dim.unbind(-1))
-        ], dim=-1)
-        w2_sq = (w2_sq_per_dim * domain_prob.unsqueeze(-1)).sum(-1)
-        w2 = torch.where(domain_prob > TOL, w2_sq, torch.zeros_like(w2_sq)).sqrt()
-    else:
-        trunc_means = utils.batched_cartesian_product([m for (m, _) in trunc_mean_var_per_dim])
-        trunc_vars = utils.batched_cartesian_product([v for (_, v) in trunc_mean_var_per_dim])
-        local_locs = utils.batched_cartesian_product(locs_per_dim)
-        probs = utils.batched_tensor_product(probs_per_dim)
-
-        w2_sq_mean_var_alt = trunc_vars + (trunc_means - local_locs).pow(2)
-        w2_sq_mean_var_alt = torch.einsum('...cn, ...n->...c', w2_sq_mean_var_alt, var_per_dim)
-        w2 = torch.einsum('...c,...c->...', w2_sq_mean_var_alt, probs).sqrt()
+    domain_prob = torch.stack([p.sum(-1) for p in probs_per_dim], dim=-1).prod(-1)
+    # the normalization is only meaningful where the domain carries mass; elsewhere the W2 error is set to zero
+    normalized_probs_per_dim = [p / p.sum(-1, keepdim=True).clamp_min(TOL) for p in probs_per_dim]
+    w2_sq_per_dim = torch.stack([
+        ((v + (m - l).pow(2)) * p).sum(-1) * e for (l, (m, v), p, e)
+        in zip(locs_per_dim, trunc_mean_var_per_dim, normalized_probs_per_dim, var_per_dim.unbind(-1))
+    ], dim=-1)
+    w2_sq = (w2_sq_per_dim * domain_prob.unsqueeze(-1)).sum(-1)
+    w2 = torch.where(domain_prob > TOL, w2_sq, torch.zeros_like(w2_sq)).sqrt()
 
     assert not (torch.isnan(w2).any() or torch.isinf(w2).any()), f'Wasserstein distance is NaN or Inf: {w2}'
 
@@ -139,9 +128,8 @@ def _discretize_norms_using_grid_scheme(
 def discretize_multi_norm_using_grid_scheme(
         dist: MultivariateNormal,
         grid_scheme: GridScheme,
-        use_corollary_10: Optional[bool] = True
 ) -> Tuple[CategoricalGrid, torch.Tensor]:
-    probs_per_dim, w2 = _discretize_norms_using_grid_scheme(dist, grid_scheme, use_corollary_10=use_corollary_10)
+    probs_per_dim, w2 = _discretize_norms_using_grid_scheme(dist, grid_scheme)
 
     disc_dist = CategoricalGrid(
         grid_of_locs=grid_scheme.grid_of_locs,
@@ -154,7 +142,6 @@ def discretize_multi_norm_using_grid_scheme(
 def discretize_mixture_multi_norm_using_grid_scheme(
         dist: MixtureMultivariateNormal,
         grid_scheme: GridScheme,
-        use_corollary_10: Optional[bool] = True
 ) -> Tuple[CategoricalFloat, torch.Tensor]:
     """
     Discretizes all components of `dist` over the shared `grid_scheme` in a single batched pass, and mixes the
@@ -165,7 +152,7 @@ def discretize_mixture_multi_norm_using_grid_scheme(
     partition not spanning R^n leaves outside the domain is redistributed over the grid cells.
     """
     probs_per_dim, w2_per_component = _discretize_norms_using_grid_scheme(
-        dist.component_distribution, grid_scheme, use_corollary_10=use_corollary_10
+        dist.component_distribution, grid_scheme
     )
     mixture_probs = dist.mixture_distribution.probs
 
