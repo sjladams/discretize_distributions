@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional, Tuple, List, Callable
+from typing import Union, Optional, Tuple, Callable
 
 from . import utils
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid
@@ -181,6 +181,7 @@ def discretize_multi_norm_using_grid_scheme(
     # print(f"Signature w2: {w2:.4f} / {dist.eigvals.sum(-1).sqrt():.4f} for grid of size: {len(grid_scheme)}")
 
     return disc_dist, w2
+
 
 def discretize_multi_norm_using_cross_scheme(
         dist: MultivariateNormal,
