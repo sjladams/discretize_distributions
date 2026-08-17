@@ -42,6 +42,11 @@ def compute_local_mse(
     if dist.event_shape != disc_dist.event_shape:
         raise ValueError('The distribution and its discretization must have the same event shape.')
 
+    # Unlike `project_grid_scheme_onto_norm_axes`, which reads its frame off the grid scheme and so never inspects
+    # `dist.eigvecs`, there is no scheme here to take a frame from: the cells have to be reconstructed from the bare
+    # locations, leaving `dist`'s own eigenbasis as the only candidate. That is exact whenever the eigenvalues are
+    # distinct, and since this function is restricted to a single, unbatched `dist`, that eigenbasis is fixed rather
+    # than free to vary per batch element -- the reason the discretization itself avoids it.
     dist_axes = axes_from_norm(dist)
     local_locs = dist_axes.to_local(disc_dist.locs)
 
@@ -67,13 +72,13 @@ def compute_local_mse(
                 'its locations. Pass validate_probs=False to compute the local mean squared error regardless.'
             )
 
-    trunc_mean_var_per_dim = [
-        utils.compute_mean_var_trunc_norm(l, u) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)
-    ]
+    local_mse_per_dim = utils.compute_local_mse_per_dim(
+        locs_per_dim, lower_vertices_per_dim, upper_vertices_per_dim, dist.eigvals
+    )
 
     local_mse = torch.zeros_like(disc_dist.probs)
-    for dim, (l, (m, v), e) in enumerate(zip(locs_per_dim, trunc_mean_var_per_dim, dist.eigvals)):
-        local_mse = local_mse + ((v + (m - l).pow(2)) * e)[index_per_dim[..., dim]]
+    for dim, mse in enumerate(local_mse_per_dim):
+        local_mse = local_mse + mse[index_per_dim[..., dim]]
 
     assert not torch.isnan(local_mse).any() and not torch.isinf(local_mse).any(), \
         'Local mean squared error is NaN or Inf'

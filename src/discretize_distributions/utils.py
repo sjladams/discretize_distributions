@@ -237,6 +237,38 @@ def compute_mean_var_trunc_norm(
 
     return mean, variance
 
+def compute_local_mse_per_dim(
+        locs_per_dim: List[torch.Tensor],
+        lower_vertices_per_dim: List[torch.Tensor],
+        upper_vertices_per_dim: List[torch.Tensor],
+        var_per_dim: torch.Tensor
+) -> List[torch.Tensor]:
+    """
+    Per-axis contribution to the local (per-cell) mean squared quantization error, i.e.,
+
+        mse_per_dim[d][i] = E[ (X_d - locs_per_dim[d][i]) ** 2 | X_d in [l_d[i], u_d[i]] ] * var_per_dim[..., d],
+
+    with X_d standard normal. Locations and vertices are therefore expected in the standardized (zero-mean,
+    unit-variance) coordinates of the distribution along each axis, whereas the returned error is in global units.
+
+    Cells being axis-aligned hyperrectangles in the eigenbasis of the distribution, the local mean squared error of a
+    cell is the sum of these contributions over its axes, and the squared 2-Wasserstein error of the discretization
+    is the cell-probability-weighted sum thereof.
+
+    :param locs_per_dim: locations per axis, each of shape (batch_shape, n_d)
+    :param lower_vertices_per_dim: lower cell vertices per axis, each of shape (batch_shape, n_d)
+    :param upper_vertices_per_dim: upper cell vertices per axis, each of shape (batch_shape, n_d)
+    :param var_per_dim: variance (eigenvalue) of the distribution per axis; Size(batch_shape, ndim_support)
+    :return: the mean squared error contribution per axis, each of shape (batch_shape, n_d)
+    """
+    trunc_mean_var_per_dim = [
+        compute_mean_var_trunc_norm(l, u) for l, u in zip(lower_vertices_per_dim, upper_vertices_per_dim)
+    ]
+    return [
+        (v + (m - loc).pow(2)) * var_per_dim[..., d, None]
+        for d, (loc, (m, v)) in enumerate(zip(locs_per_dim, trunc_mean_var_per_dim))
+    ]
+
 def get_vertices(centers: torch.Tensor) -> torch.Tensor:
     """
     Find the vertices of the 1D Voronoi partition w.r.t. the points

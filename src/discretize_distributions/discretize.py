@@ -106,16 +106,15 @@ def _discretize_norms_using_grid_scheme(
     probs_per_dim = [utils.cdf(u) - utils.cdf(l) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)]
 
     # Wasserstein distance error computation:
-    trunc_mean_var_per_dim = [
-        utils.compute_mean_var_trunc_norm(l, u) for l, u in  zip(lower_vertices_per_dim, upper_vertices_per_dim)
-    ]
+    local_mse_per_dim = utils.compute_local_mse_per_dim(
+        locs_per_dim, lower_vertices_per_dim, upper_vertices_per_dim, var_per_dim
+    )
 
     domain_prob = torch.stack([p.sum(-1) for p in probs_per_dim], dim=-1).prod(-1)
     # the normalization is only meaningful where the domain carries mass; elsewhere the W2 error is set to zero
     normalized_probs_per_dim = [p / p.sum(-1, keepdim=True).clamp_min(TOL) for p in probs_per_dim]
     w2_sq_per_dim = torch.stack([
-        ((v + (m - l).pow(2)) * p).sum(-1) * e for (l, (m, v), p, e)
-        in zip(locs_per_dim, trunc_mean_var_per_dim, normalized_probs_per_dim, var_per_dim.unbind(-1))
+        (mse * p).sum(-1) for mse, p in zip(local_mse_per_dim, normalized_probs_per_dim)
     ], dim=-1)
     w2_sq = (w2_sq_per_dim * domain_prob.unsqueeze(-1)).sum(-1)
     w2 = torch.where(domain_prob > TOL, w2_sq, torch.zeros_like(w2_sq)).sqrt()
