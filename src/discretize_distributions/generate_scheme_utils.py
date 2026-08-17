@@ -2,7 +2,7 @@ import torch
 import bisect
 
 from .axes import Axes
-from .distributions import MultivariateNormal, MixtureMultivariateNormal
+from .distributions import MultivariateNormal, MixtureMultivariateNormal, covariance_matrices_are_equal
 from . import utils
 
 TOL = 1e-8
@@ -100,6 +100,57 @@ def find_modes_gradient_ascent(
     assert not x_final.isnan().any(), "Final modes contain NaN values. Check the GMM parameters."
 
     return x_final
+
+def find_modes_mean_shift(
+    gmm: MixtureMultivariateNormal,
+    n_iter: int = 100,
+    tol: float = 1e-6,
+    max_modes: int = 100,
+    verbose: bool = False,
+) -> torch.Tensor:
+    """
+    Finds GMM modes using mean-shift fixed-point iteration. Requires all mixture
+    components to share the same covariance matrix: under that condition, each
+    mean-shift step is a bound-optimization (EM-style) update that never decreases
+    log p(x), so no step size is needed and convergence is monotonic.
+
+    Args:
+        gmm: MixtureMultivariateNormal, with equal component covariances
+        n_iter: Maximum number of mean-shift iterations
+        tol: Stop early once the largest per-point shift drops below this
+        max_modes: Maximum number of starting points (one per component, subsampled)
+        verbose: Whether to print progress
+
+    Returns:
+        Tensor [n_modes, d] of approximate GMM modes
+    """
+    assert covariance_matrices_are_equal(gmm.component_distribution), \
+        "find_modes_mean_shift requires all mixture components to share the same covariance matrix."
+
+    mask_init_locs = torch.randperm(gmm.num_components)[: min(max_modes, gmm.num_components)]
+    locs = gmm.component_distribution.loc.detach()  # [K, d]
+    log_weights = gmm.mixture_distribution.probs.detach().log()  # [K]
+    precision = torch.linalg.pinv(gmm.component_distribution.covariance_matrix[0].detach(), hermitian=True)  # [d, d]
+
+    x = locs[mask_init_locs].clone()  # [n_init, d]
+
+    for i in range(n_iter):
+        diff = x.unsqueeze(-2) - locs  # [n_init, K, d]
+        mahal = torch.einsum('nkd,de,nke->nk', diff, precision, diff)  # [n_init, K]
+        resp = torch.softmax(log_weights - 0.5 * mahal, dim=-1)  # [n_init, K]
+        x_new = torch.einsum('nk,kd->nd', resp, locs)  # [n_init, d]
+        shift = (x_new - x).norm(dim=-1).max()
+        x = x_new
+
+        if verbose and (i % 20 == 0 or i == n_iter - 1):
+            print(f"Step {i:3d} | max shift: {shift.item():.6f}")
+
+        if shift < tol:
+            break
+
+    assert not x.isnan().any(), "Final modes contain NaN values. Check the GMM parameters."
+
+    return x
 
 def local_gaussian_covariance(
         gmm: MixtureMultivariateNormal, 
