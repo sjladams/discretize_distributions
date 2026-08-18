@@ -4,8 +4,7 @@ from typing import Union, Optional, Tuple, Callable, List, Dict
 from . import utils
 from .distributions import MultivariateNormal, MixtureMultivariateNormal, CategoricalFloat, CategoricalGrid
 from .distributions.categorical_float import compress_locs_and_probs
-from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Cross, Grid
-from .generate_scheme_utils import norm_has_axes
+from .schemes import GridScheme, CrossScheme, LayeredScheme, BatchedScheme, Grid
 
 TOL = 1e-8
 EIGENBASIS_RTOL = 1e-6
@@ -163,17 +162,64 @@ def discretize_mixture_multi_norm_using_grid_scheme(
     return CategoricalFloat(locs=locs, probs=probs), w2
 
 
+def project_cross_scheme_onto_norm_axes(
+        dist: MultivariateNormal,
+        cross_scheme: CrossScheme
+) -> torch.Tensor:
+    """
+    Expresses `cross_scheme` in the local (standardized, per-axis unit-variance) coordinates of `dist`, which may
+    carry an arbitrary batch shape, and returns the dilation factor between the two.
+
+    A cross partition's cells are (spherical shell) x (cone around one signed axis), so unlike a grid its cell
+    probabilities (`discretize_multi_norm_using_cross_scheme`) are only closed-form where `dist` is isotropic and
+    centered on the scheme's active subspace once standardized: `dist` may differ from the scheme's axes by at most
+    a scalar dilation about the scheme's center, not an arbitrary per-axis scale and offset as in
+    `project_grid_scheme_onto_norm_axes`.
+
+    Inactive dims are collapsed by the cross onto a single coordinate, so `dist` is unconstrained there: only the
+    marginal over the active subspace enters the probabilities, and the sigma-points sit at the scheme's offset
+    along those dims rather than at the mean of `dist`.
+
+    :return: the dilation factor, of shape batch_shape: the standard deviation of `dist` along each active scheme
+        axis, expressed in units of the scale of that axis.
+    """
+    rot_mat, active_dims = cross_scheme.rot_mat, cross_scheme.active_dims
+
+    # See `project_grid_scheme_onto_norm_axes` for why this never inspects `dist`'s own `eigvecs`. Only the active
+    # axes are required to be eigenvectors of `dist`; the remaining ones are marginalized out over their full extent.
+    cov_in_cross_axes = torch.einsum('id,...ij,jk->...dk', rot_mat, dist.covariance_matrix, rot_mat)
+    var_per_dim = cov_in_cross_axes.diagonal(dim1=-2, dim2=-1)
+    off_diagonal = (cov_in_cross_axes - torch.diag_embed(var_per_dim))[..., active_dims, :]
+    if (off_diagonal.abs().amax(dim=(-2, -1)) > EIGENBASIS_RTOL * var_per_dim.abs().amax(dim=-1)).any():
+        raise ValueError('The active axes of the cross scheme are not eigenvectors of the distribution.')
+
+    scales = (var_per_dim.abs() + utils.PRECISION).sqrt()  # mirrors MultivariateNormal.eigvals_sqrt
+    mean_per_dim = torch.einsum('id,...i->...d', rot_mat, dist.loc)
+    offset_per_dim = torch.einsum('id,i->d', rot_mat, cross_scheme.offset)
+    if not torch.allclose(mean_per_dim[..., active_dims], offset_per_dim[active_dims], atol=TOL):
+        raise ValueError('The distribution is not centered on the cross scheme along its active axes.')
+
+    dilation_per_active_dim = scales[..., active_dims] / cross_scheme.scales[active_dims]
+    if not torch.allclose(dilation_per_active_dim, dilation_per_active_dim[..., :1], rtol=EIGENBASIS_RTOL):
+        raise ValueError(
+            'The distribution differs from the cross scheme by more than a dilation: its standard deviations along '
+            "the scheme's active axes are not proportional to the scales of those axes."
+        )
+
+    return dilation_per_active_dim[..., 0]
+
+
 def discretize_multi_norm_using_cross_scheme(
         dist: MultivariateNormal,
         cross_scheme: CrossScheme
 ) -> Tuple[CategoricalFloat, torch.Tensor]:
     """
-    Discretizes a (possibly batched) `MultivariateNormal` over `cross_scheme`. Requires `dist` to share the scheme's
-    axes, so the sigma-point probabilities follow from the scheme's chi-squared ball probabilities alone and are
-    identical across batch elements, which are returned as views rather than copies.
+    Discretizes a (possibly batched) `MultivariateNormal` over `cross_scheme`. Requires `dist` to differ from the
+    scheme's axes by at most a dilation about the scheme's center (see `project_cross_scheme_onto_norm_axes`), so the
+    sigma-point probabilities follow from the scheme's chi-squared ball probabilities alone, evaluated at radii
+    rescaled by that dilation. The locations are shared by all batch elements, and are returned as views over them.
     """
-    if not norm_has_axes(dist, cross_scheme, atol=TOL):
-        raise ValueError('The distribution and the cross partition do not share the same axes.')
+    dilation = project_cross_scheme_onto_norm_axes(dist, cross_scheme)
 
     points_per_active_side = [cross_scheme.points_per_side[i] for i in cross_scheme.active_dims]
     points = points_per_active_side[0]
@@ -183,25 +229,24 @@ def discretize_multi_norm_using_cross_scheme(
     num_active_dims = len(cross_scheme.active_dims)
     edges = torch.cat((torch.zeros(1), points[0:-1] + 0.5 * points.diff(), torch.ones(1).fill_(torch.inf)))
 
+    # the shell edges, expressed in standard deviations of `dist` rather than in scales of the scheme's axes:
+    edges = edges / dilation.unsqueeze(-1)
+
     volume_ellipsoids = gaussian_ball_probability(edges, dim=num_active_dims)
-    volume_shells = volume_ellipsoids[1:] - volume_ellipsoids[0:-1]
+    volume_shells = volume_ellipsoids[..., 1:] - volume_ellipsoids[..., :-1]
     probs_per_active_side = volume_shells / (2 * num_active_dims)
 
-    probs_per_side = [
-        probs_per_active_side if i in cross_scheme.active_dims else torch.zeros(1, dtype=probs_per_active_side.dtype)
-        for i in range(cross_scheme.ndim_support)
-    ]
+    # `Cross` lays its points out per active dim, mirrored around the origin, and the probabilities follow suit. All
+    # active dims carry the same points_per_side, enforced above, and hence the same probabilities.
+    probs_per_active_dim = torch.cat((probs_per_active_side.flip(-1), probs_per_active_side), dim=-1)
+    probs = torch.cat([probs_per_active_dim] * num_active_dims, dim=-1)
 
-    probs = Cross.from_num_dims(probs_per_side, cross_scheme.ndim_support).points.abs().sum(-1)
-    locs = cross_scheme.points
-
-    # the sigma-points and their probabilities are shared by all batch elements, and are expanded into views over them:
-    probs = probs.expand(dist.batch_shape + probs.shape)
-    locs = locs.expand(dist.batch_shape + locs.shape)
+    # the sigma-points are shared by all batch elements, and are expanded into views over them:
+    locs = cross_scheme.points.expand(dist.batch_shape + cross_scheme.points.shape)
     w2 = torch.full(dist.batch_shape, torch.nan)
 
     assert probs.shape == locs.shape[:-1]
-    assert torch.isclose(probs.sum(-1), torch.ones(cross_scheme.batch_shape)).all()
+    assert torch.isclose(probs.sum(-1), torch.ones(dist.batch_shape)).all()
 
     return CategoricalFloat(locs, probs), w2
 
@@ -213,8 +258,8 @@ def discretize_mixture_multi_norm_using_cross_scheme(
     """
     Discretizes all components of `dist` over the shared `cross_scheme` in a single batched pass, and mixes the
     resulting sigma-point probabilities. W2 errors are aggregated in quadrature, weighted by the mixture weights.
-    Since every component shares its axes with the scheme, they discretize identically and mixing leaves the
-    probabilities unchanged.
+    Components that are dilations of one another about the scheme's center discretize onto the same sigma-points with
+    different probabilities, which mixing then combines.
     """
     disc_dist, w2_per_component = discretize_multi_norm_using_cross_scheme(dist.component_distribution, cross_scheme)
     mixture_probs = dist.mixture_distribution.probs
