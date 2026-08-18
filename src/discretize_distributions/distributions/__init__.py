@@ -1,5 +1,5 @@
 from .categorical_float import CategoricalFloat, CategoricalGrid, compress_categorical_floats, cross_product_categorical_floats
-from .multivariate_normal import MultivariateNormal, covariance_matrices_have_common_eigenbasis
+from .multivariate_normal import MultivariateNormal, covariance_matrices_have_common_eigenbasis, covariance_matrices_are_equal
 from .mixture import MixtureMultivariateNormal, compress_mixture_multivariate_normal, unique_mixture_multivariate_normal
 
 from torch.distributions import Categorical
@@ -15,4 +15,5 @@ __all__ = [
     'compress_categorical_floats',
     'cross_product_categorical_floats',
     'covariance_matrices_have_common_eigenbasis',
+    'covariance_matrices_are_equal',
 ]

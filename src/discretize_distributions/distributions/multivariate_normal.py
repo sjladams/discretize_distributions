@@ -7,7 +7,7 @@ from torch.distributions.utils import _standard_normal
 from torch.distributions.multivariate_normal import _batch_mv, _batch_mahalanobis
 
 
-__all__ = ['MultivariateNormal', 'covariance_matrices_have_common_eigenbasis']
+__all__ = ['MultivariateNormal', 'covariance_matrices_have_common_eigenbasis', 'covariance_matrices_are_equal']
 
 PRECISION = torch.finfo(torch.float32).eps
 TOL = 1e-8
@@ -206,7 +206,17 @@ def covariance_matrices_have_common_eigenbasis(
     dist: MultivariateNormal
 ):
     return utils.mats_commute(
-        dist.covariance_matrix, 
+        dist.covariance_matrix,
+        dist.covariance_matrix[0].expand_as(dist.covariance_matrix),
+        atol=TOL
+    )
+
+
+def covariance_matrices_are_equal(
+    dist: MultivariateNormal
+):
+    return torch.allclose(
+        dist.covariance_matrix,
         dist.covariance_matrix[0].expand_as(dist.covariance_matrix),
         atol=TOL
     )

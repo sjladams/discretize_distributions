@@ -2,7 +2,7 @@ import torch
 import bisect
 
 from .axes import Axes
-from .distributions import MultivariateNormal, MixtureMultivariateNormal
+from .distributions import MultivariateNormal, MixtureMultivariateNormal, covariance_matrices_are_equal
 from . import utils
 
 TOL = 1e-8
@@ -16,6 +16,17 @@ def axes_from_norm(norm: MultivariateNormal) -> Axes:
         rot_mat=norm.eigvecs,
         scales=norm.eigvals_sqrt,
         offset=norm.loc
+    )
+
+def norm_has_axes(norm: MultivariateNormal, axes: Axes, atol: float = TOL) -> bool:
+    """
+    Whether the axes of `norm` equal `axes`. This is the batched counterpart of `equal_axes(axes_from_norm(norm), axes)`,
+    which is restricted to a single distribution since `Axes` does not support batching.
+    """
+    return (
+        torch.allclose(norm.eigvecs, axes.rot_mat, atol=atol) and
+        torch.allclose(norm.eigvals_sqrt, axes.scales, atol=atol) and
+        torch.allclose(norm.loc, axes.offset, atol=atol)
     )
 
 def default_prune_tol(gmm: MixtureMultivariateNormal, factor: float = 0.5):
@@ -101,6 +112,72 @@ def find_modes_gradient_ascent(
 
     return x_final
 
+def find_modes_mean_shift(
+    gmm: MixtureMultivariateNormal,
+    n_iter: int = 100,
+    tol: float = 1e-6,
+    max_modes: int = 100,
+    verbose: bool = False,
+) -> torch.Tensor:
+    """
+    Finds GMM modes using mean-shift fixed-point iteration. Requires all mixture
+    components to share the same covariance matrix: under that condition, each
+    mean-shift step is a bound-optimization (EM-style) update that never decreases
+    log p(x), so no step size is needed and convergence is monotonic.
+
+    Rank-deficient covariances are supported: a component whose affine support does not
+    contain the current iterate has density exactly zero there, hence responsibility zero.
+    Masking those components out keeps every iterate on the support it started on (the
+    update is a convex combination of the means it is still on-support for), which is what
+    the pseudoinverse Mahalanobis distance alone would miss - it ignores displacements
+    orthogonal to the support and would blend components living on disjoint supports.
+
+    Args:
+        gmm: MixtureMultivariateNormal, with equal component covariances
+        n_iter: Maximum number of mean-shift iterations
+        tol: Stop early once the largest per-point shift drops below this
+        max_modes: Maximum number of starting points (one per component, subsampled)
+        verbose: Whether to print progress
+
+    Returns:
+        Tensor [n_modes, d] of approximate GMM modes
+    """
+    assert covariance_matrices_are_equal(gmm.component_distribution), \
+        "find_modes_mean_shift requires all mixture components to share the same covariance matrix."
+
+    mask_init_locs = torch.randperm(gmm.num_components)[: min(max_modes, gmm.num_components)]
+    locs = gmm.component_distribution.loc.detach()  # [K, d]
+    log_weights = gmm.mixture_distribution.probs.detach().log()  # [K]
+    # shared covariance Sigma = U diag(eigvals) U^T, restricted to its column space (support)
+    eigvecs = gmm.component_distribution.eigvecs[0].detach()  # [d, k]
+    eigvals = gmm.component_distribution.eigvals[0].detach().clamp_min(TOL)  # [k]
+    degenerate = gmm.component_distribution.event_shape != gmm.component_distribution.event_shape_support
+
+    x = locs[mask_init_locs].clone()  # [n_init, d]
+
+    for i in range(n_iter):
+        diff = x.unsqueeze(-2) - locs  # [n_init, K, d]
+        proj = torch.einsum('nkd,dj->nkj', diff, eigvecs)  # [n_init, K, k]
+        mahal = proj.square().div(eigvals).sum(-1)  # [n_init, K]
+        logits = log_weights - 0.5 * mahal  # [n_init, K]
+        if degenerate:
+            perp = diff - torch.einsum('nkj,dj->nkd', proj, eigvecs)  # [n_init, K, d]
+            logits = logits.masked_fill(perp.norm(dim=-1) > tol, -torch.inf)
+        resp = torch.softmax(logits, dim=-1)  # [n_init, K]
+        x_new = torch.einsum('nk,kd->nd', resp, locs)  # [n_init, d]
+        shift = (x_new - x).norm(dim=-1).max()
+        x = x_new
+
+        if verbose and (i % 20 == 0 or i == n_iter - 1):
+            print(f"Step {i:3d} | max shift: {shift.item():.6f}")
+
+        if shift < tol:
+            break
+
+    assert not x.isnan().any(), "Final modes contain NaN values. Check the GMM parameters."
+
+    return x
+
 def local_gaussian_covariance(
         gmm: MixtureMultivariateNormal, 
         mode: torch.Tensor, 
@@ -117,8 +194,18 @@ def local_gaussian_covariance(
 
     Returns:
         covariance: local Gaussian covariance [d, d]
+
+    Raises:
+        ValueError: if `mode` lies outside the support of `gmm`, or if the log-density is
+            locally flat there - in both cases the local Gaussian is undefined.
     """
-    d = mode.shape[0]
+    log_prob_mode = gmm.log_prob(mode.unsqueeze(0)).squeeze(0)
+    if not log_prob_mode.isfinite():
+        raise ValueError(
+            f"Mode {mode.tolist()} lies outside the support of the GMM (log p = {log_prob_mode.item()}), so the "
+            f"local Gaussian covariance is undefined. This points at the mode-finding step returning a point off "
+            f"the affine support of a degenerate component."
+        )
 
     if use_analytical_hessian:
         H = gmm.log_prob_hessian(mode.unsqueeze(0)).squeeze(0)
@@ -132,6 +219,13 @@ def local_gaussian_covariance(
         H = numerical_log_prob_hessian(gmm, mode)  # [d, d]
 
     P = -(0.5 * (H + H.swapaxes(-1, -2))) # symmetrize and flip sign
+
+    # `utils.eigh` reports a rank-0 `P` as a non-Hermitian operator, which hides the actual cause
+    if torch.linalg.matrix_rank(P, hermitian=True) == 0:
+        raise ValueError(
+            f"The log-density of the GMM is flat at mode {mode.tolist()} (its Hessian vanishes), so the local "
+            f"Gaussian covariance is undefined."
+        )
 
     eigvals, eigvecs = utils.eigh(P)
     eigvals.clamp_(min=0.0)
