@@ -1,7 +1,6 @@
 import torch
 import math
 
-import discretize_distributions.axes as dd_axes
 import discretize_distributions.schemes as dd_schemes
 from plot import *
 
@@ -63,58 +62,3 @@ if __name__ == '__main__':
     ax.legend(handles=legend_elements, loc='upper right')
     plt.show()
 
-    ## Rebase: change reference frame for GridScheme -------------------------------------------------------------------
-    # Initialize Axes with different rotations, scales and offsets, but with a common eigenbasis
-    axes1 = dd_schemes.Axes(
-        rot_mat=torch.stack((rot_mat[:,1], -rot_mat[:,0]), dim=1), #   torch.tensor([[0., -1.], [1., 0.]]),  # 90 degrees rotation
-        scales=torch.tensor([0.5, 1.3]),
-        offset=torch.tensor([-0.2, 0.2])
-    )
-
-    axes2 = dd_schemes.Axes(
-        rot_mat=torch.stack((rot_mat[:,1], rot_mat[:,0]), dim=-1), #  torch.tensor([[0., 1.], [1., 0.]]), 
-        scales=torch.tensor([0.5, 1.3]),
-        offset=torch.tensor([-0.2, -0.2])
-    )
-
-    print("Have common eigenbasis:", 
-          dd_axes.axes_have_common_eigenbasis(axes0, axes1))
-    
-    print("Have common eigenbasis:", 
-          dd_axes.axes_have_common_eigenbasis(axes0, axes2))
-
-    # Initialize Grids using the axes
-    grid1 = dd_schemes.Grid(points_per_dim=points_per_dim, axes=axes1)
-    grid2 = dd_schemes.Grid(points_per_dim=points_per_dim, axes=axes2)
-
-    # Initialize GridPartitions using the grids
-    partition1 = dd_schemes.GridPartition.from_grid_of_points(grid1)
-    partition2 = dd_schemes.GridPartition.from_grid_of_points(grid2)
-
-    ## Change Axes -----------------------------------------------------------------------------------------------------
-    grid1_axes_changed = grid1.rebase(axes0)
-    grid2_axes_changed = grid2.rebase(axes0)
-
-    partition1_axes_changed = partition1.rebase(axes0)
-    partition2_axes_changed = partition2.rebase(axes0)
-
-    fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-    xlim, ylim = [-1.5, 1.5], [-1.5, 1.5]
-
-    for (i,j) in zip(range(2), range(3)):
-        axs[i,j].set_xlim(xlim)
-        axs[i,j].set_ylim(ylim)
-        axs[i,j].set_aspect('equal')
-
-    axs[0,0] = plot_2d(axs[0,0], grid0, partition0, xlim, ylim, title='Scheme 0 in Axes 0')
-    axs[0,1] = plot_2d(axs[0,1], grid1, partition1, xlim, ylim, title='Scheme 1 in Axes 1')
-    axs[0,2] = plot_2d(axs[0,2], grid2, partition2, xlim, ylim, title='Scheme 2 in Axes 2')
-
-    axs[1,0] = plot_2d(axs[1,0], grid0, partition0, xlim, ylim, title='Scheme 0 in Axes 0')
-    axs[1,1] = plot_2d(axs[1,1], grid1_axes_changed, partition1_axes_changed, xlim, ylim, title='Scheme 1 in Axes 0')
-    axs[1,2] = plot_2d(axs[1,2], grid2_axes_changed, partition2_axes_changed, xlim, ylim, title='Scheme 2 in Axes 0')
-
-    fig.legend(handles=legend_elements, loc='upper right')
-    plt.tight_layout()
-    plt.subplots_adjust(right=0.85)  # Make room for the legend
-    plt.show()
